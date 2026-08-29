@@ -1,0 +1,6 @@
+{
+  "name": "Báo Cáo Phản Hồi Zalo OA",
+  "description": "Dashboard theo dõi phản hồi phụ huynh Zalo OA & Giám sát chất lượng giảng dạy chuẩn Looker Studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
