@@ -16,14 +16,18 @@ export default async (request) => {
     return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
   }
 
-  const appsScriptUrl = Netlify.env.get('WARNING_APPS_SCRIPT_URL');
-  const apiToken = Netlify.env.get('WARNING_API_TOKEN');
+  const appsScriptUrl = Netlify.env.get('WARNING_APPS_SCRIPT_URL')?.trim();
+  const apiToken = Netlify.env.get('WARNING_API_TOKEN')?.trim();
+  const missingVariables = [
+    !appsScriptUrl && 'WARNING_APPS_SCRIPT_URL',
+    !apiToken && 'WARNING_API_TOKEN',
+  ].filter(Boolean);
 
-  if (!appsScriptUrl || !apiToken) {
+  if (missingVariables.length > 0) {
     return jsonResponse(
       {
         success: false,
-        error: 'Netlify chưa có đủ cấu hình WARNING_APPS_SCRIPT_URL và WARNING_API_TOKEN.',
+        error: `Netlify chưa nhận được cấu hình: ${missingVariables.join(', ')}.`,
       },
       503,
     );
