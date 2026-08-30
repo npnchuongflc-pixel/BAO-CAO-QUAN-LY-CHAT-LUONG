@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && mkdir -p dist/server && esbuild worker/index.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/server/index.js",
+    "build:netlify": "vite build",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
