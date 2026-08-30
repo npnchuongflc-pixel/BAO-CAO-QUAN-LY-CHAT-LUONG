@@ -83,3 +83,7 @@ export default async (request) => {
     return jsonResponse({ success: false, error: message, sheetName }, 502);
   }
 };
+
+export const config = {
+  path: '/api/facility-sheet-data',
+};
