@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FacilitySummary, ReportMode, FilterState, HygieneReport, FacilityQualityReport } from './facilityTypes';
 import { FacilityStatusModal } from './FacilityStatusModal';
 import { 
@@ -43,13 +43,12 @@ import {
 import {
   getStoredCustomSheet,
   syncAllWarningsForDateToGoogleSheet,
-  syncAndFetchWarningsFromSheet,
   clearAllWarningAuditsForDateInGoogleSheet,
+  updateSingleWarningAuditToGoogleSheet,
   createWarningAuditGoogleSheet,
   formatIsoToDateStr,
   getCurrentTimestampStr
 } from '../../services/warningAuditSheetService';
-import { getCurrentUser } from '../../services/googleAuthService';
 import { 
   PieChart, 
   Pie, 
@@ -78,14 +77,6 @@ interface SummaryDashboardProps {
   rawHygieneReports?: HygieneReport[];
   rawQualityReports?: FacilityQualityReport[];
 }
-
-const getFriendlySheetSyncMessage = (message: string) => {
-  if (/auth\/unauthorized-domain/i.test(message)) {
-    return 'Tên miền website chưa được Firebase cấp quyền ghi Google Sheet. Các dấu tích vẫn được lưu an toàn trên trình duyệt; vui lòng thêm tên miền Netlify vào Firebase Authentication > Settings > Authorized domains trước khi đồng bộ.';
-  }
-
-  return message;
-};
 
 export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   mode,
@@ -383,34 +374,6 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [customSheetUrl, setCustomSheetUrl] = useState<string>(() => getStoredCustomSheet()?.spreadsheetUrl || '');
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
 
-  // Background Auto-Sync: Automatically ensures all warning facilities for the active date exist in the Google Sheet (FALSE, FALSE if unchecked)
-  // and syncs back any existing checkboxes from the Sheet to ensure 100% consistency across devices.
-  useEffect(() => {
-    if (!warningFacilities || warningFacilities.length === 0) return;
-    
-    let isMounted = true;
-    const runAutoSync = async () => {
-      try {
-        const res = await syncAndFetchWarningsFromSheet(
-          activeWarningDateIso,
-          warningFacilities.map(w => ({ coSo: w.coSo, reasons: w.reasons })),
-          warningAudits
-        );
-        if (isMounted && res.success) {
-          setWarningAudits(prev => ({ ...prev, ...res.syncedAudits }));
-        }
-      } catch (err) {
-        console.warn('Auto-sync warning facilities background notice:', err);
-      }
-    };
-
-    runAutoSync();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [activeWarningDateIso, warningFacilities.length]);
-
   const handleInitSheet = async () => {
     setIsCreatingSheet(true);
     try {
@@ -436,7 +399,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [isClearingAll, setIsClearingAll] = useState(false);
 
-  const handleClearAllWarningChecks = () => {
+  const handleClearAllWarningChecks = async () => {
     if (warningFacilities.length === 0) {
       setSyncFeedback({
         message: `Ngày ${activeWarningDisplayStr} không có cơ sở nào bị cảnh báo.`,
@@ -446,23 +409,30 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       return;
     }
 
-    // 1. Remove all check records for activeWarningDateIso locally (UI and localStorage only)
-    setWarningAudits(prev => {
-      const copy = { ...prev };
-      for (const w of warningFacilities) {
-        const auditId = `${w.coSo}_${activeWarningDateIso}`;
-        delete copy[auditId];
-        removeLocalWarningAudit(auditId);
+    setIsClearingAll(true);
+    try {
+      const res = await clearAllWarningAuditsForDateInGoogleSheet(activeWarningDateIso);
+      if (res.success) {
+        setWarningAudits(prev => {
+          const copy = { ...prev };
+          for (const warning of warningFacilities) {
+            const auditId = `${warning.coSo}_${activeWarningDateIso}`;
+            delete copy[auditId];
+            removeLocalWarningAudit(auditId);
+          }
+          return copy;
+        });
       }
-      return copy;
-    });
-
-    setSyncFeedback({
-      message: `Đã xóa toàn bộ tích chọn ngày ${activeWarningDisplayStr} trên giao diện. Bấm "Đổ cảnh báo vào Sheet" khi muốn cập nhật lên Google Sheet.`,
-      type: 'info',
-      url: customSheetUrl
-    });
-    setTimeout(() => setSyncFeedback(null), 5000);
+      if (res.spreadsheetUrl) setCustomSheetUrl(res.spreadsheetUrl);
+      setSyncFeedback({
+        message: res.message,
+        type: res.success ? 'success' : 'error',
+        url: res.spreadsheetUrl || customSheetUrl
+      });
+      setTimeout(() => setSyncFeedback(null), 7000);
+    } finally {
+      setIsClearingAll(false);
+    }
   };
 
   const handleSyncAllWarningsForDate = async () => {
@@ -486,7 +456,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         setCustomSheetUrl(res.spreadsheetUrl);
       }
       setSyncFeedback({
-        message: getFriendlySheetSyncMessage(res.message),
+        message: res.message,
         type: res.success ? 'success' : 'error',
         url: res.spreadsheetUrl || customSheetUrl
       });
@@ -502,7 +472,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     }
   };
 
-  const handleToggleWarningAudit = (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
+  const handleToggleWarningAudit = async (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
     const auditId = `${coSo}_${activeWarningDateIso}`;
     const existing = warningAudits[auditId];
 
@@ -515,20 +485,24 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         return copy;
       });
 
+      const res = await updateSingleWarningAuditToGoogleSheet(
+        activeWarningDateIso,
+        coSo,
+        null
+      );
       setSyncFeedback({
-        message: `Đã hủy tích chọn cho ${coSo} trên báo cáo. Bấm "Đổ cảnh báo vào Sheet" để đồng bộ thay đổi.`,
-        type: 'info',
-        url: customSheetUrl
+        message: res.success ? `Đã hủy tích chọn cho ${coSo} trên báo cáo và Google Sheet.` : res.message,
+        type: res.success ? 'info' : 'error',
+        url: res.spreadsheetUrl || customSheetUrl
       });
-      setTimeout(() => setSyncFeedback(null), 3000);
+      setTimeout(() => setSyncFeedback(null), res.success ? 4000 : 7000);
       return;
     }
 
     // Otherwise create or update record
     const timeStr = getCurrentTimestampStr();
     const label = targetType === 'da_nhac_nho' ? 'Đã xác minh và nhắc nhở' : 'Đã xác minh do lỗi app';
-    const currentUser = getCurrentUser();
-    const currentEmail = currentUser?.email || '';
+    const currentEmail = '';
 
     const newRecord: WarningAuditRecord = {
       id: auditId,
@@ -548,12 +522,18 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       [auditId]: newRecord
     }));
 
+    const res = await updateSingleWarningAuditToGoogleSheet(
+      activeWarningDateIso,
+      coSo,
+      targetType,
+      currentEmail
+    );
     setSyncFeedback({
-      message: `${coSo}: ${label}. Đã lưu trên báo cáo; bấm "Đổ cảnh báo vào Sheet" để đồng bộ.`,
-      type: 'success',
-      url: customSheetUrl
+      message: res.success ? `${coSo}: ${label}. Đã lưu vào Google Sheet.` : res.message,
+      type: res.success ? 'success' : 'error',
+      url: res.spreadsheetUrl || customSheetUrl
     });
-    setTimeout(() => setSyncFeedback(null), 6000);
+    setTimeout(() => setSyncFeedback(null), 7000);
   };
 
   return (
@@ -772,13 +752,13 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                   {/* Clear all checks for this day */}
                   <button
                     type="button"
-                    disabled={warningFacilities.length === 0}
+                    disabled={isClearingAll || warningFacilities.length === 0}
                     onClick={handleClearAllWarningChecks}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 disabled:opacity-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Xóa toàn bộ các ô đã tích chọn trên giao diện web (bấm 'Đổ cảnh báo vào Sheet' khi muốn cập nhật lên Google Sheet)"
+                    title="Xóa toàn bộ các ô đã tích chọn của ngày này trên giao diện và Google Sheet"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Xóa tất cả tích</span>
+                    <span>{isClearingAll ? 'Đang xóa...' : 'Xóa tất cả tích'}</span>
                   </button>
 
                   {/* Google Sheet Open / Create Button */}
