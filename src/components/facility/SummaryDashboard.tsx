@@ -42,7 +42,6 @@ import {
 } from '../../services/googleSheetsService';
 import {
   getStoredCustomSheet,
-  updateSingleWarningAuditToGoogleSheet,
   syncAllWarningsForDateToGoogleSheet,
   syncAndFetchWarningsFromSheet,
   clearAllWarningAuditsForDateInGoogleSheet,
@@ -79,6 +78,14 @@ interface SummaryDashboardProps {
   rawHygieneReports?: HygieneReport[];
   rawQualityReports?: FacilityQualityReport[];
 }
+
+const getFriendlySheetSyncMessage = (message: string) => {
+  if (/auth\/unauthorized-domain/i.test(message)) {
+    return 'Tên miền website chưa được Firebase cấp quyền ghi Google Sheet. Các dấu tích vẫn được lưu an toàn trên trình duyệt; vui lòng thêm tên miền Netlify vào Firebase Authentication > Settings > Authorized domains trước khi đồng bộ.';
+  }
+
+  return message;
+};
 
 export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   mode,
@@ -479,7 +486,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         setCustomSheetUrl(res.spreadsheetUrl);
       }
       setSyncFeedback({
-        message: res.message,
+        message: getFriendlySheetSyncMessage(res.message),
         type: res.success ? 'success' : 'error',
         url: res.spreadsheetUrl || customSheetUrl
       });
@@ -495,7 +502,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     }
   };
 
-  const handleToggleWarningAudit = async (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
+  const handleToggleWarningAudit = (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
     const auditId = `${coSo}_${activeWarningDateIso}`;
     const existing = warningAudits[auditId];
 
@@ -508,16 +515,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         return copy;
       });
 
-      // Update sheet row checkbox to FALSE, FALSE
-      const sheetRes = await updateSingleWarningAuditToGoogleSheet(activeWarningDateIso, coSo, null);
-      if (sheetRes.spreadsheetUrl) {
-        setCustomSheetUrl(sheetRes.spreadsheetUrl);
-      }
-
       setSyncFeedback({
-        message: `Đã hủy tích chọn cho ${coSo} (đã cập nhật vào Sheet)`,
+        message: `Đã hủy tích chọn cho ${coSo} trên báo cáo. Bấm "Đổ cảnh báo vào Sheet" để đồng bộ thay đổi.`,
         type: 'info',
-        url: sheetRes.spreadsheetUrl || customSheetUrl
+        url: customSheetUrl
       });
       setTimeout(() => setSyncFeedback(null), 3000);
       return;
@@ -547,25 +548,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       [auditId]: newRecord
     }));
 
-    // Send directly to the dedicated Google Sheet with exact column mapping
-    const sheetRes = await updateSingleWarningAuditToGoogleSheet(activeWarningDateIso, coSo, targetType, currentEmail);
-    if (sheetRes.spreadsheetUrl) {
-      setCustomSheetUrl(sheetRes.spreadsheetUrl);
-    }
-    if (sheetRes.userEmail && sheetRes.userEmail !== newRecord.emailThucHien) {
-      newRecord.emailThucHien = sheetRes.userEmail;
-      newRecord.nguoiXuLy = sheetRes.userEmail;
-      saveLocalWarningAudit(newRecord);
-      setWarningAudits(prev => ({
-        ...prev,
-        [auditId]: newRecord
-      }));
-    }
-
     setSyncFeedback({
-      message: `${coSo}: ${label} → ${sheetRes.success ? 'Đã cập nhật vào Google Sheet!' : `(${sheetRes.message})`}`,
-      type: sheetRes.success ? 'success' : 'error',
-      url: sheetRes.spreadsheetUrl || customSheetUrl
+      message: `${coSo}: ${label}. Đã lưu trên báo cáo; bấm "Đổ cảnh báo vào Sheet" để đồng bộ.`,
+      type: 'success',
+      url: customSheetUrl
     });
     setTimeout(() => setSyncFeedback(null), 6000);
   };
@@ -835,6 +821,8 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                 <div className="flex items-center gap-2 flex-wrap">
                   {syncFeedback.type === 'success' ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  ) : syncFeedback.type === 'error' ? (
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                   ) : (
                     <Info className="w-4 h-4 text-sky-600 shrink-0" />
                   )}
