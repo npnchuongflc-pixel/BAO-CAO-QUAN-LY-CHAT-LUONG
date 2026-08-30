@@ -1,6 +1,5 @@
 import Papa from 'papaparse';
 import { HygieneReport, FacilityQualityReport } from '../types';
-import { INITIAL_HYGIENE_REPORTS, INITIAL_QUALITY_REPORTS } from '../data/mockData';
 import { normalizeFacilityName } from '../utils/facilityUtils';
 import { normalizeDateToIso } from '../utils/dateUtils';
 
@@ -25,7 +24,7 @@ async function readCsvResponse(response: Response): Promise<string> {
 
   // Static hosting may rewrite an unknown /api route to index.html with HTTP
   // 200. Treat every HTML response as a failed source so the loader continues
-  // to the next full-data CSV instead of parsing the app shell as a sheet.
+  // to the bundled full-data CSV instead of parsing the app shell as a sheet.
   const isHtmlResponse =
     contentType.includes('text/html') ||
     normalizedBody.startsWith('<!doctype html') ||
@@ -115,19 +114,17 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
     const parsed = Papa.parse<Record<string, any>>(csvText, { header: true, skipEmptyLines: true });
     
     if (!parsed.data || parsed.data.length === 0) {
-      return { data: INITIAL_HYGIENE_REPORTS, isLive: false };
+      throw new Error('Sheet Kiểm tra vệ sinh chưa có dòng dữ liệu nào');
     }
 
     const liveReports: HygieneReport[] = [];
-    const seenRowKeys = new Set<string>();
 
     parsed.data.forEach((row, idx) => {
       const rawCoSo = getCleanKey(row, ['Cơ sở', 'CƠ SỞ', 'Facility', 'Chi nhánh', 'CHI NHÁNH', 'Cơ sở/Chi nhánh', 'Địa điểm', 'Tên cơ sở']);
-      const coSo = rawCoSo ? normalizeFacilityName(rawCoSo) : '';
-      if (!coSo) return; // Ignore rows without a valid facility name
+      const coSo = rawCoSo ? normalizeFacilityName(rawCoSo) : 'Chưa xác định';
 
       const rawNgay = getCleanKey(row, DATE_KEYS);
-      const ngay = rawNgay ? normalizeDateToIso(rawNgay) : new Date().toISOString().split('T')[0];
+      const ngay = rawNgay ? normalizeDateToIso(rawNgay) : '';
       const gio = getCleanKey(row, ['Giờ', 'GIỜ', 'Time']) || '08:00';
       const nguoiKiemTra = getCleanKey(row, ['Người kiểm tra', 'NGƯỜI KIỂM TRA', 'Tên', 'Auditor']) || 'Chưa rõ';
       const khuVuc = getCleanKey(row, ['Khu vực', 'KHU VỰC', 'Area']) || 'Khu vực chung';
@@ -137,13 +134,6 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
       const phanHoi = getCleanKey(row, ['Phản hồi', 'PHẢN HỒI', 'Response']) || '';
       const feedbackNguoiDung = getCleanKey(row, ['Feedback từ người dùng', 'FEEDBACK TỪ NGƯỜI DÙNG', 'Feedback']) || '';
       const linkAnh = getCleanKey(row, ['Link ảnh', 'LINK ẢNH', 'Image']) || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80';
-
-      // Deduplicate exact duplicate submissions (e.g. accidental double form clicks)
-      const rowKey = `${ngay}_${gio}_${nguoiKiemTra}_${coSo}_${khuVuc}_${linkAnh}`;
-      if (seenRowKeys.has(rowKey)) {
-        return;
-      }
-      seenRowKeys.add(rowKey);
 
       let diemSo = 85;
       if (diemRaw) {
@@ -168,21 +158,16 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
       });
     });
 
-    // Merge live sheet reports with initial historical dataset for dates not present in the live sheet
-    const liveDates = new Set(liveReports.map(r => r.ngay));
-    const historicalBaseline = INITIAL_HYGIENE_REPORTS.filter(r => !liveDates.has(r.ngay));
-    const combined = [...liveReports, ...historicalBaseline];
-
     return {
-      data: combined.length > 0 ? combined : INITIAL_HYGIENE_REPORTS,
-      isLive: liveReports.length > 0
+      data: liveReports,
+      isLive: true
     };
   } catch (err: any) {
-    console.warn('Cannot fetch hygiene live sheet, fallback to local dataset:', err);
+    console.warn('Cannot fetch live hygiene sheet:', err);
     return {
-      data: INITIAL_HYGIENE_REPORTS,
+      data: [],
       isLive: false,
-      error: err.message || 'Không thể đồng bộ Google Sheet tự động, đang sử dụng dữ liệu mẫu chuẩn'
+      error: err.message || 'Không thể kết nối sheet Kiểm tra vệ sinh'
     };
   }
 }
@@ -197,7 +182,7 @@ export async function fetchQualityFromSheet(): Promise<{ data: FacilityQualityRe
     const parsed = Papa.parse<Record<string, any>>(csvText, { header: true, skipEmptyLines: true });
     
     if (!parsed.data || parsed.data.length === 0) {
-      return { data: INITIAL_QUALITY_REPORTS, isLive: false };
+      throw new Error('Sheet Chất lượng cơ sở chưa có dòng dữ liệu nào');
     }
 
     const liveReports: FacilityQualityReport[] = parsed.data
@@ -229,20 +214,16 @@ export async function fetchQualityFromSheet(): Promise<{ data: FacilityQualityRe
       })
       .filter(item => Boolean(item.coSo));
 
-    const liveDates = new Set(liveReports.map(r => r.ngay));
-    const historicalBaseline = INITIAL_QUALITY_REPORTS.filter(r => !liveDates.has(r.ngay));
-    const combined = [...liveReports, ...historicalBaseline];
-
     return {
-      data: combined.length > 0 ? combined : INITIAL_QUALITY_REPORTS,
-      isLive: liveReports.length > 0
+      data: liveReports,
+      isLive: true
     };
   } catch (err: any) {
-    console.warn('Cannot fetch quality live sheet, fallback to local dataset:', err);
+    console.warn('Cannot fetch live facility quality sheet:', err);
     return {
-      data: INITIAL_QUALITY_REPORTS,
+      data: [],
       isLive: false,
-      error: err.message || 'Không thể đồng bộ Google Sheet tự động, đang sử dụng dữ liệu mẫu chuẩn'
+      error: err.message || 'Không thể kết nối sheet Chất lượng cơ sở'
     };
   }
 }
