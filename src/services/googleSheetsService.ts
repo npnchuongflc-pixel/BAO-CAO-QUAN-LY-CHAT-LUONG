@@ -21,10 +21,24 @@ async function readCsvResponse(response: Response): Promise<string> {
 
   const body = await response.text();
   const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+  const normalizedBody = body.trimStart().toLocaleLowerCase('vi-VN');
+
+  // Static hosting may rewrite an unknown /api route to index.html with HTTP
+  // 200. Treat every HTML response as a failed source so the loader continues
+  // to the next full-data CSV instead of parsing the app shell as a sheet.
+  const isHtmlResponse =
+    contentType.includes('text/html') ||
+    normalizedBody.startsWith('<!doctype html') ||
+    normalizedBody.startsWith('<html') ||
+    normalizedBody.includes('<head>');
+
+  if (isHtmlResponse) {
+    throw new Error('Nguồn dữ liệu trả về HTML thay vì CSV');
+  }
 
   // The Express API returns JSON. The direct-browser fallback returns CSV, so
   // support both without ever falling back to the filtered GViz feed.
-  if (contentType.includes('application/json') || body.trimStart().startsWith('{')) {
+  if (contentType.includes('application/json') || normalizedBody.startsWith('{')) {
     const result = JSON.parse(body);
     if (result.success && typeof result.data?.csv === 'string' && result.data.csv.trim()) {
       return result.data.csv;
@@ -32,9 +46,17 @@ async function readCsvResponse(response: Response): Promise<string> {
     throw new Error(result.error || 'Dữ liệu CSV không đúng định dạng');
   }
 
-  if (!body.trim() || body.includes('<!DOCTYPE html>')) {
+  if (!body.trim()) {
     throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
   }
+
+  // A valid hygiene/quality export always contains a facility column. This
+  // protects the report from silently accepting an unrelated text response.
+  const firstRow = body.split(/\r?\n/, 1)[0].toLocaleLowerCase('vi-VN');
+  if (!firstRow.includes('cơ sở') && !firstRow.includes('facility')) {
+    throw new Error('CSV không có cột Cơ sở');
+  }
+
   return body;
 }
 
