@@ -29,9 +29,11 @@ export const FacilityQualityModule: React.FC = () => {
   const [qualityReports, setQualityReports] = useState<FacilityQualityReport[]>([]);
 
   // Sync state
-  const [isLiveSync, setIsLiveSync] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [lastUpdatedText, setLastUpdatedText] = useState<string>('Vừa cập nhật');
+  const [syncErrors, setSyncErrors] = useState<Record<ReportMode, string | null>>({
+    hygiene: null,
+    quality: null,
+  });
 
   // View mode
   const [viewType, setViewType] = useState<'table' | 'gallery'>('table');
@@ -79,11 +81,11 @@ export const FacilityQualityModule: React.FC = () => {
 
     setHygieneReports(hygRes.data);
     setQualityReports(qualRes.data);
-    setIsLiveSync(hygRes.isLive || qualRes.isLive);
+    setSyncErrors({
+      hygiene: hygRes.error || null,
+      quality: qualRes.error || null,
+    });
     setIsSyncing(false);
-
-    const now = new Date();
-    setLastUpdatedText(`Cập nhật lúc ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`);
   }, []);
 
   useEffect(() => {
@@ -465,6 +467,26 @@ export const FacilityQualityModule: React.FC = () => {
     <div className="tab-view-wrapper min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Main Container */}
       <main className="flex-1 w-full max-w-none py-0">
+        {syncErrors[mode] && (
+          <div
+            role="alert"
+            className="mb-4 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <strong className="block font-bold">Chưa kết nối được dữ liệu gốc</strong>
+              <span>{syncErrors[mode]}</span>
+            </div>
+            <button
+              type="button"
+              onClick={loadData}
+              disabled={isSyncing}
+              className="shrink-0 rounded-lg bg-rose-700 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-800 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isSyncing ? 'Đang kết nối…' : 'Thử kết nối lại'}
+            </button>
+          </div>
+        )}
+
         {/* Filters Bar */}
         <FilterBar
           mode={mode}
