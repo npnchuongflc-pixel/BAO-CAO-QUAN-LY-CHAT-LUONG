@@ -46,47 +46,73 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
 
   const maxReplyVal = Math.max(0, ...points.map((p) => p.replies));
   const maxSentVal = Math.max(0, ...points.map((p) => p.sent));
+  const maxSentScale = calculateNiceMax(Math.max(1, maxSentVal));
+  const maxReplyScale = calculateNiceMax(Math.max(1, maxReplyVal));
+  const plotLeft = 58;
+  const plotRight = 598;
+  const plotWidth = plotRight - plotLeft;
+  const plotTop = 40;
+  const plotBottom = 258;
+  const plotHeight = plotBottom - plotTop;
+  const getX = (idx: number) =>
+    plotLeft + (points.length === 1 ? plotWidth / 2 : (idx * plotWidth) / (points.length - 1));
+  const getYSent = (val: number) => plotBottom - (val / maxSentScale) * plotHeight;
+  const getYReply = (val: number) => plotBottom - (val / maxReplyScale) * plotHeight;
+  const barWidth = Math.max(5, Math.min(18, 470 / (points.length * 1.9)));
 
-  const maxVal = calculateNiceMax(
-    Math.max(1, maxSentVal, maxReplyVal)
-  );
-
-  const getX = (idx: number) => 58 + (points.length === 1 ? 900 / 2 : (idx * 900) / (points.length - 1));
-  const getY = (val: number) => 220 - (val / maxVal) * 180;
-  const barWidth = Math.max(4, Math.min(18, 700 / (points.length * 2.2)));
-
-  const replyPoints: [number, number][] = points.map((p, i) => [getX(i), getY(p.replies)]);
+  const replyPoints: [number, number][] = points.map((p, i) => [getX(i), getYReply(p.replies)]);
   const smoothPath = buildSmoothPath(replyPoints);
-
-  const labelStep = Math.max(1, Math.ceil(points.length / 14));
-
-  // Find index of max reply to highlight only the maximum value
+  const labelStep = Math.max(1, Math.ceil(points.length / 8));
   const maxReplyIdx = points.findIndex((p) => p.replies === maxReplyVal && p.replies > 0);
 
   return (
-    <div className="chart-wrap" role="img" aria-label="Biểu đồ lượt gửi và phản hồi theo ngày">
+    <div
+      className="chart-wrap combo-day-chart"
+      role="img"
+      aria-label="Biểu đồ combo: cột lượt gửi theo trục trái và đường phản hồi theo trục phải"
+    >
       <svg
-        viewBox="0 0 980 260"
+        viewBox="0 0 660 304"
         className="line-chart"
         onMouseLeave={() => setHoveredIdx(null)}
       >
+        <defs>
+          <linearGradient id="sentBarGradient" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={COLORS.sky} stopOpacity="0.96" />
+            <stop offset="100%" stopColor={COLORS.blue} stopOpacity="0.78" />
+          </linearGradient>
+        </defs>
+
+        <text x={plotLeft} y={18} className="combo-axis-title combo-axis-title-left">
+          LƯỢT GỬI
+        </text>
+        <text x={plotRight} y={18} textAnchor="end" className="combo-axis-title combo-axis-title-right">
+          PHẢN HỒI
+        </text>
+
         {[0, 0.25, 0.5, 0.75, 1].map((step) => {
-          const yPos = 40 + 180 * (1 - step);
+          const yPos = plotBottom - plotHeight * step;
           return (
-            <g key={step}>
-              <line x1={58} x2={958} y1={yPos} y2={yPos} className="grid-line" />
-              <text x={48} y={yPos + 4} textAnchor="end" className="axis-text">
-                {formatNumber(Math.round(maxVal * step))}
+            <g key={`combo-grid-${step}`}>
+              <line x1={plotLeft} x2={plotRight} y1={yPos} y2={yPos} className="grid-line" />
+              <text x={46} y={yPos + 4} textAnchor="end" className="axis-text combo-axis-left-value">
+                {formatNumber(Math.round(maxSentScale * step))}
+              </text>
+              <text x={610} y={yPos + 4} textAnchor="start" className="axis-text combo-axis-right-value">
+                {formatNumber(Math.round(maxReplyScale * step))}
               </text>
             </g>
           );
         })}
 
-        {/* Sent Bars */}
+        <line x1={plotLeft} x2={plotLeft} y1={plotTop} y2={plotBottom} className="combo-axis combo-axis-left" />
+        <line x1={plotRight} x2={plotRight} y1={plotTop} y2={plotBottom} className="combo-axis combo-axis-right" />
+        <line x1={plotLeft} x2={plotRight} y1={plotBottom} y2={plotBottom} className="combo-axis combo-axis-bottom" />
+
         {points.map((p, i) => {
           const xPos = getX(i) - barWidth / 2;
-          const barHeight = (p.sent / maxVal) * 180;
-          const yPos = 220 - barHeight;
+          const yPos = getYSent(p.sent);
+          const barHeight = plotBottom - yPos;
           const isHovered = hoveredIdx === i;
 
           return (
@@ -96,18 +122,17 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
               y={yPos}
               width={barWidth}
               height={barHeight}
-              rx={3}
-              fill={COLORS.sky}
-              opacity={isHovered ? 1 : 0.65}
+              rx={2.5}
+              fill="url(#sentBarGradient)"
+              opacity={isHovered ? 1 : 0.82}
               onMouseEnter={() => setHoveredIdx(i)}
               style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
             >
-              <title>{`${p.label}: ${formatNumber(p.sent)} lượt gửi, ${formatNumber(p.replies)} phản hồi`}</title>
+              <title>{`${p.label}: ${formatNumber(p.sent)} lượt gửi · ${formatNumber(p.replies)} phản hồi`}</title>
             </rect>
           );
         })}
 
-        {/* Reply Smooth Line */}
         <path
           d={smoothPath}
           fill="none"
@@ -117,10 +142,9 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
           strokeLinecap="round"
         />
 
-        {/* Reply Data Points & Max Value Indicator */}
         {points.map((p, i) => {
           const xPos = getX(i);
-          const yPos = getY(p.replies);
+          const yPos = getYReply(p.replies);
           const showXAxisLabel = i % labelStep === 0 || i === points.length - 1;
           const isMax = i === maxReplyIdx;
           const isHovered = hoveredIdx === i;
@@ -137,15 +161,14 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
                 onMouseEnter={() => setHoveredIdx(i)}
                 style={{ cursor: 'pointer' }}
               >
-                <title>{`${p.label}: ${formatNumber(p.replies)} phản hồi (${formatNumber(p.sent)} lượt gửi)`}</title>
+                <title>{`${p.label}: ${formatNumber(p.replies)} phản hồi; ${formatNumber(p.sent)} lượt gửi`}</title>
               </circle>
 
-              {/* Only display the maximum value label */}
               {isMax && (
                 <g>
                   <rect
                     x={xPos - 32}
-                    y={yPos - 27}
+                    y={Math.max(plotTop + 3, yPos - 27)}
                     width={64}
                     height={20}
                     rx={10}
@@ -153,7 +176,7 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
                   />
                   <text
                     x={xPos}
-                    y={yPos - 13}
+                    y={Math.max(plotTop + 17, yPos - 13)}
                     textAnchor="middle"
                     fill="#ffffff"
                     fontSize="11"
@@ -164,12 +187,11 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
                 </g>
               )}
 
-              {/* Tooltip on hover if not max */}
               {isHovered && !isMax && (
                 <g>
                   <rect
                     x={xPos - 24}
-                    y={yPos - 24}
+                    y={Math.max(plotTop + 3, yPos - 24)}
                     width={48}
                     height={18}
                     rx={6}
@@ -177,7 +199,7 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
                   />
                   <text
                     x={xPos}
-                    y={yPos - 11}
+                    y={Math.max(plotTop + 16, yPos - 11)}
                     textAnchor="middle"
                     fill="#ffffff"
                     fontSize="10"
@@ -189,7 +211,7 @@ export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) =
               )}
 
               {showXAxisLabel && (
-                <text x={xPos} y={244} textAnchor="middle" className="axis-text">
+                <text x={xPos} y={284} textAnchor="middle" className="axis-text day-axis-label">
                   {p.label}
                 </text>
               )}
@@ -280,7 +302,11 @@ export const MonthlyTrendChart: React.FC<{ points: MonthPoint[] }> = ({ points }
   const maxRatePct = calculateNiceMax(Math.max(5, ...points.map((p) => (p.rate ?? 0) * 100)));
   const maxRate = maxRatePct / 100;
 
-  const getX = (idx: number) => 76 + (points.length === 1 ? 824 / 2 : (idx * 824) / (points.length - 1));
+  const plotLeft = 58;
+  const plotRight = 598;
+  const plotWidth = plotRight - plotLeft;
+  const getX = (idx: number) =>
+    plotLeft + (points.length === 1 ? plotWidth / 2 : (idx * plotWidth) / (points.length - 1));
   const getYReplies = (val: number) => 254 - (val / maxReplies) * 212;
   const getYRate = (val: number | null) => 254 - ((val ?? 0) / maxRate) * 212;
 
@@ -298,11 +324,11 @@ export const MonthlyTrendChart: React.FC<{ points: MonthPoint[] }> = ({ points }
       role="img"
       aria-label="Biểu đồ hai trục: lượt phản hồi ở trục trái và tỷ lệ phản hồi ở trục phải"
     >
-      <svg viewBox="0 0 980 310" className="line-chart monthly-chart">
-        <text x={76} y="15" textAnchor="start" className="axis-title axis-title-left">
+      <svg viewBox="0 0 660 310" className="line-chart monthly-chart">
+        <text x={plotLeft} y="15" textAnchor="start" className="axis-title axis-title-left">
           LƯỢT PHẢN HỒI
         </text>
-        <text x={900} y="15" textAnchor="end" className="axis-title axis-title-right">
+        <text x={plotRight} y="15" textAnchor="end" className="axis-title axis-title-right">
           TỶ LỆ PHẢN HỒI (%)
         </text>
 
@@ -310,20 +336,20 @@ export const MonthlyTrendChart: React.FC<{ points: MonthPoint[] }> = ({ points }
           const yPos = 42 + 212 * (1 - step);
           return (
             <g key={step}>
-              <line x1={76} x2={900} y1={yPos} y2={yPos} className="grid-line" />
-              <text x={64} y={yPos + 4} textAnchor="end" className="axis-text axis-left-value">
+              <line x1={plotLeft} x2={plotRight} y1={yPos} y2={yPos} className="grid-line" />
+              <text x={46} y={yPos + 4} textAnchor="end" className="axis-text axis-left-value">
                 {formatNumber(Math.round(maxReplies * step))}
               </text>
-              <text x={912} y={yPos + 4} textAnchor="start" className="axis-text axis-right-value">
+              <text x={610} y={yPos + 4} textAnchor="start" className="axis-text axis-right-value">
                 {`${Math.round(maxRatePct * step)}%`}
               </text>
             </g>
           );
         })}
 
-        <line x1={76} x2={76} y1={42} y2={254} className="chart-axis chart-axis-left" />
-        <line x1={900} x2={900} y1={42} y2={254} className="chart-axis chart-axis-right" />
-        <line x1={76} x2={900} y1={254} y2={254} className="chart-axis chart-axis-bottom" />
+        <line x1={plotLeft} x2={plotLeft} y1={42} y2={254} className="chart-axis chart-axis-left" />
+        <line x1={plotRight} x2={plotRight} y1={42} y2={254} className="chart-axis chart-axis-right" />
+        <line x1={plotLeft} x2={plotRight} y1={254} y2={254} className="chart-axis chart-axis-bottom" />
 
         {/* Reply Count Smooth Line */}
         <path
@@ -426,12 +452,13 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
 }) => {
   return (
     <section className="dashboard-grid">
-      {/* Panel 1: Day timeline */}
-      <article className="panel wide">
+      {/* Comparison row: daily and 12-month trends */}
+      <article className="panel comparison-chart-panel">
         <div className="panel-head">
           <div>
             <span>DIỄN BIẾN THEO NGÀY</span>
             <h2>Lượt gửi và phản hồi</h2>
+            <p className="chart-method-note">Combo chart · Cột: lượt gửi · Đường: phản hồi · Hai trục số lượng độc lập</p>
           </div>
           <div className="legend">
             <span className="sent">Lượt gửi</span>
@@ -441,7 +468,21 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
         <DayTimelineChart points={dayPoints} />
       </article>
 
-      {/* Panel 2: Rating distribution */}
+      <article className="panel comparison-chart-panel">
+        <div className="panel-head">
+          <div>
+            <span>XU HƯỚNG 12 THÁNG</span>
+            <h2>Lượt phản hồi và tỷ lệ phản hồi</h2>
+          </div>
+          <div className="legend">
+            <span className="month-reply">Lượt phản hồi</span>
+            <span className="month-rate">Tỷ lệ phản hồi</span>
+          </div>
+        </div>
+        <MonthlyTrendChart points={months} />
+      </article>
+
+      {/* Supporting analysis row */}
       <article className="panel">
         <div className="panel-head">
           <div>
@@ -463,21 +504,6 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
           <b>Top 10</b>
         </div>
         <TopFacilitiesList rows={facilities} />
-      </article>
-
-      {/* Panel 4: 12-Month trend */}
-      <article className="panel wide">
-        <div className="panel-head">
-          <div>
-            <span>XU HƯỚNG 12 THÁNG</span>
-            <h2>Lượt phản hồi và tỷ lệ phản hồi</h2>
-          </div>
-          <div className="legend">
-            <span className="month-reply">Lượt phản hồi</span>
-            <span className="month-rate">Tỷ lệ phản hồi</span>
-          </div>
-        </div>
-        <MonthlyTrendChart points={months} />
       </article>
     </section>
   );

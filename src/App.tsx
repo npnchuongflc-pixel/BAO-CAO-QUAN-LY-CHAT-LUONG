@@ -12,7 +12,6 @@ import {
   MIN_RANK_REPLIES
 } from './services/sheetService';
 import { Header } from './components/Header';
-import { Hero } from './components/Hero';
 import { FilterPanel } from './components/FilterPanel';
 import { SourceProof } from './components/SourceProof';
 import { KpiGrid } from './components/KpiGrid';
@@ -489,19 +488,14 @@ export default function App() {
         <Header
           activeTab={activeReportTab}
           onOpenSidebar={() => setIsMobileSidebarOpen(true)}
+          onRefresh={loadData}
+          loading={loading}
         />
 
         <main>
           {/* TAB 1: SURVEY & CSAT REPORT (Google Sheet Live Data) */}
           {activeReportTab === 'survey' && (
-            <>
-              <Hero
-                totalRows={data.length}
-                loading={loading}
-                error={error}
-                onRefresh={loadData}
-              />
-
+            <section className="zalo-dashboard" aria-label="Báo cáo ZALO OA">
               <FilterPanel
                 filters={filters}
                 onFilterChange={(updates) => setFilters((prev) => ({ ...prev, ...updates }))}
@@ -557,7 +551,7 @@ export default function App() {
                   </>
                 )
               )}
-            </>
+            </section>
           )}
 
           {/* TAB 2: TEACHING & CURRICULUM QUALITY TAB */}

@@ -38,6 +38,9 @@ const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 let cachedTeachingData: any = null;
 let lastTeachingCacheTime = 0;
 
+// Cache for the complete Facility Hygiene / Quality CSV exports.
+const facilitySheetCache = new Map<string, { csv: string; cachedAt: number }>();
+
 // Google Sheets Proxy API - Customer Feedback (Tab Zalo đánh giá)
 app.get('/api/sheet-data', async (req, res) => {
   try {
@@ -79,31 +82,79 @@ app.get('/api/teaching-sheet-data', async (req, res) => {
 
     const sheetId = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
     const gid = '282336280';
-    const sheetName = encodeURIComponent('Đánh giá qua camera');
-    
-    // Try gid first, then sheet name if needed
-    let targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tqx=out:json`;
-    let response = await fetch(targetUrl);
-    
+    // Use the complete CSV export instead of the visualization query endpoint.
+    // This keeps report totals independent from temporary filters applied in
+    // the Raw Data sheet by an editor.
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const response = await fetch(targetUrl, { cache: 'no-store' });
     if (!response.ok) {
-      targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${sheetName}&tqx=out:json`;
-      response = await fetch(targetUrl);
+      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
     }
 
-    const text = await response.text();
-    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
-    const parsed = JSON.parse(jsonStr);
+    const csv = await response.text();
+    if (!csv || csv.includes('<!DOCTYPE html>')) {
+      throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
+    }
 
-    cachedTeachingData = parsed;
+    cachedTeachingData = { csv };
     lastTeachingCacheTime = now;
 
-    res.json({ success: true, data: parsed, cached: false });
+    res.json({ success: true, data: cachedTeachingData, cached: false });
   } catch (err: any) {
     console.error('Error fetching teaching sheet data:', err);
     if (cachedTeachingData) {
       return res.json({ success: true, data: cachedTeachingData, cached: true, warning: 'Using stale cache' });
     }
     res.status(500).json({ success: false, error: err.message || 'Không thể tải Google Sheets Giám Sát Giảng Dạy' });
+  }
+});
+
+// Complete Google Sheets export for Facility Hygiene / Quality reports.
+// Only known sheet tabs are allowed, preventing arbitrary external fetches.
+app.get('/api/facility-sheet-data', async (req, res) => {
+  try {
+    const sheetId = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
+    const allowedGids = new Set(['0', '33769956', '1163313960']);
+    const gid = String(req.query.gid || '');
+    const force = req.query.force === 'true';
+
+    if (!allowedGids.has(gid)) {
+      return res.status(400).json({ success: false, error: 'Google Sheet tab không hợp lệ' });
+    }
+
+    const cached = facilitySheetCache.get(gid);
+    if (!force && cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+      return res.json({ success: true, data: { csv: cached.csv }, cached: true });
+    }
+
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const response = await fetch(targetUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
+    }
+
+    const csv = await response.text();
+    if (!csv || csv.includes('<!DOCTYPE html>')) {
+      throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
+    }
+
+    facilitySheetCache.set(gid, { csv, cachedAt: Date.now() });
+    res.json({ success: true, data: { csv }, cached: false });
+  } catch (err: any) {
+    const gid = String(req.query.gid || '');
+    const cached = facilitySheetCache.get(gid);
+    if (cached) {
+      return res.json({
+        success: true,
+        data: { csv: cached.csv },
+        cached: true,
+        warning: 'Using stale cache',
+      });
+    }
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Không thể tải dữ liệu Giám sát Vệ sinh',
+    });
   }
 });
 

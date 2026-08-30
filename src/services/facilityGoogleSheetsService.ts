@@ -9,9 +9,11 @@ const HYGIENE_GID = '0';
 const HYGIENE_AUDIT_GID = '33769956';
 const QUALITY_GID = '1163313960';
 
-export const HYGIENE_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${HYGIENE_GID}`;
-export const HYGIENE_AUDIT_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${HYGIENE_AUDIT_GID}`;
-export const QUALITY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${QUALITY_GID}`;
+// The standard CSV export contains every row in the tab. The GViz CSV endpoint
+// only returns rows currently visible through a shared-sheet filter.
+export const HYGIENE_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${HYGIENE_GID}`;
+export const HYGIENE_AUDIT_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${HYGIENE_AUDIT_GID}`;
+export const QUALITY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${QUALITY_GID}`;
 
 // Clean up object keys & values
 function getCleanKey(row: Record<string, any>, possibleKeys: string[]): string {

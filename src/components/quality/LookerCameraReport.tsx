@@ -6,16 +6,12 @@ import {
   Filter,
   RotateCcw,
   Sparkles,
-  ExternalLink,
   ChevronLeft,
   ChevronRight,
-  Download,
   AlertTriangle,
   CheckCircle2,
   TrendingDown,
   TrendingUp,
-  FileSpreadsheet,
-  Layers,
   Search,
   Eye,
   ShieldAlert,
@@ -67,8 +63,6 @@ interface LookerCameraReportProps {
   filters: TeachingFilterState;
   onFilterChange: (filters: Partial<TeachingFilterState>) => void;
   onResetFilters: () => void;
-  onRefresh: () => void;
-  onExportCsv: () => void;
   onOpenEvidence: (url: string, title: string) => void;
   onSelectTeacherModal: (teacherName: string) => void;
   onOpenAiModal: () => void;
@@ -81,8 +75,6 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   filters,
   onFilterChange,
   onResetFilters,
-  onRefresh,
-  onExportCsv,
   onOpenEvidence,
   onSelectTeacherModal,
   onOpenAiModal,
@@ -433,38 +425,36 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
 
   return (
     <div className="looker-studio-container bg-[#f0f2f5] p-3 sm:p-5 rounded-xl border border-[#dadce0] font-sans text-slate-900 shadow-sm space-y-4">
-      {/* Top Banner with Tools & Extra Enhancements */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-300">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-blue-100 text-blue-800 text-[11px] font-bold border border-blue-200">
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-            Looker Studio • Dữ Liệu Thực Tế Google Sheets ({rawData.length.toLocaleString('vi-VN')} Ca)
-          </span>
-          {filters.facility !== 'all' && (
-            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-semibold">
-              Lọc: {filters.facility}
-            </span>
-          )}
-          {filters.searchTeacher && (
-            <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-semibold">
-              GV: {filters.searchTeacher}
-            </span>
-          )}
-        </div>
+      {/* Compact report tools */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-300">
+        {(filters.facility !== 'all' || filters.searchTeacher) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {filters.facility !== 'all' && (
+              <span className="px-3 py-1.5 rounded-lg bg-amber-100 text-amber-800 text-xs font-semibold border border-amber-200">
+                Lọc: {filters.facility}
+              </span>
+            )}
+            {filters.searchTeacher && (
+              <span className="px-3 py-1.5 rounded-lg bg-purple-100 text-purple-800 text-xs font-semibold border border-purple-200">
+                GV: {filters.searchTeacher}
+              </span>
+            )}
+          </div>
+        )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto lg:min-w-[520px] lg:ml-auto">
           {/* Toggle Extra Metrics */}
           <button
             type="button"
             onClick={() => setShowExtendedMetrics(!showExtendedMetrics)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded border transition-colors flex items-center gap-1.5 ${
+            className={`min-h-10 px-4 py-2 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-2 ${
               showExtendedMetrics
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200'
+                : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 hover:border-blue-300'
             }`}
             title="Bật/Tắt thêm các chỉ số chất lượng sư phạm cần thiết"
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sparkles className="w-4 h-4" />
             <span>{showExtendedMetrics ? 'Đang bật chỉ số mở rộng' : '+ Thêm chỉ số cần thiết'}</span>
           </button>
 
@@ -472,32 +462,21 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
           <button
             type="button"
             onClick={onOpenAiModal}
-            className="px-3 py-1.5 text-xs font-semibold rounded bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors flex items-center gap-1.5"
+            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white border border-indigo-600 hover:from-indigo-700 hover:to-violet-700 transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-200"
             title="Phân tích chất lượng tự động bằng Gemini AI"
           >
-            <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+            <Sparkles className="w-4 h-4" />
             <span>Cố Vấn AI</span>
-          </button>
-
-          {/* Export CSV */}
-          <button
-            type="button"
-            onClick={onExportCsv}
-            className="px-3 py-1.5 text-xs font-semibold rounded bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
-            title="Xuất file CSV"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-600" />
-            <span>Xuất CSV</span>
           </button>
 
           {/* Reset Filters */}
           <button
             type="button"
             onClick={onResetFilters}
-            className="px-3 py-1.5 text-xs font-semibold rounded bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 transition-colors flex items-center gap-1"
+            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-white text-slate-700 border border-slate-300 hover:bg-slate-100 hover:border-slate-400 transition-all flex items-center justify-center gap-2"
             title="Đặt lại bộ lọc"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
+            <RotateCcw className="w-4 h-4 text-slate-600" />
             <span>Đặt lại</span>
           </button>
         </div>

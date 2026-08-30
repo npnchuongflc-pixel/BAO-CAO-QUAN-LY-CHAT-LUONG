@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  GraduationCap,
   Sparkles,
-  ExternalLink,
   RotateCcw,
   AlertCircle,
-  FileSpreadsheet,
-  Layers,
   Award,
   ShieldCheck,
   Building,
   CheckCircle2,
   TrendingUp,
-  Download,
   LayoutGrid,
   BarChart3,
   Trophy,
@@ -31,8 +26,6 @@ import {
   fetchTeachingData,
   filterTeachingData,
   computeTeachingQualitySummary,
-  exportTeachingToCsv,
-  TEACHING_SOURCE_URL
 } from '../../services/teachingSheetService';
 import { LookerCameraReport } from './LookerCameraReport';
 import { TeachingFilters } from './TeachingFilters';
@@ -113,11 +106,6 @@ export const TeachingQualityTab: React.FC = () => {
     setFilters(INITIAL_FILTERS);
   };
 
-  const handleExportCsv = () => {
-    const filename = `Bao_Cao_LookerStudio_Giam_Sat_${filters.month !== 'all' ? `T${filters.month.replace('/', '-')}` : 'Toan_Bo'}.csv`;
-    exportTeachingToCsv(filteredData, filename);
-  };
-
   const handleOpenEvidence = (url: string, title: string) => {
     setEvidenceUrl(url);
     setEvidenceTitle(title);
@@ -174,8 +162,6 @@ export const TeachingQualityTab: React.FC = () => {
           filters={filters}
           onFilterChange={handleFilterChange}
           onResetFilters={handleResetFilters}
-          onRefresh={loadData}
-          onExportCsv={handleExportCsv}
           onOpenEvidence={handleOpenEvidence}
           onSelectTeacherModal={handleSelectTeacherModal}
           onOpenAiModal={() => setIsAiModalOpen(true)}
@@ -255,5 +241,3 @@ export const TeachingQualityTab: React.FC = () => {
     </div>
   );
 };
-
-

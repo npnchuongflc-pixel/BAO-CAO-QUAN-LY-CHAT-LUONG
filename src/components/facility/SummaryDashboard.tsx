@@ -363,7 +363,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         fill="#ffffff" 
         textAnchor="middle" 
         dominantBaseline="central" 
-        className="text-[11px] font-bold drop-shadow-xs"
+        className="text-[14px] font-black drop-shadow-sm"
       >
         {`${(percent * 100).toFixed(0)}%`}
       </text>
@@ -1028,7 +1028,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             <span className="text-[10px] text-slate-500">Đã thực hiện: {activeFacilitiesCount}/{summaries.length} cơ sở</span>
           </div>
 
-          <div className="h-[175px] w-full my-auto">
+          <div className="h-[300px] sm:h-[340px] w-full my-auto py-2">
             {activeFacilitiesCount === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
                 Chưa có cơ sở nào thực hiện kiểm tra
@@ -1042,9 +1042,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     cy="50%"
                     labelLine={false}
                     label={renderPieLabel}
-                    outerRadius={65}
-                    innerRadius={28}
-                    paddingAngle={3}
+                    outerRadius="84%"
+                    innerRadius="44%"
+                    paddingAngle={2}
                     dataKey="value"
                   >
                     {scoreTiers.map((entry, index) => (
@@ -1423,5 +1423,3 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     </section>
   );
 };
-
-

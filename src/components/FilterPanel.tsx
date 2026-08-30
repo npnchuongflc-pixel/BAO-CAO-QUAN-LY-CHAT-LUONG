@@ -22,20 +22,34 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
 }) => {
   return (
     <section className="filter-panel" aria-label="Bộ lọc báo cáo">
-      <div className="preset-row">
-        <span>Khoảng nhanh</span>
-        <button type="button" onClick={() => onPreset('month')}>
-          Tháng hiện tại
-        </button>
-        <button type="button" onClick={() => onPreset('30')}>
-          30 ngày
-        </button>
-        <button type="button" onClick={() => onPreset('90')}>
-          90 ngày
-        </button>
-        <button type="button" onClick={() => onPreset('year')}>
-          Từ đầu năm
-        </button>
+      <div className="filter-panel__header">
+        <div className="filter-panel__title">
+          <span className="filter-panel__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M4 6h16M7 12h10M10 18h4" />
+            </svg>
+          </span>
+          <div>
+            <span>PHẠM VI BÁO CÁO</span>
+            <strong>Bộ lọc dữ liệu</strong>
+          </div>
+        </div>
+
+        <div className="preset-row">
+          <span>Khoảng nhanh</span>
+          <button type="button" onClick={() => onPreset('month')}>
+            Tháng hiện tại
+          </button>
+          <button type="button" onClick={() => onPreset('30')}>
+            30 ngày
+          </button>
+          <button type="button" onClick={() => onPreset('90')}>
+            90 ngày
+          </button>
+          <button type="button" onClick={() => onPreset('year')}>
+            Từ đầu năm
+          </button>
+        </div>
       </div>
 
       <div className="filters">
@@ -103,6 +117,10 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
         </label>
 
         <button type="button" className="reset-button" onClick={onReset}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7" />
+            <path d="M3 4v6h6" />
+          </svg>
           Xóa lọc
         </button>
       </div>

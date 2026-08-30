@@ -101,53 +101,63 @@ export const KpiGrid: React.FC<KpiGridProps> = ({ data }) => {
       : `${data.medianDelay.toFixed(1).replace('.', ',')} giờ`;
 
   return (
-    <section className="kpi-grid">
-      <KpiCard
-        label="Tổng lượt gửi"
-        value={formatNumber(data.sent.length)}
-        note="Tin khảo sát gửi trong kỳ"
-        icon="send"
-        color={COLORS.blue}
-        delta={data.delta.sent}
-      />
-      <KpiCard
-        label="Phản hồi trong kỳ"
-        value={formatNumber(data.replies.length)}
-        note="Tính theo ngày phụ huynh phản hồi"
-        icon="reply"
-        color={COLORS.sky}
-        delta={data.delta.replies}
-      />
-      <KpiCard
-        label="Tỷ lệ phản hồi"
-        value={formatPercent(data.legacyRate)}
-        note="Phản hồi trong kỳ / lượt gửi trong kỳ"
-        icon="rate"
-        color={COLORS.green}
-        delta={data.delta.rate == null ? null : data.delta.rate * 100}
-      />
-      <KpiCard
-        label="Điểm đánh giá TB"
-        value={`${formatRating(data.avg)} / 5`}
-        note={`Điểm chất lượng quy đổi ${formatPercent(qualityRate)}`}
-        icon="star"
-        color={COLORS.yellow}
-        delta={data.delta.avg}
-      />
-      <KpiCard
-        label="Đánh giá cần xử lý"
-        value={formatNumber(data.low.length)}
-        note="Rating từ 1–3 sao trong kỳ"
-        icon="alert"
-        color={COLORS.coral}
-      />
-      <KpiCard
-        label="Phản hồi trong 24 giờ"
-        value={formatPercent(data.within24)}
-        note={`Trung vị ${medianStr}`}
-        icon="clock"
-        color={COLORS.purple}
-      />
+    <section className="zalo-metric-section">
+      <div className="zalo-section-heading">
+        <div>
+          <span>TỔNG QUAN HIỆU SUẤT</span>
+          <h2>Chỉ số vận hành ZALO OA</h2>
+        </div>
+        <p>06 chỉ số trọng yếu trong kỳ báo cáo</p>
+      </div>
+
+      <div className="kpi-grid">
+        <KpiCard
+          label="Tổng lượt gửi"
+          value={formatNumber(data.sent.length)}
+          note="Tin khảo sát gửi trong kỳ"
+          icon="send"
+          color={COLORS.blue}
+          delta={data.delta.sent}
+        />
+        <KpiCard
+          label="Phản hồi trong kỳ"
+          value={formatNumber(data.replies.length)}
+          note="Tính theo ngày phụ huynh phản hồi"
+          icon="reply"
+          color={COLORS.sky}
+          delta={data.delta.replies}
+        />
+        <KpiCard
+          label="Tỷ lệ phản hồi"
+          value={formatPercent(data.legacyRate)}
+          note="Phản hồi trong kỳ / lượt gửi trong kỳ"
+          icon="rate"
+          color={COLORS.green}
+          delta={data.delta.rate == null ? null : data.delta.rate * 100}
+        />
+        <KpiCard
+          label="Điểm đánh giá TB"
+          value={`${formatRating(data.avg)} / 5`}
+          note={`Điểm chất lượng quy đổi ${formatPercent(qualityRate)}`}
+          icon="star"
+          color={COLORS.yellow}
+          delta={data.delta.avg}
+        />
+        <KpiCard
+          label="Đánh giá cần xử lý"
+          value={formatNumber(data.low.length)}
+          note="Rating từ 1–3 sao trong kỳ"
+          icon="alert"
+          color={COLORS.coral}
+        />
+        <KpiCard
+          label="Phản hồi trong 24 giờ"
+          value={formatPercent(data.within24)}
+          note={`Trung vị ${medianStr}`}
+          icon="clock"
+          color={COLORS.purple}
+        />
+      </div>
     </section>
   );
 };

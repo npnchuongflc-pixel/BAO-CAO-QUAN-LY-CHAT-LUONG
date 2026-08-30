@@ -9,9 +9,59 @@ const HYGIENE_GID = '0';
 const HYGIENE_AUDIT_GID = '33769956';
 const QUALITY_GID = '1163313960';
 
-export const HYGIENE_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${HYGIENE_GID}`;
-export const HYGIENE_AUDIT_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${HYGIENE_AUDIT_GID}`;
-export const QUALITY_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=${QUALITY_GID}`;
+const getCompleteCsvExportUrl = (gid: string) =>
+  `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${encodeURIComponent(gid)}`;
+
+export const HYGIENE_CSV_URL = getCompleteCsvExportUrl(HYGIENE_GID);
+export const HYGIENE_AUDIT_CSV_URL = getCompleteCsvExportUrl(HYGIENE_AUDIT_GID);
+export const QUALITY_CSV_URL = getCompleteCsvExportUrl(QUALITY_GID);
+
+async function readCsvResponse(response: Response): Promise<string> {
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+  const body = await response.text();
+  const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+
+  // The Express API returns JSON. The direct-browser fallback returns CSV, so
+  // support both without ever falling back to the filtered GViz feed.
+  if (contentType.includes('application/json') || body.trimStart().startsWith('{')) {
+    const result = JSON.parse(body);
+    if (result.success && typeof result.data?.csv === 'string' && result.data.csv.trim()) {
+      return result.data.csv;
+    }
+    throw new Error(result.error || 'Dữ liệu CSV không đúng định dạng');
+  }
+
+  if (!body.trim() || body.includes('<!DOCTYPE html>')) {
+    throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
+  }
+  return body;
+}
+
+async function fetchCompleteSheetCsv(gid: string): Promise<string> {
+  const sources = [
+    `/api/facility-sheet-data?gid=${encodeURIComponent(gid)}&force=true`,
+    getCompleteCsvExportUrl(gid),
+  ];
+  let lastError: unknown;
+
+  for (const source of sources) {
+    try {
+      const separator = source.includes('?') ? '&' : '?';
+      const response = await fetch(`${source}${separator}_=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      return await readCsvResponse(response);
+    } catch (error) {
+      lastError = error;
+      console.warn('Complete facility sheet export unavailable:', error);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Không thể tải toàn bộ dữ liệu Google Sheets');
+}
 
 // Clean up object keys & values
 function getCleanKey(row: Record<string, any>, possibleKeys: string[]): string {
@@ -35,11 +85,7 @@ const DATE_KEYS = [
 
 export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; isLive: boolean; error?: string }> {
   try {
-    const response = await fetch(HYGIENE_CSV_URL, { cache: 'no-cache' });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const csvText = await response.text();
+    const csvText = await fetchCompleteSheetCsv(HYGIENE_GID);
     if (!csvText || csvText.includes('<!DOCTYPE html>')) {
       throw new Error('Cần quyền truy cập hoặc file không công khai CSV');
     }
@@ -121,11 +167,7 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
 
 export async function fetchQualityFromSheet(): Promise<{ data: FacilityQualityReport[]; isLive: boolean; error?: string }> {
   try {
-    const response = await fetch(QUALITY_CSV_URL, { cache: 'no-cache' });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const csvText = await response.text();
+    const csvText = await fetchCompleteSheetCsv(QUALITY_GID);
     if (!csvText || csvText.includes('<!DOCTYPE html>')) {
       throw new Error('Cần quyền truy cập hoặc file không công khai CSV');
     }
@@ -274,4 +316,3 @@ export async function sendWarningAuditToGoogleSheet(
     };
   }
 }
-

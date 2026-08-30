@@ -9,6 +9,7 @@ import {
   MonthlyTeachingTrend
 } from '../types';
 import { parseDate, parseString } from './sheetService';
+import Papa from 'papaparse';
 
 export const TEACHING_SPREADSHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
 export const TEACHING_SHEET_GID = '282336280';
@@ -157,7 +158,38 @@ export function parseTeachingTableRows(table: any): TeachingAuditItem[] {
   return items;
 }
 
-export function fetchTeachingData(): Promise<TeachingAuditItem[]> {
+/**
+ * Parse the complete CSV export of the source sheet.
+ * Google Sheets' CSV export contains the underlying rows rather than the
+ * temporary rows currently shown by a shared sheet filter.
+ */
+export function parseTeachingCsvRows(csvText: string): TeachingAuditItem[] {
+  const parsed = Papa.parse<string[]>(csvText, {
+    skipEmptyLines: 'greedy',
+  });
+
+  const csvRows = (parsed.data || []).filter((row) =>
+    row.some((cell) => String(cell ?? '').trim().length > 0)
+  );
+
+  if (csvRows.length === 0) return [];
+
+  const headerIndex = csvRows.findIndex((row) => {
+    const normalized = row.join(' ').toLocaleLowerCase('vi-VN');
+    return normalized.includes('giáo viên') && normalized.includes('cơ sở');
+  });
+  const dataRows = headerIndex >= 0 ? csvRows.slice(headerIndex + 1) : csvRows;
+
+  const table = {
+    rows: dataRows.map((row) => ({
+      c: row.map((value) => ({ v: value, f: value })),
+    })),
+  };
+
+  return parseTeachingTableRows(table);
+}
+
+function fetchTeachingDataViaGviz(): Promise<TeachingAuditItem[]> {
   return new Promise((resolve, reject) => {
     const callbackName = `__teaching_cb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const script = document.createElement('script');
@@ -167,6 +199,21 @@ export function fetchTeachingData(): Promise<TeachingAuditItem[]> {
       window.clearTimeout(timeoutId);
       if (script.parentNode) script.parentNode.removeChild(script);
       delete (window as any)[callbackName];
+    };
+
+    const resolveProxyData = (res: any) => {
+      if (res.success && typeof res.data?.csv === 'string') {
+        const items = parseTeachingCsvRows(res.data.csv);
+        if (items.length > 0) {
+          resolve(items);
+          return;
+        }
+      }
+      if (res.success && res.data?.table) {
+        resolve(parseTeachingTableRows(res.data.table));
+        return;
+      }
+      reject(new Error(res.error || 'Không thể tải dữ liệu qua backend proxy'));
     };
 
     (window as any)[callbackName] = (res: any) => {
@@ -186,13 +233,7 @@ export function fetchTeachingData(): Promise<TeachingAuditItem[]> {
       // Fallback to backend proxy
       fetch('/api/teaching-sheet-data')
         .then((r) => r.json())
-        .then((res) => {
-          if (res.success && res.data?.table) {
-            resolve(parseTeachingTableRows(res.data.table));
-          } else {
-            reject(new Error(res.error || 'Không thể tải dữ liệu qua backend proxy'));
-          }
-        })
+        .then(resolveProxyData)
         .catch((err) => reject(err));
     };
 
@@ -200,19 +241,41 @@ export function fetchTeachingData(): Promise<TeachingAuditItem[]> {
       cleanup();
       fetch('/api/teaching-sheet-data')
         .then((r) => r.json())
-        .then((res) => {
-          if (res.success && res.data?.table) {
-            resolve(parseTeachingTableRows(res.data.table));
-          } else {
-            reject(new Error('Hết thời gian kết nối Google Sheets'));
-          }
-        })
+        .then(resolveProxyData)
         .catch((err) => reject(err));
     }, 15000);
 
     script.src = `https://docs.google.com/spreadsheets/d/${TEACHING_SPREADSHEET_ID}/gviz/tq?gid=${TEACHING_SHEET_GID}&tqx=out:json;responseHandler:${callbackName}`;
     document.head.appendChild(script);
   });
+}
+
+export async function fetchTeachingData(): Promise<TeachingAuditItem[]> {
+  try {
+    const response = await fetch('/api/teaching-sheet-data?force=true', {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (result.success && typeof result.data?.csv === 'string') {
+      const items = parseTeachingCsvRows(result.data.csv);
+      if (items.length > 0) return items;
+    }
+
+    // Compatibility with an older server response during rolling updates.
+    if (result.success && result.data?.table) {
+      return parseTeachingTableRows(result.data.table);
+    }
+
+    throw new Error(result.error || 'Dữ liệu Google Sheets không đúng định dạng');
+  } catch (error) {
+    console.warn('CSV source unavailable, falling back to Google Visualization data:', error);
+    return fetchTeachingDataViaGviz();
+  }
 }
 
 // Filter dataset based on current filter state

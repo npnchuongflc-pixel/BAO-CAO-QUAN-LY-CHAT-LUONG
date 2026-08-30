@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local preview and uploaded design references
+.openai/
+upload/
+
+# Private Google Sheets snapshots used only by the preview environment
+public/data/

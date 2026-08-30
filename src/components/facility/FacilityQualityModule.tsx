@@ -13,7 +13,6 @@ import {
 } from './facilityTypes';
 import { OFFICIAL_FACILITIES, normalizeFacilityName } from '../../utils/facilityUtils';
 import { fetchHygieneFromSheet, fetchQualityFromSheet } from '../../services/googleSheetsService';
-import { Header } from './Header';
 import { FilterBar } from './FilterBar';
 import { SummaryDashboard } from './SummaryDashboard';
 import { FacilityTimelineChart } from './FacilityTimelineChart';
@@ -464,19 +463,8 @@ export const FacilityQualityModule: React.FC = () => {
 
   return (
     <div className="tab-view-wrapper min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
-      {/* Top Header */}
-      <Header
-        mode={mode}
-        onModeChange={(newMode) => {
-          setMode(newMode);
-          setFilters(f => ({ ...f, trangThai: 'all' }));
-        }}
-        hygieneCount={hygieneReports.length}
-        qualityCount={qualityReports.length}
-      />
-
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 w-full max-w-none py-0">
         {/* Filters Bar */}
         <FilterBar
           mode={mode}
@@ -512,18 +500,6 @@ export const FacilityQualityModule: React.FC = () => {
           rawQualityReports={qualityReports}
         />
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white text-slate-500 text-xs py-6 border-t border-slate-200/80 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center space-y-1">
-          <p className="font-semibold text-slate-700">
-            Hệ Thống Báo Cáo Chất Lượng & Vệ Sinh Cơ Sở
-          </p>
-          <p className="text-slate-400 text-[11px]">
-            Đồng bộ dữ liệu thời gian thực từ Google Sheets • Tự động tổng hợp số lượt thực hiện & chỉ số đánh giá từng cơ sở
-          </p>
-        </div>
-      </footer>
 
       {/* MODALS */}
       {detailModalFacility !== null && (

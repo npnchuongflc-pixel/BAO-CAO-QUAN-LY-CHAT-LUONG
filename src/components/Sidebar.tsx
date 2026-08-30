@@ -5,12 +5,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  Printer,
   RefreshCw,
   X,
   ShieldCheck
 } from 'lucide-react';
 import { SOURCE_URL } from '../services/sheetService';
+import chessLogo from '../assets/brands/co-vua-sai-gon.png';
+import artLogo from '../assets/brands/saigon-art.png';
 
 export type ReportTabId =
   | 'survey'
@@ -34,26 +35,21 @@ export interface ReportGroup {
 
 export const REPORT_GROUPS: ReportGroup[] = [
   {
-    category: 'PHẢN HỒI TỪ KHÁCH HÀNG',
+    category: 'QUẢN LÝ CHẤT LƯỢNG',
     items: [
       {
         id: 'survey',
-        label: 'Phản hồi từ khách hàng',
-        shortLabel: 'Phản hồi',
+        label: 'ZALO OA',
+        shortLabel: 'ZALO OA',
         description: 'Dữ liệu Google Sheets & Xếp hạng CSAT',
         icon: ClipboardCheck,
         badge: 'Trực tiếp',
         badgeType: 'live',
       },
-    ],
-  },
-  {
-    category: 'GIÁM SÁT CHẤT LƯỢNG',
-    items: [
       {
         id: 'teaching-quality',
-        label: 'Chất lượng Giảng dạy & Lớp học',
-        shortLabel: 'Giảng dạy',
+        label: 'GIÁM SÁT QUA CAMERA',
+        shortLabel: 'CAMERA',
         description: 'Tiêu chuẩn sư phạm Cờ Vua & Mỹ Thuật',
         icon: GraduationCap,
         badge: '19,537 ca',
@@ -61,8 +57,8 @@ export const REPORT_GROUPS: ReportGroup[] = [
       },
       {
         id: 'integrated-quality-report',
-        label: 'Giám sát Vệ sinh & Cơ sở 5S',
-        shortLabel: 'Vệ sinh & 5S',
+        label: 'GIÁM SÁT VỆ SINH',
+        shortLabel: 'VỆ SINH',
         description: 'Báo cáo vệ sinh & chất lượng cơ sở 19 điểm',
         icon: ShieldCheck,
         badge: '19 cơ sở',
@@ -115,15 +111,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Sidebar Header Brand */}
         <div className="sidebar-header">
           <div className="sidebar-brand">
-            <div className="brand-badge-icon">
-              <span>CV</span>
-            </div>
-            {!isCollapsed && (
-              <div className="brand-text-block">
-                <span className="brand-portal-title">TRUNG TÂM BÁO CÁO</span>
-                <span className="brand-portal-sub">Hệ thống Cờ Vua Sài Gòn</span>
+            <div className="sidebar-brand-duo">
+              <div className="sidebar-brand-logo-frame">
+                <img
+                  className="sidebar-brand-logo"
+                  src={chessLogo}
+                  alt="Cờ Vua Sài Gòn - Phát triển trí tuệ trẻ"
+                />
               </div>
-            )}
+              <span className="sidebar-brand-separator" aria-hidden="true" />
+              <div className="sidebar-brand-logo-frame sidebar-brand-logo-frame-art">
+                <img
+                  className="sidebar-brand-logo sidebar-brand-logo-art"
+                  src={artLogo}
+                  alt="Sài Gòn Art - Hệ thống trung tâm Mỹ thuật thiếu nhi"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Close button for mobile */}
@@ -253,14 +257,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span>Google Sheet</span>
                 </a>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="quick-link-btn"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>In báo cáo</span>
-                </button>
               </div>
             </div>
           ) : (
@@ -278,14 +274,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   />
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="sidebar-collapsed-btn"
-                title="In trang báo cáo"
-              >
-                <Printer className="w-4 h-4 text-slate-600" />
-              </button>
             </div>
           )}
         </div>
