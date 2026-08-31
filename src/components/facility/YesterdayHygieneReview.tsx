@@ -24,7 +24,8 @@ import {
   saveImageReview,
 } from '../../services/imageReviewService';
 
-type ImageFilter = 'all' | 'pending' | 'reviewed';
+type ReviewStatus = 'pending' | 'approved' | 'rejected';
+type ImageFilter = 'all' | ReviewStatus;
 
 interface YesterdayHygieneReviewProps {
   dateIso: string;
@@ -46,6 +47,13 @@ const formatReviewedTime = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+};
+
+const getReviewStatus = (record?: ImageReviewRecord): ReviewStatus => {
+  if (record?.reviewStatus === 'approved' || record?.reviewStatus === 'rejected') {
+    return record.reviewStatus;
+  }
+  return record?.reviewed ? 'approved' : 'pending';
 };
 
 export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
@@ -148,13 +156,20 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     () => facilityRows.reduce((sum, row) => sum + row.images.length, 0),
     [facilityRows],
   );
-  const reviewedImages = useMemo(
-    () => facilityRows.reduce(
-      (sum, row) => sum + row.images.filter(image => imageReviews[getImageReviewId(image)]?.reviewed).length,
-      0,
-    ),
-    [facilityRows, imageReviews],
-  );
+  const reviewSummary = useMemo(() => {
+    let approved = 0;
+    let rejected = 0;
+    facilityRows.forEach(row => row.images.forEach(image => {
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      if (status === 'approved') approved += 1;
+      if (status === 'rejected') rejected += 1;
+    }));
+    return {
+      approved,
+      rejected,
+      pending: Math.max(0, totalImages - approved - rejected),
+    };
+  }, [facilityRows, imageReviews, totalImages]);
   const visibleRows = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase('vi-VN');
     return facilityRows.filter(row => (
@@ -165,20 +180,20 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   const selectedImages = useMemo(() => {
     if (!selectedRow) return [];
     return selectedRow.images.filter(image => {
-      const reviewed = Boolean(imageReviews[getImageReviewId(image)]?.reviewed);
-      if (filter === 'pending') return !reviewed;
-      if (filter === 'reviewed') return reviewed;
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      if (filter !== 'all') return status === filter;
       return true;
     });
   }, [filter, imageReviews, selectedRow]);
 
-  const toggleImageReview = async (report: HygieneReport) => {
+  const setImageReviewStatus = async (report: HygieneReport, requestedStatus: ReviewStatus) => {
     const reviewId = getImageReviewId(report);
     const cleanReviewer = reviewerName.trim();
     const previousRecord = imageReviews[reviewId];
-    const nextReviewed = !previousRecord?.reviewed;
+    const currentStatus = getReviewStatus(previousRecord);
+    const nextStatus: ReviewStatus = currentStatus === requestedStatus ? 'pending' : requestedStatus;
 
-    if (nextReviewed && !cleanReviewer) {
+    if (nextStatus !== 'pending' && !cleanReviewer) {
       setReviewerError(true);
       return;
     }
@@ -195,8 +210,13 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       khuVuc: report.khuVuc || '',
       linkAnh: report.linkAnh,
       nguoiBaoCao: report.nguoiKiemTra || '',
-      reviewed: nextReviewed,
-      trangThaiKiemDuyet: nextReviewed ? 'Đã duyệt' : 'Chưa duyệt',
+      reviewed: nextStatus === 'approved',
+      reviewStatus: nextStatus,
+      trangThaiKiemDuyet: nextStatus === 'approved'
+        ? 'Đã duyệt'
+        : nextStatus === 'rejected'
+        ? 'Không đạt'
+        : 'Chưa duyệt',
       nguoiKiemDuyet: cleanReviewer || previousRecord?.nguoiKiemDuyet || '',
       thoiGianKiemDuyet: timestamp,
       syncedToSheet: false,
@@ -238,9 +258,21 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setReviewerError(false);
   };
 
-  const selectedReviewedCount = selectedRow
-    ? selectedRow.images.filter(image => imageReviews[getImageReviewId(image)]?.reviewed).length
-    : 0;
+  const selectedCounts = useMemo(() => {
+    if (!selectedRow) return { approved: 0, rejected: 0, pending: 0 };
+    let approved = 0;
+    let rejected = 0;
+    selectedRow.images.forEach(image => {
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      if (status === 'approved') approved += 1;
+      if (status === 'rejected') rejected += 1;
+    });
+    return {
+      approved,
+      rejected,
+      pending: Math.max(0, selectedRow.images.length - approved - rejected),
+    };
+  }, [imageReviews, selectedRow]);
 
   return (
     <div className="my-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -256,7 +288,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             </span>
           </div>
           <p className="mt-1 text-[11px] text-slate-500">
-            {facilityRows.length} cơ sở · {totalImages} ảnh · đã duyệt {reviewedImages}/{totalImages}. Nhấn “Xem” để kiểm duyệt ảnh từng cơ sở.
+            {facilityRows.length} cơ sở · {totalImages} ảnh · đạt {reviewSummary.approved} · không đạt {reviewSummary.rejected} · chờ {reviewSummary.pending}. Nhấn “Xem” để kiểm duyệt.
           </p>
         </div>
 
@@ -288,8 +320,10 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleRows.map((row, index) => {
-              const reviewed = row.images.filter(image => imageReviews[getImageReviewId(image)]?.reviewed).length;
-              const reviewProgress = row.images.length > 0 ? (reviewed / row.images.length) * 100 : 0;
+              const approved = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)]) === 'approved').length;
+              const rejected = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)]) === 'rejected').length;
+              const evaluated = approved + rejected;
+              const reviewProgress = row.images.length > 0 ? (evaluated / row.images.length) * 100 : 0;
 
               return (
                 <tr key={row.coSo} className="transition-colors hover:bg-sky-50/50">
@@ -339,13 +373,16 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   <td className="px-4 py-3">
                     <div className="mx-auto w-28">
                       <div className="mb-1 flex items-center justify-between text-[10px] font-bold">
-                        <span className={reviewed === row.images.length && row.images.length > 0 ? 'text-emerald-700' : 'text-slate-600'}>
-                          {reviewed}/{row.images.length}
+                        <span className={evaluated === row.images.length && row.images.length > 0 ? 'text-emerald-700' : 'text-slate-600'}>
+                          {evaluated}/{row.images.length}
                         </span>
                         <span className="text-slate-400">{reviewProgress.toFixed(0)}%</span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${reviewProgress}%` }} />
+                      </div>
+                      <div className="mt-1 text-center text-[9px] font-semibold text-slate-400">
+                        <span className="text-emerald-600">Đạt {approved}</span> · <span className="text-rose-600">Không đạt {rejected}</span>
                       </div>
                     </div>
                   </td>
@@ -387,7 +424,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {selectedRow.images.length} ảnh · đã duyệt {selectedReviewedCount}/{selectedRow.images.length}
+                  {selectedRow.images.length} ảnh · đạt {selectedCounts.approved} · không đạt {selectedCounts.rejected} · chờ {selectedCounts.pending}
                 </p>
               </div>
               <button
@@ -436,8 +473,9 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                 <div className="flex flex-wrap gap-1.5">
                   {([
                     ['all', 'Tất cả', selectedRow.images.length],
-                    ['pending', 'Chưa duyệt', selectedRow.images.length - selectedReviewedCount],
-                    ['reviewed', 'Đã duyệt', selectedReviewedCount],
+                    ['pending', 'Chưa đánh giá', selectedCounts.pending],
+                    ['approved', 'Đã duyệt', selectedCounts.approved],
+                    ['rejected', 'Không đạt', selectedCounts.rejected],
                   ] as Array<[ImageFilter, string, number]>).map(([value, label, count]) => (
                     <button
                       key={value}
@@ -458,12 +496,20 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   {selectedImages.map((report, index) => {
                     const reviewId = getImageReviewId(report);
                     const review = imageReviews[reviewId];
-                    const reviewed = Boolean(review?.reviewed);
+                    const reviewStatus = getReviewStatus(review);
+                    const approved = reviewStatus === 'approved';
+                    const rejected = reviewStatus === 'rejected';
 
                     return (
                       <article
                         key={reviewId}
-                        className={`overflow-hidden rounded-xl border bg-white transition ${reviewed ? 'border-emerald-300 shadow-[0_0_0_2px_rgba(16,185,129,0.08)]' : 'border-slate-200 hover:border-sky-300 hover:shadow-sm'}`}
+                        className={`overflow-hidden rounded-xl border bg-white transition ${
+                          approved
+                            ? 'border-emerald-300 shadow-[0_0_0_2px_rgba(16,185,129,0.08)]'
+                            : rejected
+                            ? 'border-rose-300 shadow-[0_0_0_2px_rgba(244,63,94,0.08)]'
+                            : 'border-slate-200 hover:border-sky-300 hover:shadow-sm'
+                        }`}
                       >
                         <a
                           href={report.linkAnh}
@@ -500,25 +546,44 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                               <p className="mt-0.5 text-[10px] text-slate-400">{report.gio || '—'} · {report.trangThai || 'Chưa đánh giá'}</p>
                             </div>
 
-                            <label className="flex shrink-0 cursor-pointer flex-col items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={reviewed}
-                                onChange={() => toggleImageReview(report)}
-                                disabled={savingReviewId === reviewId || isLoadingReviews}
-                                aria-label={`Kiểm duyệt ảnh ${index + 1} của ${selectedRow.coSo}`}
-                                className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-emerald-600 disabled:cursor-wait disabled:opacity-50"
-                              />
-                              <span className={`text-[10px] font-black ${reviewed ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                {reviewed ? 'Đã duyệt' : 'Tích duyệt'}
-                              </span>
-                            </label>
+                            <div className="flex shrink-0 items-start gap-2">
+                              <label className="flex cursor-pointer flex-col items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={approved}
+                                  onChange={() => setImageReviewStatus(report, 'approved')}
+                                  disabled={savingReviewId === reviewId || isLoadingReviews}
+                                  aria-label={`Đánh dấu đạt ảnh ${index + 1} của ${selectedRow.coSo}`}
+                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-emerald-600 disabled:cursor-wait disabled:opacity-50"
+                                />
+                                <span className={`text-[10px] font-black ${approved ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                  Đã duyệt
+                                </span>
+                              </label>
+                              <label className="flex cursor-pointer flex-col items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  checked={rejected}
+                                  onChange={() => setImageReviewStatus(report, 'rejected')}
+                                  disabled={savingReviewId === reviewId || isLoadingReviews}
+                                  aria-label={`Đánh dấu không đạt ảnh ${index + 1} của ${selectedRow.coSo}`}
+                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-rose-600 disabled:cursor-wait disabled:opacity-50"
+                                />
+                                <span className={`text-[10px] font-black ${rejected ? 'text-rose-700' : 'text-slate-400'}`}>
+                                  Không đạt
+                                </span>
+                              </label>
+                            </div>
                           </div>
 
-                          {reviewed && (
-                            <div className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold text-emerald-700">
+                          {reviewStatus !== 'pending' && (
+                            <div className={`flex items-center gap-1 rounded-lg border px-2 py-1.5 text-[10px] font-semibold ${
+                              approved
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                : 'border-rose-200 bg-rose-50 text-rose-700'
+                            }`}>
                               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                              {review.nguoiKiemDuyet} · {formatReviewedTime(review.thoiGianKiemDuyet)}
+                              {approved ? 'Đã duyệt' : 'Không đạt'} · {review.nguoiKiemDuyet} · {formatReviewedTime(review.thoiGianKiemDuyet)}
                             </div>
                           )}
                         </div>

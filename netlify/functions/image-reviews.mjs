@@ -2,6 +2,7 @@ import { getDeployStore, getStore } from '@netlify/blobs';
 
 const STORE_NAME = 'facility-image-reviews';
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const VALID_REVIEW_STATUSES = new Set(['pending', 'approved', 'rejected']);
 
 const jsonResponse = (payload, status = 200) =>
   Response.json(payload, {
@@ -101,12 +102,17 @@ const handleUpsert = async (payload, context) => {
   const facility = normalizeText(record?.coSo, 160);
   const imageUrl = normalizeText(record?.linkAnh, 3000);
   const reviewer = normalizeText(record?.nguoiKiemDuyet, 160);
-  const reviewed = record?.reviewed === true;
+  const reviewStatus = normalizeText(record?.reviewStatus, 20)
+    || (record?.reviewed === true ? 'approved' : 'pending');
+  const reviewed = reviewStatus === 'approved';
 
   if (!id || !isValidDate(date) || !facility || !imageUrl.startsWith('http')) {
     return jsonResponse({ success: false, error: 'Dữ liệu kiểm duyệt ảnh không hợp lệ.' }, 400);
   }
-  if (reviewed && !reviewer) {
+  if (!VALID_REVIEW_STATUSES.has(reviewStatus)) {
+    return jsonResponse({ success: false, error: 'Trạng thái kiểm duyệt ảnh không hợp lệ.' }, 400);
+  }
+  if (reviewStatus !== 'pending' && !reviewer) {
     return jsonResponse({ success: false, error: 'Vui lòng nhập tên người kiểm duyệt.' }, 400);
   }
 
@@ -121,7 +127,12 @@ const handleUpsert = async (payload, context) => {
     linkAnh: imageUrl,
     nguoiBaoCao: normalizeText(record?.nguoiBaoCao, 160),
     reviewed,
-    trangThaiKiemDuyet: reviewed ? 'Đã duyệt' : 'Chưa duyệt',
+    reviewStatus,
+    trangThaiKiemDuyet: reviewStatus === 'approved'
+      ? 'Đã duyệt'
+      : reviewStatus === 'rejected'
+      ? 'Không đạt'
+      : 'Chưa duyệt',
     nguoiKiemDuyet: reviewer,
     thoiGianKiemDuyet: normalizeText(record?.thoiGianKiemDuyet, 60) || now,
     updatedAt: now,

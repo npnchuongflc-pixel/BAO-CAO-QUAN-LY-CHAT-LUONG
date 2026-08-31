@@ -12,6 +12,7 @@ export interface ImageReviewRecord {
   linkAnh: string;
   nguoiBaoCao: string;
   reviewed: boolean;
+  reviewStatus: 'pending' | 'approved' | 'rejected';
   trangThaiKiemDuyet: string;
   nguoiKiemDuyet: string;
   thoiGianKiemDuyet: string;
