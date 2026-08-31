@@ -1,4 +1,4 @@
-import { getStore } from '@netlify/blobs';
+import { getDeployStore, getStore } from '@netlify/blobs';
 
 const STORE_NAME = 'facility-image-reviews';
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,7 +12,10 @@ const jsonResponse = (payload, status = 200) =>
 const normalizeText = (value, maxLength = 500) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 const isValidDate = (value) => typeof value === 'string' && ISO_DATE_PATTERN.test(value);
-const getReviewStore = () => getStore({ name: STORE_NAME, consistency: 'strong' });
+const getReviewStore = (context) =>
+  context?.deploy?.context === 'production'
+    ? getStore({ name: STORE_NAME, consistency: 'strong' })
+    : getDeployStore({ name: STORE_NAME });
 const getDatePrefix = (date) => `reviews/${date}/`;
 const getRecordKey = (date, id) => `${getDatePrefix(date)}${encodeURIComponent(id)}`;
 
@@ -29,8 +32,8 @@ const validateSameOrigin = (request) => {
 const getErrorMessage = (error) =>
   error instanceof Error ? error.message : 'Không thể lưu kiểm duyệt ảnh';
 
-const listRecords = async (date) => {
-  const store = getReviewStore();
+const listRecords = async (date, context) => {
+  const store = getReviewStore(context);
   const { blobs } = await store.list({ prefix: getDatePrefix(date) });
   const records = await Promise.all(
     blobs.map(({ key }) => store.get(key, { type: 'json' })),
@@ -82,16 +85,16 @@ const syncRecordToGoogleSheet = async (record) => {
   return result;
 };
 
-const handleGet = async (request) => {
+const handleGet = async (request, context) => {
   const date = new URL(request.url).searchParams.get('date');
   if (!isValidDate(date)) {
     return jsonResponse({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
   }
-  const records = await listRecords(date);
+  const records = await listRecords(date, context);
   return jsonResponse({ success: true, date, records, count: records.length });
 };
 
-const handleUpsert = async (payload) => {
+const handleUpsert = async (payload, context) => {
   const record = payload?.record;
   const id = normalizeText(record?.id, 240);
   const date = record?.ngay;
@@ -134,10 +137,8 @@ const handleUpsert = async (payload) => {
     savedRecord = { ...savedRecord, syncError: syncWarning };
   }
 
-  const store = getReviewStore();
-  await store.setJSON(getRecordKey(date, id), savedRecord, {
-    metadata: { date, facility, reviewed, syncedToSheet: savedRecord.syncedToSheet },
-  });
+  const store = getReviewStore(context);
+  await store.setJSON(getRecordKey(date, id), savedRecord);
 
   return jsonResponse({
     success: true,
@@ -146,13 +147,13 @@ const handleUpsert = async (payload) => {
   });
 };
 
-export default async (request) => {
+export default async (request, context) => {
   if (!validateSameOrigin(request)) {
     return jsonResponse({ success: false, error: 'Nguồn yêu cầu không được phép.' }, 403);
   }
 
   try {
-    if (request.method === 'GET') return await handleGet(request);
+    if (request.method === 'GET') return await handleGet(request, context);
     if (request.method !== 'POST') {
       return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
     }
@@ -167,7 +168,7 @@ export default async (request) => {
     if (payload?.action !== 'upsert') {
       return jsonResponse({ success: false, error: 'Thao tác không hợp lệ.' }, 400);
     }
-    return await handleUpsert(payload);
+    return await handleUpsert(payload, context);
   } catch (error) {
     return jsonResponse({ success: false, error: getErrorMessage(error) }, 500);
   }
