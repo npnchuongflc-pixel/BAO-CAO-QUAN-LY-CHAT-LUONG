@@ -50,6 +50,7 @@ import {
   formatIsoToDateStr,
   getCurrentTimestampStr
 } from '../../services/warningAuditService';
+import { YesterdayHygieneReview } from './YesterdayHygieneReview';
 import { 
   PieChart, 
   Pie, 
@@ -1344,6 +1345,14 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           </div>
         )}
       </div>
+
+      {isHygiene && (
+        <YesterdayHygieneReview
+          dateIso={yesterdayInfo.isoStr}
+          dateDisplay={yesterdayInfo.displayStr}
+          reports={rawHygieneReports}
+        />
+      )}
 
       {/* Facility Status Detail Modal */}
       {isModalOpen && (
