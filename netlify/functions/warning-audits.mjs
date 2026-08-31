@@ -10,6 +10,45 @@ const jsonResponse = (payload, status = 200) =>
     headers: { 'cache-control': 'no-store, max-age=0' },
   });
 
+const escapeCsvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+const csvResponse = (records) => {
+  const headers = [
+    'Ngày',
+    'Cơ sở',
+    'Trạng thái xử lý',
+    'Loại trạng thái',
+    'Thời gian ghi nhận',
+    'Lý do cảnh báo',
+    'Người xử lý',
+    'Email thực hiện',
+    'Cập nhật trên hệ thống',
+  ];
+  const rows = records.map((record) => [
+    record.ngay,
+    record.coSo,
+    record.trangThai,
+    record.loaiTrangThai,
+    record.thoiGianTich,
+    record.lyDoCanhBao,
+    record.nguoiXuLy,
+    record.emailThucHien,
+    record.updatedAt,
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map(escapeCsvCell).join(','))
+    .join('\r\n');
+
+  return new Response(`\uFEFF${csv}`, {
+    status: 200,
+    headers: {
+      'cache-control': 'no-store, max-age=0',
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': 'inline; filename="nhat-ky-canh-bao.csv"',
+    },
+  });
+};
+
 const getAuditStore = () => getStore({ name: STORE_NAME, consistency: 'strong' });
 const getErrorMessage = (error) =>
   error instanceof Error ? error.message : 'Không thể lưu trạng thái cảnh báo';
@@ -30,22 +69,39 @@ const validateSameOrigin = (request) => {
   }
 };
 
-const listRecordsForDate = async (store, date) => {
-  const { blobs } = await store.list({ prefix: getDatePrefix(date) });
+const listRecords = async (store, prefix = 'audits/') => {
+  const { blobs } = await store.list({ prefix });
   const records = await Promise.all(
     blobs.map(({ key }) => store.get(key, { type: 'json' })),
   );
   return records
     .filter(Boolean)
-    .sort((left, right) => String(left.coSo).localeCompare(String(right.coSo), 'vi'));
+    .sort((left, right) => {
+      const dateOrder = String(right.ngay).localeCompare(String(left.ngay));
+      return dateOrder || String(left.coSo).localeCompare(String(right.coSo), 'vi');
+    });
 };
 
 const handleGet = async (request) => {
-  const date = new URL(request.url).searchParams.get('date');
+  const url = new URL(request.url);
+  const date = url.searchParams.get('date');
+  const format = url.searchParams.get('format');
+
+  if (format === 'csv') {
+    if (date && !isValidDate(date)) {
+      return jsonResponse({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
+    }
+    const records = await listRecords(
+      getAuditStore(),
+      date ? getDatePrefix(date) : 'audits/',
+    );
+    return csvResponse(records);
+  }
+
   if (!isValidDate(date)) {
     return jsonResponse({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
   }
-  const records = await listRecordsForDate(getAuditStore(), date);
+  const records = await listRecords(getAuditStore(), getDatePrefix(date));
   return jsonResponse({ success: true, date, records, count: records.length });
 };
 

@@ -35,6 +35,17 @@ Các giá trị này đã được lưu trong `netlify.toml`, nên không cần 
 - Trạng thái website: `/api/health`
 - Dữ liệu vệ sinh: `/api/facility-sheet-data?gid=0`
 - Trạng thái cảnh báo theo ngày: `/api/warning-audits?date=YYYY-MM-DD`
+- CSV toàn bộ nhật ký cho Google Sheets: `/api/warning-audits?format=csv`
+
+Để quản lý nhật ký cảnh báo trong Google Sheets, nhập công thức sau vào ô `A1`
+của một trang tính trống:
+
+```text
+=IMPORTDATA("https://bao-cao-quan-ly-chat-luong.netlify.app/api/warning-audits?format=csv")
+```
+
+Google Sheets sẽ tự tạo bảng gồm ngày, cơ sở, trạng thái xử lý, thời gian ghi
+nhận, lý do cảnh báo và người xử lý. Không cần Apps Script hoặc token.
 
 Phản hồi dữ liệu vệ sinh có trường `recordCount` để đối chiếu số hàng thực tế từ Google Sheets.
 
