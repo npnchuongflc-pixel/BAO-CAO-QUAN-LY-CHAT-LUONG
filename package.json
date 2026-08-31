@@ -13,12 +13,12 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@netlify/blobs": "^11.0.2",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "firebase": "^12.18.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "papaparse": "^5.7.0",
@@ -39,5 +39,5 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
-  "displayName": "B\u00e1o C\u00e1o Qu\u1ea3n L\u00fd Ch\u1ea5t L\u01b0\u1ee3ng"
+  "displayName": "Báo Cáo Quản Lý Chất Lượng"
 }

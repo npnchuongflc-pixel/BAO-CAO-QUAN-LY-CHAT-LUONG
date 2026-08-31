@@ -6,6 +6,10 @@
 - Website: Netlify.
 - Dữ liệu vệ sinh: Google Sheets, sheet `Kiểm tra vệ sinh` (`gid=0`).
 - API trung gian: Netlify Function tại `/api/facility-sheet-data`.
+- Trạng thái xử lý cảnh báo: lưu trực tiếp trên Netlify qua `/api/warning-audits`.
+
+Phần cảnh báo không dùng Firebase, Google Apps Script hay token. Khi chọn một
+trạng thái trên thẻ cơ sở, website tự lưu ngay và đồng bộ cho mọi thiết bị.
 
 ## Cách cập nhật khi không dùng ChatGPT Plus
 
@@ -30,6 +34,7 @@ Các giá trị này đã được lưu trong `netlify.toml`, nên không cần 
 - Trang chính: `/`
 - Trạng thái website: `/api/health`
 - Dữ liệu vệ sinh: `/api/facility-sheet-data?gid=0`
+- Trạng thái cảnh báo theo ngày: `/api/warning-audits?date=YYYY-MM-DD`
 
 Phản hồi dữ liệu vệ sinh có trường `recordCount` để đối chiếu số hàng thực tế từ Google Sheets.
 

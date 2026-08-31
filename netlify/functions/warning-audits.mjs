@@ -1,93 +1,132 @@
+import { getStore } from '@netlify/blobs';
+
+const STORE_NAME = 'facility-warning-audits';
+const VALID_STATUSES = new Set(['da_nhac_nho', 'loi_app']);
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 const jsonResponse = (payload, status = 200) =>
   Response.json(payload, {
     status,
-    headers: {
-      'cache-control': 'no-store, max-age=0',
-    },
+    headers: { 'cache-control': 'no-store, max-age=0' },
   });
 
-const ALLOWED_ACTIONS = new Set(['upsert', 'sync_all', 'clear_date']);
-
+const getAuditStore = () => getStore({ name: STORE_NAME, consistency: 'strong' });
 const getErrorMessage = (error) =>
-  error instanceof Error ? error.message : 'Không thể kết nối Apps Script';
+  error instanceof Error ? error.message : 'Không thể lưu trạng thái cảnh báo';
+const normalizeText = (value, maxLength = 500) =>
+  typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+const isValidDate = (value) => typeof value === 'string' && ISO_DATE_PATTERN.test(value);
+const getRecordKey = (date, facility) =>
+  `audits/${date}/${encodeURIComponent(facility.normalize('NFC'))}`;
+const getDatePrefix = (date) => `audits/${date}/`;
+
+const validateSameOrigin = (request) => {
+  const origin = request.headers.get('origin');
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === new URL(request.url).host;
+  } catch {
+    return false;
+  }
+};
+
+const listRecordsForDate = async (store, date) => {
+  const { blobs } = await store.list({ prefix: getDatePrefix(date) });
+  const records = await Promise.all(
+    blobs.map(({ key }) => store.get(key, { type: 'json' })),
+  );
+  return records
+    .filter(Boolean)
+    .sort((left, right) => String(left.coSo).localeCompare(String(right.coSo), 'vi'));
+};
+
+const handleGet = async (request) => {
+  const date = new URL(request.url).searchParams.get('date');
+  if (!isValidDate(date)) {
+    return jsonResponse({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
+  }
+  const records = await listRecordsForDate(getAuditStore(), date);
+  return jsonResponse({ success: true, date, records, count: records.length });
+};
+
+const handleUpsert = async (store, payload) => {
+  const record = payload?.record;
+  const date = record?.ngay;
+  const facility = normalizeText(record?.coSo, 160);
+  const status = record?.loaiTrangThai;
+  if (!isValidDate(date) || !facility || !VALID_STATUSES.has(status)) {
+    return jsonResponse({ success: false, error: 'Dữ liệu ghi nhận không hợp lệ.' }, 400);
+  }
+
+  const savedRecord = {
+    id: `${facility}_${date}`,
+    coSo: facility,
+    ngay: date,
+    thoiGianTich: normalizeText(record?.thoiGianTich, 40),
+    trangThai: status === 'da_nhac_nho'
+      ? 'Đã xác minh và nhắc nhở'
+      : 'Đã xác minh do lỗi app',
+    loaiTrangThai: status,
+    lyDoCanhBao: normalizeText(record?.lyDoCanhBao, 1500),
+    nguoiXuLy: normalizeText(record?.nguoiXuLy, 160) || 'Quản lý kiểm tra',
+    emailThucHien: normalizeText(record?.emailThucHien, 200),
+    updatedAt: new Date().toISOString(),
+  };
+  await store.setJSON(getRecordKey(date, facility), savedRecord, {
+    metadata: { date, facility, status },
+  });
+  return jsonResponse({ success: true, record: savedRecord });
+};
+
+const handleDelete = async (store, payload) => {
+  const date = payload?.date;
+  const facility = normalizeText(payload?.facility, 160);
+  if (!isValidDate(date) || !facility) {
+    return jsonResponse({ success: false, error: 'Cơ sở hoặc ngày không hợp lệ.' }, 400);
+  }
+  await store.delete(getRecordKey(date, facility));
+  return jsonResponse({ success: true, date, facility });
+};
+
+const handleClearDate = async (store, payload) => {
+  const date = payload?.date;
+  if (!isValidDate(date)) {
+    return jsonResponse({ success: false, error: 'Ngày cần xóa không hợp lệ.' }, 400);
+  }
+  const { blobs } = await store.list({ prefix: getDatePrefix(date) });
+  await Promise.all(blobs.map(({ key }) => store.delete(key)));
+  return jsonResponse({ success: true, date, cleared: blobs.length });
+};
 
 export default async (request) => {
-  if (request.method !== 'POST') {
-    return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
+  if (!validateSameOrigin(request)) {
+    return jsonResponse({ success: false, error: 'Nguồn yêu cầu không được phép.' }, 403);
   }
-
-  const appsScriptUrl = Netlify.env.get('WARNING_APPS_SCRIPT_URL')?.trim();
-  const apiToken = Netlify.env.get('WARNING_API_TOKEN')?.trim();
-  const missingVariables = [
-    !appsScriptUrl && 'WARNING_APPS_SCRIPT_URL',
-    !apiToken && 'WARNING_API_TOKEN',
-  ].filter(Boolean);
-
-  if (missingVariables.length > 0) {
-    return jsonResponse(
-      {
-        success: false,
-        error: `Netlify chưa nhận được cấu hình: ${missingVariables.join(', ')}.`,
-      },
-      503,
-    );
-  }
-
-  let payload;
   try {
-    payload = await request.json();
-  } catch {
-    return jsonResponse({ success: false, error: 'Nội dung yêu cầu không phải JSON hợp lệ.' }, 400);
-  }
-
-  if (!payload || typeof payload !== 'object' || !ALLOWED_ACTIONS.has(payload.action)) {
-    return jsonResponse({ success: false, error: 'Action không hợp lệ.' }, 400);
-  }
-
-  try {
-    const response = await fetch(appsScriptUrl, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ ...payload, token: apiToken }),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    const responseText = await response.text();
-    const normalized = responseText.trimStart().toLowerCase();
-
-    if (normalized.startsWith('<!doctype html') || normalized.startsWith('<html')) {
-      throw new Error(
-        'Apps Script đang trả về trang đăng nhập. Hãy triển khai Web app với quyền truy cập Anyone.',
-      );
+    if (request.method === 'GET') return await handleGet(request);
+    if (request.method !== 'POST') {
+      return jsonResponse({ success: false, error: 'Method not allowed' }, 405);
     }
-
-    let result;
+    let payload;
     try {
-      result = JSON.parse(responseText);
+      payload = await request.json();
     } catch {
-      throw new Error('Apps Script không trả về JSON hợp lệ.');
+      return jsonResponse({ success: false, error: 'Nội dung yêu cầu không hợp lệ.' }, 400);
     }
-
-    if (!response.ok || result?.success !== true) {
-      return jsonResponse(
-        {
-          success: false,
-          error: result?.error || `Apps Script HTTP ${response.status}`,
-        },
-        502,
-      );
+    const store = getAuditStore();
+    switch (payload?.action) {
+      case 'upsert':
+        return await handleUpsert(store, payload);
+      case 'delete':
+        return await handleDelete(store, payload);
+      case 'clear_date':
+        return await handleClearDate(store, payload);
+      default:
+        return jsonResponse({ success: false, error: 'Thao tác không hợp lệ.' }, 400);
     }
-
-    return jsonResponse(result);
   } catch (error) {
-    return jsonResponse({ success: false, error: getErrorMessage(error) }, 502);
+    return jsonResponse({ success: false, error: getErrorMessage(error) }, 500);
   }
 };
 
-export const config = {
-  path: '/api/warning-audits',
-};
+export const config = { path: '/api/warning-audits' };

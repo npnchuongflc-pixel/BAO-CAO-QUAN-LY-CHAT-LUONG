@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { FacilitySummary, ReportMode, FilterState, HygieneReport, FacilityQualityReport } from './facilityTypes';
 import { FacilityStatusModal } from './FacilityStatusModal';
 import { 
@@ -30,25 +30,26 @@ import {
   X,
   Search,
   ClipboardList,
-  FileSpreadsheet,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
 import {
+  WarningAuditRecord,
   getLocalWarningAudits,
+  replaceLocalWarningAudits,
   saveLocalWarningAudit,
   removeLocalWarningAudit,
-  WarningAuditRecord
-} from '../../services/googleSheetsService';
-import {
-  getStoredCustomSheet,
-  syncAllWarningsForDateToGoogleSheet,
-  clearAllWarningAuditsForDateInGoogleSheet,
-  updateSingleWarningAuditToGoogleSheet,
-  createWarningAuditGoogleSheet,
+  fetchWarningAuditsForDate,
+  saveWarningAudit,
+  deleteWarningAudit,
+  clearWarningAuditsForDate,
+  downloadWarningAuditsCsv,
   formatIsoToDateStr,
   getCurrentTimestampStr
-} from '../../services/warningAuditSheetService';
+} from '../../services/warningAuditService';
 import { 
   PieChart, 
   Pie, 
@@ -370,34 +371,46 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
   // Warning Audits (Manager Inspection check state for each facility on selected date)
   const [warningAudits, setWarningAudits] = useState<Record<string, WarningAuditRecord>>(() => getLocalWarningAudits());
-  const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error'; url?: string } | null>(null);
-  const [customSheetUrl, setCustomSheetUrl] = useState<string>(() => getStoredCustomSheet()?.spreadsheetUrl || '');
-  const [isCreatingSheet, setIsCreatingSheet] = useState(false);
-
-  const handleInitSheet = async () => {
-    setIsCreatingSheet(true);
-    try {
-      const res = await createWarningAuditGoogleSheet();
-      setCustomSheetUrl(res.spreadsheetUrl);
-      setSyncFeedback({
-        message: 'Đã tạo file Google Sheet mới thành công!',
-        type: 'success',
-        url: res.spreadsheetUrl
-      });
-      setTimeout(() => setSyncFeedback(null), 6000);
-    } catch (err: any) {
-      setSyncFeedback({
-        message: `Lỗi tạo Google Sheet: ${err.message || 'Thử lại'}`,
-        type: 'error'
-      });
-      setTimeout(() => setSyncFeedback(null), 5000);
-    } finally {
-      setIsCreatingSheet(false);
-    }
-  };
-
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [isLoadingAudits, setIsLoadingAudits] = useState(false);
+  const [savingAuditId, setSavingAuditId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLoadingAudits(true);
+
+    fetchWarningAuditsForDate(activeWarningDateIso)
+      .then(records => {
+        if (!isActive) return;
+        setWarningAudits(previous => {
+          const next: Record<string, WarningAuditRecord> = {};
+          (Object.entries(previous) as Array<[string, WarningAuditRecord]>).forEach(([key, record]) => {
+            if (record.ngay !== activeWarningDateIso) next[key] = record;
+          });
+          records.forEach(record => {
+            next[record.id] = record;
+          });
+          replaceLocalWarningAudits(next);
+          return next;
+        });
+      })
+      .catch(error => {
+        if (!isActive) return;
+        const message = error instanceof Error ? error.message : 'Không thể tải trạng thái đã lưu';
+        setSyncFeedback({
+          message: `Chưa tải được dữ liệu máy chủ: ${message}. Website vẫn giữ bản gần nhất trên trình duyệt.`,
+          type: 'error'
+        });
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingAudits(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeWarningDateIso]);
 
   const handleClearAllWarningChecks = async () => {
     if (warningFacilities.length === 0) {
@@ -411,129 +424,100 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
     setIsClearingAll(true);
     try {
-      const res = await clearAllWarningAuditsForDateInGoogleSheet(activeWarningDateIso);
-      if (res.success) {
-        setWarningAudits(prev => {
-          const copy = { ...prev };
-          for (const warning of warningFacilities) {
-            const auditId = `${warning.coSo}_${activeWarningDateIso}`;
-            delete copy[auditId];
-            removeLocalWarningAudit(auditId);
-          }
-          return copy;
+      const cleared = await clearWarningAuditsForDate(activeWarningDateIso);
+      setWarningAudits(previous => {
+        const next: Record<string, WarningAuditRecord> = {};
+        (Object.entries(previous) as Array<[string, WarningAuditRecord]>).forEach(([key, record]) => {
+          if (record.ngay !== activeWarningDateIso) next[key] = record;
         });
-      }
-      if (res.spreadsheetUrl) setCustomSheetUrl(res.spreadsheetUrl);
-      setSyncFeedback({
-        message: res.message,
-        type: res.success ? 'success' : 'error',
-        url: res.spreadsheetUrl || customSheetUrl
+        replaceLocalWarningAudits(next);
+        return next;
       });
-      setTimeout(() => setSyncFeedback(null), 7000);
-    } finally {
-      setIsClearingAll(false);
-    }
-  };
-
-  const handleSyncAllWarningsForDate = async () => {
-    if (warningFacilities.length === 0) {
       setSyncFeedback({
-        message: `Ngày ${activeWarningDisplayStr} không có cơ sở nào bị cảnh báo.`,
-        type: 'info'
-      });
-      setTimeout(() => setSyncFeedback(null), 3000);
-      return;
-    }
-
-    setIsSyncingAll(true);
-    try {
-      const res = await syncAllWarningsForDateToGoogleSheet(
-        activeWarningDateIso,
-        warningFacilities.map(w => ({ coSo: w.coSo, reasons: w.reasons })),
-        warningAudits
-      );
-      if (res.spreadsheetUrl) {
-        setCustomSheetUrl(res.spreadsheetUrl);
-      }
-      setSyncFeedback({
-        message: res.message,
-        type: res.success ? 'success' : 'error',
-        url: res.spreadsheetUrl || customSheetUrl
-      });
-      setTimeout(() => setSyncFeedback(null), 7000);
-    } catch (err: any) {
-      setSyncFeedback({
-        message: `Lỗi đồng bộ Sheet: ${err.message || 'Thử lại'}`,
-        type: 'error'
+        message: `Đã xóa ${cleared} ghi nhận của ngày ${activeWarningDisplayStr} trên hệ thống.`,
+        type: 'success'
       });
       setTimeout(() => setSyncFeedback(null), 5000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể xóa dữ liệu';
+      setSyncFeedback({ message: `Xóa chưa thành công: ${message}`, type: 'error' });
     } finally {
-      setIsSyncingAll(false);
+      setIsClearingAll(false);
     }
   };
 
   const handleToggleWarningAudit = async (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
     const auditId = `${coSo}_${activeWarningDateIso}`;
     const existing = warningAudits[auditId];
+    if (savingAuditId === auditId) return;
+    setSavingAuditId(auditId);
 
-    // If clicking the active status -> toggle off (remove)
-    if (existing && existing.loaiTrangThai === targetType) {
-      removeLocalWarningAudit(auditId);
-      setWarningAudits(prev => {
-        const copy = { ...prev };
-        delete copy[auditId];
-        return copy;
-      });
-
-      const res = await updateSingleWarningAuditToGoogleSheet(
-        activeWarningDateIso,
-        coSo,
-        null
-      );
-      setSyncFeedback({
-        message: res.success ? `Đã hủy tích chọn cho ${coSo} trên báo cáo và Google Sheet.` : res.message,
-        type: res.success ? 'info' : 'error',
-        url: res.spreadsheetUrl || customSheetUrl
-      });
-      setTimeout(() => setSyncFeedback(null), res.success ? 4000 : 7000);
-      return;
+    try {
+      if (existing?.loaiTrangThai === targetType) {
+        removeLocalWarningAudit(auditId);
+        setWarningAudits(previous => {
+          const next = { ...previous };
+          delete next[auditId];
+          return next;
+        });
+        await deleteWarningAudit(activeWarningDateIso, coSo);
+        setSyncFeedback({ message: `${coSo}: đã bỏ trạng thái và lưu tự động.`, type: 'info' });
+      } else {
+        const label = targetType === 'da_nhac_nho'
+          ? 'Đã xác minh và nhắc nhở'
+          : 'Đã xác minh do lỗi app';
+        const newRecord: WarningAuditRecord = {
+          id: auditId,
+          coSo,
+          ngay: activeWarningDateIso,
+          thoiGianTich: getCurrentTimestampStr(),
+          trangThai: label,
+          loaiTrangThai: targetType,
+          lyDoCanhBao: reasons.join('; '),
+          nguoiXuLy: 'Quản lý kiểm tra',
+          emailThucHien: ''
+        };
+        saveLocalWarningAudit(newRecord);
+        setWarningAudits(previous => ({ ...previous, [auditId]: newRecord }));
+        const savedRecord = await saveWarningAudit(newRecord);
+        saveLocalWarningAudit(savedRecord);
+        setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
+        setSyncFeedback({
+          message: `${coSo}: ${label}. Đã lưu tự động trên hệ thống.`,
+          type: 'success'
+        });
+      }
+      setTimeout(() => setSyncFeedback(null), 4000);
+    } catch (error) {
+      if (existing) {
+        saveLocalWarningAudit(existing);
+        setWarningAudits(previous => ({ ...previous, [auditId]: existing }));
+      } else {
+        removeLocalWarningAudit(auditId);
+        setWarningAudits(previous => {
+          const next = { ...previous };
+          delete next[auditId];
+          return next;
+        });
+      }
+      const message = error instanceof Error ? error.message : 'Không thể lưu trạng thái';
+      setSyncFeedback({ message: `Chưa lưu được ${coSo}: ${message}`, type: 'error' });
+    } finally {
+      setSavingAuditId(null);
     }
+  };
 
-    // Otherwise create or update record
-    const timeStr = getCurrentTimestampStr();
-    const label = targetType === 'da_nhac_nho' ? 'Đã xác minh và nhắc nhở' : 'Đã xác minh do lỗi app';
-    const currentEmail = '';
-
-    const newRecord: WarningAuditRecord = {
-      id: auditId,
-      coSo,
-      ngay: activeWarningDateIso,
-      thoiGianTich: timeStr,
-      trangThai: label,
-      loaiTrangThai: targetType,
-      lyDoCanhBao: reasons.join('; '),
-      nguoiXuLy: currentEmail || 'Quản lý kiểm tra',
-      emailThucHien: currentEmail
-    };
-
-    saveLocalWarningAudit(newRecord);
-    setWarningAudits(prev => ({
-      ...prev,
-      [auditId]: newRecord
-    }));
-
-    const res = await updateSingleWarningAuditToGoogleSheet(
+  const handleDownloadWarningCsv = () => {
+    downloadWarningAuditsCsv(
       activeWarningDateIso,
-      coSo,
-      targetType,
-      currentEmail
+      warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+      warningAudits
     );
     setSyncFeedback({
-      message: res.success ? `${coSo}: ${label}. Đã lưu vào Google Sheet.` : res.message,
-      type: res.success ? 'success' : 'error',
-      url: res.spreadsheetUrl || customSheetUrl
+      message: `Đã tải nhật ký cảnh báo ngày ${activeWarningDisplayStr}.`,
+      type: 'success'
     });
-    setTimeout(() => setSyncFeedback(null), 7000);
+    setTimeout(() => setSyncFeedback(null), 3000);
   };
 
   return (
@@ -684,7 +668,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         {/* LEFT COLUMN: DIRECT WARNING ALERTS LIST (7 cols) */}
         <div className="lg:col-span-7 bg-amber-50/30 border border-amber-200/80 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
           <div>
-            {/* Warning Section Header with Independent Date Selector & Google Sheet Links */}
+            {/* Warning Section Header with independent date selector and automatic storage */}
             <div className="pb-3 border-b border-amber-200/70 mb-3.5 space-y-2.5">
               {/* Row 1: Header Title and Date Selector */}
               <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -731,65 +715,46 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
               {/* Row 2: Action Toolbar with balanced buttons */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <div className="text-[11px] text-slate-500 flex items-center gap-1.5 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span>Ghi nối tiếp dữ liệu theo ngày vào Sheet (không ghi đè)</span>
+                <div className="text-[11px] text-emerald-800 flex items-center gap-1.5 font-semibold">
+                  {isLoadingAudits ? (
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Cloud className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {isLoadingAudits
+                      ? 'Đang tải trạng thái đã lưu...'
+                      : 'Tích trạng thái là lưu tự động, không cần đồng bộ thủ công'}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Sync all warning facilities of this day into Google Sheet */}
                   <button
                     type="button"
-                    disabled={isSyncingAll || warningFacilities.length === 0}
-                    onClick={handleSyncAllWarningsForDate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Đổ toàn bộ danh sách các cơ sở cảnh báo ngày này vào Google Sheet"
+                    disabled={warningFacilities.length === 0}
+                    onClick={handleDownloadWarningCsv}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1B5EA6] hover:bg-[#154d89] disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                    title="Tải nhật ký cảnh báo của ngày đang xem để mở bằng Excel"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>{isSyncingAll ? 'Đang đổ vào Sheet...' : 'Đổ cảnh báo vào Sheet'}</span>
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Tải nhật ký CSV</span>
                   </button>
 
-                  {/* Clear all checks for this day */}
                   <button
                     type="button"
-                    disabled={isClearingAll || warningFacilities.length === 0}
+                    disabled={isClearingAll || isLoadingAudits || warningFacilities.length === 0}
                     onClick={handleClearAllWarningChecks}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 disabled:opacity-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Xóa toàn bộ các ô đã tích chọn của ngày này trên giao diện và Google Sheet"
+                    title="Xóa toàn bộ trạng thái đã ghi nhận của ngày đang xem"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                     <span>{isClearingAll ? 'Đang xóa...' : 'Xóa tất cả tích'}</span>
                   </button>
-
-                  {/* Google Sheet Open / Create Button */}
-                  {customSheetUrl ? (
-                    <a
-                      href={customSheetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                      title="Mở file Google Sheet chứa toàn bộ dữ liệu nhật ký kiểm tra"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Mở Sheet</span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isCreatingSheet}
-                      onClick={handleInitSheet}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                      title="Tạo file Google Sheet mới trên Google Drive"
-                    >
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{isCreatingSheet ? 'Đang tạo...' : 'Tạo Sheet'}</span>
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
 
-            {/* Sync Feedback Toast Notification */}
+            {/* Save Feedback Toast Notification */}
             {syncFeedback && (
               <div className={`mb-3 p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-2 animate-fadeIn ${
                 syncFeedback.type === 'success'
@@ -807,16 +772,6 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     <Info className="w-4 h-4 text-sky-600 shrink-0" />
                   )}
                   <span>{syncFeedback.message}</span>
-                  {syncFeedback.url && (
-                    <a
-                      href={syncFeedback.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-bold underline text-emerald-800 hover:text-emerald-950 ml-1"
-                    >
-                      <span>[Xem trên Sheet ↗]</span>
-                    </a>
-                  )}
                 </div>
                 <button 
                   type="button" 
@@ -923,7 +878,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                           {/* Ô vuông 1: Đã xác minh và nhắc nhở */}
                           <label 
                             onClick={(e) => e.stopPropagation()}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer select-none transition-all border ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold select-none transition-all border ${
+                              savingAuditId === auditKey ? 'cursor-wait opacity-70' : 'cursor-pointer'
+                            } ${
                               audit?.loaiTrangThai === 'da_nhac_nho'
                                 ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-500'
                                 : 'bg-white hover:bg-emerald-50 text-slate-700 border-slate-300 hover:border-emerald-400'
@@ -933,8 +890,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             <input
                               type="checkbox"
                               checked={audit?.loaiTrangThai === 'da_nhac_nho'}
+                              disabled={savingAuditId === auditKey}
                               onChange={() => handleToggleWarningAudit(item.coSo, 'da_nhac_nho', item.reasons)}
-                              className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                              className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer disabled:cursor-wait"
                             />
                             <span>Đã xác minh và nhắc nhở</span>
                           </label>
@@ -942,7 +900,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                           {/* Ô vuông 2: Đã xác minh do lỗi app */}
                           <label 
                             onClick={(e) => e.stopPropagation()}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold cursor-pointer select-none transition-all border ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold select-none transition-all border ${
+                              savingAuditId === auditKey ? 'cursor-wait opacity-70' : 'cursor-pointer'
+                            } ${
                               audit?.loaiTrangThai === 'loi_app'
                                 ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-500'
                                 : 'bg-white hover:bg-rose-50 text-slate-700 border-slate-300 hover:border-rose-400'
@@ -952,19 +912,25 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             <input
                               type="checkbox"
                               checked={audit?.loaiTrangThai === 'loi_app'}
+                              disabled={savingAuditId === auditKey}
                               onChange={() => handleToggleWarningAudit(item.coSo, 'loi_app', item.reasons)}
-                              className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                              className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer disabled:cursor-wait"
                             />
                             <span>Đã xác minh do lỗi app</span>
                           </label>
                         </div>
 
-                        {/* Status Timestamp & Email */}
-                        {audit ? (
+                        {/* Trạng thái lưu tự động */}
+                        {savingAuditId === auditKey ? (
+                          <div className="flex items-center gap-1.5 text-[11px] text-sky-700 font-semibold bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            <span>Đang lưu...</span>
+                          </div>
+                        ) : audit ? (
                           <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-600 font-medium bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
                             <div className="flex items-center gap-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>Ghi nhận: <strong>{audit.thoiGianTich}</strong></span>
+                              <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                              <span>Đã lưu: <strong>{audit.thoiGianTich}</strong></span>
                             </div>
                             {audit.emailThucHien && (
                               <span className="text-slate-600 bg-white/80 px-1.5 py-0.5 rounded border border-slate-200/80 text-[10px] flex items-center gap-1 font-normal">
