@@ -4,11 +4,17 @@ export interface WarningAuditRecord {
   ngay: string;
   thoiGianTich: string;
   trangThai: string;
-  loaiTrangThai: 'da_nhac_nho' | 'loi_app';
+  loaiTrangThai: 'chua_xu_ly' | 'da_nhac_nho' | 'loi_app';
   lyDoCanhBao: string;
+  soLuotCanhBao?: number;
+  daNhacNho?: boolean;
+  loiApp?: boolean;
+  thoiGianPhatHien?: string;
   nguoiXuLy?: string;
   emailThucHien?: string;
   updatedAt?: string;
+  syncedToSheet?: boolean;
+  syncError?: string;
 }
 
 export interface WarningFacilityItem {
@@ -19,6 +25,7 @@ export interface WarningFacilityItem {
 interface WarningApiResponse {
   success: boolean;
   error?: string;
+  warning?: string;
   records?: WarningAuditRecord[];
   record?: WarningAuditRecord;
   cleared?: number;
@@ -103,13 +110,29 @@ export async function saveWarningAudit(record: WarningAuditRecord): Promise<Warn
   return result.record;
 }
 
-export async function deleteWarningAudit(date: string, facility: string): Promise<void> {
-  await postWarningAction({ action: 'delete', date, facility });
+export async function syncWarningFacilitiesForDate(
+  date: string,
+  warningFacilities: WarningFacilityItem[],
+): Promise<{ records: WarningAuditRecord[]; warning?: string }> {
+  const records: WarningAuditRecord[] = warningFacilities.map(({ coSo, reasons = [] }) => ({
+    id: `${coSo}_${date}`,
+    coSo,
+    ngay: date,
+    thoiGianTich: '',
+    trangThai: 'Chưa nhận định',
+    loaiTrangThai: 'chua_xu_ly',
+    lyDoCanhBao: reasons.join('; '),
+    soLuotCanhBao: Math.max(1, reasons.length),
+    daNhacNho: false,
+    loiApp: false,
+  }));
+  const result = await postWarningAction({ action: 'sync_list', date, records });
+  return { records: result.records || [], warning: result.warning };
 }
 
-export async function clearWarningAuditsForDate(date: string): Promise<number> {
-  const result = await postWarningAction({ action: 'clear_date', date });
-  return result.cleared || 0;
+export async function resetWarningAuditsForDate(date: string): Promise<WarningAuditRecord[]> {
+  const result = await postWarningAction({ action: 'reset_date', date });
+  return result.records || [];
 }
 
 const escapeCsvCell = (value: unknown) => {
@@ -125,9 +148,13 @@ export function downloadWarningAuditsCsv(
   const headers = [
     'Ngày',
     'Cơ sở',
-    'Trạng thái xử lý',
-    'Thời gian ghi nhận',
+    'Số lượt cảnh báo',
     'Lý do cảnh báo',
+    'Đã nhắc nhở',
+    'Lỗi app',
+    'Trạng thái nhận định',
+    'Thời gian phát hiện',
+    'Thời gian ghi nhận',
     'Người xử lý',
   ];
   const rows = warningFacilities.map(({ coSo, reasons = [] }) => {
@@ -135,9 +162,13 @@ export function downloadWarningAuditsCsv(
     return [
       formatIsoToDateStr(date),
       coSo,
-      audit?.trangThai || 'Chưa xử lý',
-      audit?.thoiGianTich || '',
+      audit?.soLuotCanhBao || Math.max(1, reasons.length),
       audit?.lyDoCanhBao || reasons.join('; '),
+      audit?.loaiTrangThai === 'da_nhac_nho' ? 'Có' : 'Không',
+      audit?.loaiTrangThai === 'loi_app' ? 'Có' : 'Không',
+      audit?.trangThai || 'Chưa nhận định',
+      audit?.thoiGianPhatHien || '',
+      audit?.thoiGianTich || '',
       audit?.nguoiXuLy || '',
     ];
   });
