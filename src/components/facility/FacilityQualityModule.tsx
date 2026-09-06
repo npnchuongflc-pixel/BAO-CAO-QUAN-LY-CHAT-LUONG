@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   ReportMode, 
   HygieneReport, 
@@ -29,7 +29,9 @@ export const FacilityQualityModule: React.FC = () => {
   const [qualityReports, setQualityReports] = useState<FacilityQualityReport[]>([]);
 
   // Sync state
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(true);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
+  const isFetchingRef = useRef(false);
   const [syncErrors, setSyncErrors] = useState<Record<ReportMode, string | null>>({
     hygiene: null,
     quality: null,
@@ -73,23 +75,32 @@ export const FacilityQualityModule: React.FC = () => {
 
   // Fetch / Sync Data
   const loadData = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setIsSyncing(true);
-    const [hygRes, qualRes] = await Promise.all([
-      fetchHygieneFromSheet(),
-      fetchQualityFromSheet(),
-    ]);
+    try {
+      const [hygRes, qualRes] = await Promise.all([
+        fetchHygieneFromSheet(),
+        fetchQualityFromSheet(),
+      ]);
 
-    setHygieneReports(hygRes.data);
-    setQualityReports(qualRes.data);
-    setSyncErrors({
-      hygiene: hygRes.error || null,
-      quality: qualRes.error || null,
-    });
-    setIsSyncing(false);
+      setHygieneReports(hygRes.data);
+      setQualityReports(qualRes.data);
+      setSyncErrors({
+        hygiene: hygRes.error || null,
+        quality: qualRes.error || null,
+      });
+      setHasLoadedData(true);
+    } finally {
+      isFetchingRef.current = false;
+      setIsSyncing(false);
+    }
   }, []);
 
   useEffect(() => {
     loadData();
+    const refreshTimer = window.setInterval(loadData, 5000);
+    return () => window.clearInterval(refreshTimer);
   }, [loadData]);
 
   // Extract Month string helper from date string
@@ -520,6 +531,7 @@ export const FacilityQualityModule: React.FC = () => {
           onOpenDetailModal={(fac) => setDetailModalFacility(fac)}
           rawHygieneReports={hygieneReports}
           rawQualityReports={qualityReports}
+          isDataReady={hasLoadedData && !syncErrors[mode]}
         />
       </main>
 
