@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { FacilitySummary, ReportMode, FilterState, HygieneReport, FacilityQualityReport } from './facilityTypes';
 import { FacilityStatusModal } from './FacilityStatusModal';
 import { 
@@ -44,8 +44,8 @@ import {
   removeLocalWarningAudit,
   fetchWarningAuditsForDate,
   saveWarningAudit,
-  deleteWarningAudit,
-  clearWarningAuditsForDate,
+  syncWarningFacilitiesForDate,
+  resetWarningAuditsForDate,
   downloadWarningAuditsCsv,
   formatIsoToDateStr,
   getCurrentTimestampStr
@@ -78,6 +78,7 @@ interface SummaryDashboardProps {
   onOpenDetailModal?: (facilityName: string) => void;
   rawHygieneReports?: HygieneReport[];
   rawQualityReports?: FacilityQualityReport[];
+  isDataReady?: boolean;
 }
 
 export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
@@ -98,6 +99,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   onOpenDetailModal,
   rawHygieneReports = [],
   rawQualityReports = [],
+  isDataReady = true,
 }) => {
   const isHygiene = mode === 'hygiene';
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -374,8 +376,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [warningAudits, setWarningAudits] = useState<Record<string, WarningAuditRecord>>(() => getLocalWarningAudits());
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [isLoadingAudits, setIsLoadingAudits] = useState(false);
+  const [isAutoSyncingWarnings, setIsAutoSyncingWarnings] = useState(false);
   const [savingAuditId, setSavingAuditId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
+  const lastWarningSyncFingerprint = useRef('');
 
   useEffect(() => {
     let isActive = true;
@@ -413,6 +417,53 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     };
   }, [activeWarningDateIso]);
 
+  const warningSyncFingerprint = useMemo(() => JSON.stringify(
+    warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+  ), [warningFacilities]);
+
+  useEffect(() => {
+    if (!isDataReady || !activeWarningDateIso) return;
+    const fingerprint = `${activeWarningDateIso}|${warningSyncFingerprint}`;
+    if (lastWarningSyncFingerprint.current === fingerprint) return;
+    lastWarningSyncFingerprint.current = fingerprint;
+
+    let isActive = true;
+    setIsAutoSyncingWarnings(true);
+    syncWarningFacilitiesForDate(
+      activeWarningDateIso,
+      warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+    )
+      .then(({ records, warning }) => {
+        if (!isActive) return;
+        setWarningAudits(previous => {
+          const next = { ...previous };
+          records.forEach(record => {
+            next[record.id] = record;
+          });
+          replaceLocalWarningAudits(next);
+          return next;
+        });
+        if (warning) {
+          setSyncFeedback({
+            message: `Cảnh báo đã lưu trên website nhưng chưa ghi được vào Google Sheet: ${warning}`,
+            type: 'error',
+          });
+        }
+      })
+      .catch(error => {
+        if (!isActive) return;
+        const message = error instanceof Error ? error.message : 'Không thể tự ghi cảnh báo';
+        setSyncFeedback({ message: `Chưa tự ghi được cảnh báo: ${message}`, type: 'error' });
+      })
+      .finally(() => {
+        if (isActive) setIsAutoSyncingWarnings(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeWarningDateIso, isDataReady, warningFacilities, warningSyncFingerprint]);
+
   const handleClearAllWarningChecks = async () => {
     if (warningFacilities.length === 0) {
       setSyncFeedback({
@@ -425,23 +476,23 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
     setIsClearingAll(true);
     try {
-      const cleared = await clearWarningAuditsForDate(activeWarningDateIso);
+      const resetRecords = await resetWarningAuditsForDate(activeWarningDateIso);
       setWarningAudits(previous => {
-        const next: Record<string, WarningAuditRecord> = {};
-        (Object.entries(previous) as Array<[string, WarningAuditRecord]>).forEach(([key, record]) => {
-          if (record.ngay !== activeWarningDateIso) next[key] = record;
+        const next = { ...previous };
+        resetRecords.forEach(record => {
+          next[record.id] = record;
         });
         replaceLocalWarningAudits(next);
         return next;
       });
       setSyncFeedback({
-        message: `Đã xóa ${cleared} ghi nhận của ngày ${activeWarningDisplayStr} trên hệ thống.`,
+        message: `Đã bỏ ${resetRecords.length} nhận định. Các dòng cảnh báo vẫn được giữ để thống kê.`,
         type: 'success'
       });
       setTimeout(() => setSyncFeedback(null), 5000);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể xóa dữ liệu';
-      setSyncFeedback({ message: `Xóa chưa thành công: ${message}`, type: 'error' });
+      const message = error instanceof Error ? error.message : 'Không thể đặt lại nhận định';
+      setSyncFeedback({ message: `Đặt lại chưa thành công: ${message}`, type: 'error' });
     } finally {
       setIsClearingAll(false);
     }
@@ -454,40 +505,36 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     setSavingAuditId(auditId);
 
     try {
-      if (existing?.loaiTrangThai === targetType) {
-        removeLocalWarningAudit(auditId);
-        setWarningAudits(previous => {
-          const next = { ...previous };
-          delete next[auditId];
-          return next;
-        });
-        await deleteWarningAudit(activeWarningDateIso, coSo);
-        setSyncFeedback({ message: `${coSo}: đã bỏ trạng thái và lưu tự động.`, type: 'info' });
-      } else {
-        const label = targetType === 'da_nhac_nho'
-          ? 'Đã xác minh và nhắc nhở'
-          : 'Đã xác minh do lỗi app';
-        const newRecord: WarningAuditRecord = {
-          id: auditId,
-          coSo,
-          ngay: activeWarningDateIso,
-          thoiGianTich: getCurrentTimestampStr(),
-          trangThai: label,
-          loaiTrangThai: targetType,
-          lyDoCanhBao: reasons.join('; '),
-          nguoiXuLy: 'Quản lý kiểm tra',
-          emailThucHien: ''
-        };
-        saveLocalWarningAudit(newRecord);
-        setWarningAudits(previous => ({ ...previous, [auditId]: newRecord }));
-        const savedRecord = await saveWarningAudit(newRecord);
-        saveLocalWarningAudit(savedRecord);
-        setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
-        setSyncFeedback({
-          message: `${coSo}: ${label}. Đã lưu tự động trên hệ thống.`,
-          type: 'success'
-        });
-      }
+      const nextType = existing?.loaiTrangThai === targetType ? 'chua_xu_ly' : targetType;
+      const label = nextType === 'da_nhac_nho'
+        ? 'Đã nhắc nhở'
+        : nextType === 'loi_app'
+        ? 'Lỗi app'
+        : 'Chưa nhận định';
+      const newRecord: WarningAuditRecord = {
+        id: auditId,
+        coSo,
+        ngay: activeWarningDateIso,
+        thoiGianPhatHien: existing?.thoiGianPhatHien,
+        thoiGianTich: nextType === 'chua_xu_ly' ? '' : getCurrentTimestampStr(),
+        trangThai: label,
+        loaiTrangThai: nextType,
+        lyDoCanhBao: reasons.join('; '),
+        soLuotCanhBao: Math.max(1, reasons.length),
+        daNhacNho: nextType === 'da_nhac_nho',
+        loiApp: nextType === 'loi_app',
+        nguoiXuLy: nextType === 'chua_xu_ly' ? '' : 'Quản lý kiểm tra',
+        emailThucHien: ''
+      };
+      saveLocalWarningAudit(newRecord);
+      setWarningAudits(previous => ({ ...previous, [auditId]: newRecord }));
+      const savedRecord = await saveWarningAudit(newRecord);
+      saveLocalWarningAudit(savedRecord);
+      setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
+      setSyncFeedback({
+        message: `${coSo}: ${label}. Đã cập nhật hai cột nhận định.`,
+        type: nextType === 'chua_xu_ly' ? 'info' : 'success'
+      });
       setTimeout(() => setSyncFeedback(null), 4000);
     } catch (error) {
       if (existing) {
@@ -520,6 +567,15 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     });
     setTimeout(() => setSyncFeedback(null), 3000);
   };
+
+  const totalWarningReasons = warningFacilities.reduce(
+    (total, item) => total + Math.max(1, item.reasons.length),
+    0,
+  );
+  const unclassifiedWarningCount = warningFacilities.filter(item => {
+    const audit = warningAudits[`${item.coSo}_${activeWarningDateIso}`];
+    return !audit || audit.loaiTrangThai === 'chua_xu_ly';
+  }).length;
 
   return (
     <section className="bg-white text-slate-800 rounded-2xl p-5 sm:p-6 mb-8 shadow-xs border border-slate-200/90">
@@ -682,7 +738,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                       CẢNH BÁO CƠ SỞ CẦN THEO DÕI
                     </h3>
                     <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-200/90 text-amber-900 border border-amber-300/80">
-                      {warningFacilities.length}
+                      {warningFacilities.length} cơ sở
                     </span>
                   </div>
                 </div>
@@ -717,7 +773,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
               {/* Row 2: Action Toolbar with balanced buttons */}
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <div className="text-[11px] text-emerald-800 flex items-center gap-1.5 font-semibold">
-                  {isLoadingAudits ? (
+                  {isLoadingAudits || isAutoSyncingWarnings ? (
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                   ) : (
                     <Cloud className="w-3.5 h-3.5" />
@@ -725,7 +781,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                   <span>
                     {isLoadingAudits
                       ? 'Đang tải trạng thái đã lưu...'
-                      : 'Tích trạng thái là lưu tự động, không cần đồng bộ thủ công'}
+                      : isAutoSyncingWarnings
+                      ? 'Đang tự ghi toàn bộ cảnh báo...'
+                      : `Đã tự ghi ${warningFacilities.length} dòng / ${totalWarningReasons} lỗi • ${unclassifiedWarningCount} chưa nhận định`}
                   </span>
                 </div>
 
@@ -746,10 +804,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     disabled={isClearingAll || isLoadingAudits || warningFacilities.length === 0}
                     onClick={handleClearAllWarningChecks}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 disabled:opacity-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Xóa toàn bộ trạng thái đã ghi nhận của ngày đang xem"
+                    title="Bỏ nhận định nhưng vẫn giữ nguyên các dòng cảnh báo để thống kê"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{isClearingAll ? 'Đang xóa...' : 'Xóa tất cả tích'}</span>
+                    <span>{isClearingAll ? 'Đang đặt lại...' : 'Bỏ tất cả nhận định'}</span>
                   </button>
                 </div>
               </div>
@@ -876,7 +934,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                       {/* Bottom Manager Action Row: Checkboxes neatly framed */}
                       <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 mt-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          {/* Ô vuông 1: Đã xác minh và nhắc nhở */}
+                          {/* Cột nhận định 1: Đã nhắc nhở */}
                           <label 
                             onClick={(e) => e.stopPropagation()}
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold select-none transition-all border ${
@@ -886,7 +944,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                                 ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-1 ring-emerald-500'
                                 : 'bg-white hover:bg-emerald-50 text-slate-700 border-slate-300 hover:border-emerald-400'
                             }`}
-                            title="Tích vào: Đã xác minh và nhắc nhở cơ sở"
+                            title="Đánh dấu cơ sở đã được nhắc nhở"
                           >
                             <input
                               type="checkbox"
@@ -895,10 +953,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                               onChange={() => handleToggleWarningAudit(item.coSo, 'da_nhac_nho', item.reasons)}
                               className="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer disabled:cursor-wait"
                             />
-                            <span>Đã xác minh và nhắc nhở</span>
+                            <span>Đã nhắc nhở</span>
                           </label>
 
-                          {/* Ô vuông 2: Đã xác minh do lỗi app */}
+                          {/* Cột nhận định 2: Lỗi app */}
                           <label 
                             onClick={(e) => e.stopPropagation()}
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold select-none transition-all border ${
@@ -908,7 +966,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                                 ? 'bg-rose-600 text-white border-rose-700 shadow-xs ring-1 ring-rose-500'
                                 : 'bg-white hover:bg-rose-50 text-slate-700 border-slate-300 hover:border-rose-400'
                             }`}
-                            title="Tích vào: Đã xác minh do lỗi app"
+                            title="Đánh dấu cảnh báo phát sinh do lỗi app"
                           >
                             <input
                               type="checkbox"
@@ -917,7 +975,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                               onChange={() => handleToggleWarningAudit(item.coSo, 'loi_app', item.reasons)}
                               className="w-3.5 h-3.5 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer disabled:cursor-wait"
                             />
-                            <span>Đã xác minh do lỗi app</span>
+                            <span>Lỗi app</span>
                           </label>
                         </div>
 
@@ -927,7 +985,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
                             <span>Đang lưu...</span>
                           </div>
-                        ) : audit ? (
+                        ) : audit && audit.loaiTrangThai !== 'chua_xu_ly' ? (
                           <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-600 font-medium bg-slate-100/90 px-2.5 py-1 rounded-lg border border-slate-200">
                             <div className="flex items-center gap-1">
                               <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -941,7 +999,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-400 italic hidden sm:inline">Chưa tích kiểm tra</span>
+                          <div className="flex items-center gap-1.5 text-[11px] text-amber-800 font-semibold bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                            <Cloud className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>Đã ghi cảnh báo • Chưa nhận định</span>
+                          </div>
                         )}
                       </div>
                     </div>
