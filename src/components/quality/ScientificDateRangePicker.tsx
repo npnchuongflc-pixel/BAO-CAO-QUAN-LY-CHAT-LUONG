@@ -1,11 +1,13 @@
 import React, { useMemo } from 'react';
 import { Calendar, CalendarDays, X, ArrowRight, RotateCcw } from 'lucide-react';
 import { TeachingFilterState, TeachingAuditItem } from '../../types';
+import { getCurrentMonthKey } from '../../utils/dateUtils';
 
 interface ScientificDateRangePickerProps {
   filters: TeachingFilterState;
   onFilterChange: (updates: Partial<TeachingFilterState>) => void;
   rawData?: TeachingAuditItem[];
+  currentMonthKey?: string;
   className?: string;
 }
 
@@ -13,19 +15,21 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
   filters,
   onFilterChange,
   rawData,
+  currentMonthKey = getCurrentMonthKey(),
   className = '',
 }) => {
   const isCustomDate = Boolean(filters.startDate || filters.endDate);
   const isAll = !isCustomDate && filters.month === 'all';
-  const isCurrentMonth = !isCustomDate && !isAll;
+  const isCurrentMonth =
+    !isCustomDate && (filters.month === 'current' || filters.month === currentMonthKey);
 
-  // Calculate quick numbers for current month (08/2026)
+  // Calculate quick numbers for the real calendar month.
   const currentMonthMetrics = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
     let count = 0;
     let viol = 0;
     rawData.forEach((item) => {
-      if (item.month === '08/2026' || item.month === 'current') {
+      if (item.month === currentMonthKey || item.month === 'current') {
         const shifts = item.shiftCount || 1;
         count += shifts;
         if (item.result === 'Vi phạm') viol += shifts;
@@ -36,12 +40,12 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
       violations: viol,
       passRate: count > 0 ? (((count - viol) / count) * 100).toFixed(1) : '100',
     };
-  }, [rawData]);
+  }, [rawData, currentMonthKey]);
 
   // Handle Quick Select: Current Month (Always default)
   const handleSelectCurrentMonth = () => {
     onFilterChange({
-      month: '08/2026',
+      month: 'current',
       startDate: undefined,
       endDate: undefined,
     });
@@ -86,10 +90,10 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
           }`}
-          title="Lọc dữ liệu tháng hiện tại (08/2026)"
+          title={`Lọc dữ liệu tháng hiện tại (${currentMonthKey})`}
         >
           <CalendarDays className="w-3.5 h-3.5 shrink-0" />
-          <span>Tháng hiện tại (08/2026)</span>
+          <span>Tháng hiện tại ({currentMonthKey})</span>
           {currentMonthMetrics && (
             <span
               className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5 ${
@@ -111,7 +115,7 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
               ? 'bg-blue-600 text-white shadow-xs'
               : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
           }`}
-          title="Xem toàn bộ dữ liệu (từ tháng 01 đến tháng 08)"
+          title="Xem toàn bộ dữ liệu"
         >
           <RotateCcw className="w-3.5 h-3.5 shrink-0" />
           <span>Toàn bộ</span>

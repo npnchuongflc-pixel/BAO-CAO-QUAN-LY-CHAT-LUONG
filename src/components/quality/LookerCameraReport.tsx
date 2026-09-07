@@ -66,6 +66,7 @@ interface LookerCameraReportProps {
   onOpenEvidence: (url: string, title: string) => void;
   onSelectTeacherModal: (teacherName: string) => void;
   onOpenAiModal: () => void;
+  currentMonthKey: string;
 }
 
 export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
@@ -78,6 +79,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   onOpenEvidence,
   onSelectTeacherModal,
   onOpenAiModal,
+  currentMonthKey,
 }) => {
   // Local state for table pagination
   const [teacherPage, setTeacherPage] = useState<number>(1);
@@ -197,7 +199,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
     return totalAudits > 0 ? ((totalViol / totalAudits) * 100).toFixed(1) : '0.0';
   }, [allMonthlySubjectViolations]);
 
-  // Current Month (08/2026) dedicated standalone numbers
+  // Current calendar month dedicated standalone numbers
   const currentMonthStats = useMemo(() => {
     let totalShifts = 0;
     let totalAudits = 0;
@@ -208,7 +210,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
     let artViol = 0;
 
     rawData.forEach((item) => {
-      if (item.month === '08/2026' || item.month === 'current') {
+      if (item.month === currentMonthKey || item.month === 'current') {
         const shifts = item.shiftCount || 1;
         totalShifts += shifts;
         totalAudits += 1;
@@ -233,7 +235,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
       artViol,
       passRate,
     };
-  }, [rawData]);
+  }, [rawData, currentMonthKey]);
 
   // Paginated teacher violations list
   const totalTeacherPages = Math.max(1, Math.ceil((summary.teacherViolationsList?.length || 0) / teachersPerPage));
@@ -344,8 +346,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
     ];
 
     // Monthly average resolution time trend
-    const months = ['01/2026', '02/2026', '03/2026', '04/2026', '05/2026', '06/2026', '07/2026', '08/2026'];
-    const monthlyResolutionTrend = months.map((m) => {
+    const monthlyResolutionTrend = monthsList.map((m) => {
       const monthViols = rawData.filter((i) => i.month === m && (i.result === 'Vi phạm' || i.status === 'Đã xử lý'));
       let mTotalDays = 0;
       let mCount = 0;
@@ -383,7 +384,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
       distributionData,
       monthlyResolutionTrend,
     };
-  }, [filteredData, rawData]);
+  }, [filteredData, rawData, monthsList]);
 
   // Colors for charts matching Looker Studio exactly
   const VIOLATION_COLORS: Record<string, string> = {
@@ -416,12 +417,24 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
       const [eY, eM, eD] = filters.endDate.split('-');
       return `Đến ${Number(eD)}/${Number(eM)}/${eY}`;
     }
-    if (filters.month === 'current' || filters.month === '08/2026') return 'Tháng 08/2026 (Hiện tại)';
-    if (filters.month === '07/2026') return '1 thg 7, 2026 - 31 thg 7, 2026';
-    if (filters.month === '06/2026') return '1 thg 6, 2026 - 30 thg 6, 2026';
-    if (filters.month && filters.month !== 'all') return `Tháng ${filters.month}`;
-    return '1 thg 1, 2026 - 26 thg 8, 2026 (Toàn bộ)';
-  }, [filters.month, filters.startDate, filters.endDate]);
+    if (filters.month === 'current' || filters.month === currentMonthKey) {
+      return `Tháng ${currentMonthKey} (Hiện tại)`;
+    }
+    if (filters.month && filters.month !== 'all') {
+      const [month, year] = filters.month.split('/').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      return `1 thg ${month}, ${year} - ${lastDay} thg ${month}, ${year}`;
+    }
+
+    const validDates = rawData
+      .map((item) => item.date)
+      .filter((date): date is Date => Boolean(date) && !Number.isNaN(date.getTime()));
+    if (validDates.length === 0) return 'Toàn bộ thời gian';
+
+    const firstDate = new Date(Math.min(...validDates.map((date) => date.getTime())));
+    const lastDate = new Date(Math.max(...validDates.map((date) => date.getTime())));
+    return `${firstDate.toLocaleDateString('vi-VN')} - ${lastDate.toLocaleDateString('vi-VN')} (Toàn bộ)`;
+  }, [filters.month, filters.startDate, filters.endDate, currentMonthKey, rawData]);
 
   return (
     <div className="looker-studio-container bg-[#f0f2f5] p-3 sm:p-5 rounded-xl border border-[#dadce0] font-sans text-slate-900 shadow-sm space-y-4">
@@ -504,6 +517,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               filters={filters}
               onFilterChange={onFilterChange}
               rawData={rawData}
+              currentMonthKey={currentMonthKey}
             />
           </div>
 

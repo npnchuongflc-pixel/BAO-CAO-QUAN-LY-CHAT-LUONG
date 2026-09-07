@@ -38,6 +38,7 @@ import { AuditDetailModal } from './AuditDetailModal';
 import { EvidenceModal } from './EvidenceModal';
 import { TeachingAiModal } from './TeachingAiModal';
 import { TeacherViolationDetailModal } from './TeacherViolationDetailModal';
+import { getCurrentMonthKey } from '../../utils/dateUtils';
 
 const INITIAL_FILTERS: TeachingFilterState = {
   month: 'current',
@@ -61,6 +62,7 @@ export const TeachingQualityTab: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<TeachingFilterState>(INITIAL_FILTERS);
   const [viewMode, setViewMode] = useState<ReportViewMode>('looker-camera');
+  const [currentMonthKey, setCurrentMonthKey] = useState<string>(() => getCurrentMonthKey());
 
   // Modals state
   const [selectedAuditItem, setSelectedAuditItem] = useState<TeachingAuditItem | null>(null);
@@ -88,10 +90,29 @@ export const TeachingQualityTab: React.FC = () => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const refreshCalendarMonth = () => {
+      const nextMonthKey = getCurrentMonthKey();
+      setCurrentMonthKey((previousMonthKey) =>
+        previousMonthKey === nextMonthKey ? previousMonthKey : nextMonthKey
+      );
+    };
+
+    const intervalId = window.setInterval(refreshCalendarMonth, 60_000);
+    window.addEventListener('focus', refreshCalendarMonth);
+    document.addEventListener('visibilitychange', refreshCalendarMonth);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCalendarMonth);
+      document.removeEventListener('visibilitychange', refreshCalendarMonth);
+    };
+  }, []);
+
   // Filtered dataset
   const filteredData = useMemo(() => {
-    return filterTeachingData(rawData, filters);
-  }, [rawData, filters]);
+    return filterTeachingData(rawData, filters, currentMonthKey);
+  }, [rawData, filters, currentMonthKey]);
 
   // Computed summary metrics
   const summary: TeachingQualitySummary = useMemo(() => {
@@ -165,6 +186,7 @@ export const TeachingQualityTab: React.FC = () => {
           onOpenEvidence={handleOpenEvidence}
           onSelectTeacherModal={handleSelectTeacherModal}
           onOpenAiModal={() => setIsAiModalOpen(true)}
+          currentMonthKey={currentMonthKey}
         />
       )}
 
@@ -213,6 +235,7 @@ export const TeachingQualityTab: React.FC = () => {
         teacherName={selectedTeacherNameForModal}
         allData={rawData}
         currentFilters={filters}
+        currentMonthKey={currentMonthKey}
         onClose={() => setSelectedTeacherNameForModal(null)}
         onOpenEvidence={handleOpenEvidence}
         onOpenSingleAuditDetail={(item) => setSelectedAuditItem(item)}

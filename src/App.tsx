@@ -76,6 +76,41 @@ export default function App() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    let previousMonthRange = getCurrentMonthRange();
+
+    const refreshCalendarMonth = () => {
+      const nextMonthRange = getCurrentMonthRange();
+      if (nextMonthRange.start === previousMonthRange.start) return;
+
+      setFilters((currentFilters) => {
+        const isStillUsingCurrentMonth =
+          currentFilters.start === previousMonthRange.start &&
+          currentFilters.end === previousMonthRange.end;
+
+        return isStillUsingCurrentMonth
+          ? {
+              ...currentFilters,
+              start: nextMonthRange.start,
+              end: nextMonthRange.end
+            }
+          : currentFilters;
+      });
+
+      previousMonthRange = nextMonthRange;
+    };
+
+    const intervalId = window.setInterval(refreshCalendarMonth, 60_000);
+    window.addEventListener('focus', refreshCalendarMonth);
+    document.addEventListener('visibilitychange', refreshCalendarMonth);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCalendarMonth);
+      document.removeEventListener('visibilitychange', refreshCalendarMonth);
+    };
+  }, []);
+
   // Unique filter dropdown options
   const filterOptions = useMemo(() => {
     const facilities = (Array.from(new Set(data.map((e) => e.facility).filter(Boolean))) as string[]).sort((a, b) =>

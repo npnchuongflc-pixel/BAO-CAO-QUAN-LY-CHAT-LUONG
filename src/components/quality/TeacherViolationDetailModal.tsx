@@ -30,11 +30,13 @@ import {
   LabelList
 } from 'recharts';
 import { TeachingAuditItem, TeachingFilterState } from '../../types';
+import { getCurrentMonthKey, getYearToCurrentMonthKeys } from '../../utils/dateUtils';
 
 interface TeacherViolationDetailModalProps {
   teacherName: string | null;
   allData: TeachingAuditItem[];
   currentFilters: TeachingFilterState;
+  currentMonthKey?: string;
   onClose: () => void;
   onOpenEvidence: (url: string, title: string) => void;
   onOpenSingleAuditDetail?: (item: TeachingAuditItem) => void;
@@ -44,6 +46,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
   teacherName,
   allData,
   currentFilters,
+  currentMonthKey = getCurrentMonthKey(),
   onClose,
   onOpenEvidence,
   onOpenSingleAuditDetail,
@@ -62,7 +65,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
     });
 
     if (set.size === 0) {
-      return ['01/2026', '02/2026', '03/2026', '04/2026', '05/2026', '06/2026', '07/2026', '08/2026'];
+      return getYearToCurrentMonthKeys();
     }
 
     return Array.from(set).sort((a, b) => {
@@ -130,13 +133,13 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
         return false;
       }
       if (currentFilters.month === 'current') {
-        if (item.month !== '08/2026' && item.month !== 'current') return false;
+        if (item.month !== currentMonthKey && item.month !== 'current') return false;
       } else if (currentFilters.month !== 'all') {
         if (item.month !== currentFilters.month) return false;
       }
       return true;
     });
-  }, [allData, teacherName, currentFilters.month]);
+  }, [allData, teacherName, currentFilters.month, currentMonthKey]);
 
   // Essential summary stats for active period
   const teacherProfile = useMemo(() => {
@@ -200,7 +203,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
 
   const timeframeLabel =
     currentFilters.month === 'current'
-      ? 'Tháng 08/2026 (Kỳ hiện tại)'
+      ? `Tháng ${currentMonthKey} (Kỳ hiện tại)`
       : currentFilters.month === 'all'
       ? 'Toàn bộ thời gian'
       : `Tháng ${currentFilters.month}`;

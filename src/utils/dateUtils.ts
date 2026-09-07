@@ -54,3 +54,15 @@ export function formatDateToShortDdMm(isoDateStr: string): string {
   }
   return isoDateStr;
 }
+
+export function getCurrentMonthKey(referenceDate = new Date()): string {
+  const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
+  return `${month}/${referenceDate.getFullYear()}`;
+}
+
+export function getYearToCurrentMonthKeys(referenceDate = new Date()): string[] {
+  const year = referenceDate.getFullYear();
+  return Array.from({ length: referenceDate.getMonth() + 1 }, (_, index) =>
+    `${String(index + 1).padStart(2, '0')}/${year}`
+  );
+}

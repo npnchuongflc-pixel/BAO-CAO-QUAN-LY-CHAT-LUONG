@@ -9,6 +9,7 @@ import {
   MonthlyTeachingTrend
 } from '../types';
 import { parseDate, parseString } from './sheetService';
+import { getCurrentMonthKey } from '../utils/dateUtils';
 import Papa from 'papaparse';
 
 export const TEACHING_SPREADSHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
@@ -281,25 +282,9 @@ export async function fetchTeachingData(): Promise<TeachingAuditItem[]> {
 // Filter dataset based on current filter state
 export function filterTeachingData(
   items: TeachingAuditItem[],
-  filters: TeachingFilterState
+  filters: TeachingFilterState,
+  currentMonthKey = getCurrentMonthKey()
 ): TeachingAuditItem[] {
-  // Find current/latest month string from valid items
-  let latestMonth = '08/2026';
-  const monthSet = new Set<string>();
-  for (const item of items) {
-    if (item.month && /^\d{2}\/\d{4}$/.test(item.month) && !item.month.includes('1899')) {
-      monthSet.add(item.month);
-    }
-  }
-  if (monthSet.size > 0) {
-    const sorted = Array.from(monthSet).sort((a, b) => {
-      const [mA, yA] = a.split('/').map(Number);
-      const [mB, yB] = b.split('/').map(Number);
-      return (yA * 100 + mA) - (yB * 100 + mB);
-    });
-    latestMonth = sorted[sorted.length - 1];
-  }
-
   return items.filter((item) => {
     // Custom Date Range filter (startDate & endDate in YYYY-MM-DD)
     if (filters.startDate || filters.endDate) {
@@ -319,7 +304,7 @@ export function filterTeachingData(
     } else {
       // Month filter (or 'current') only applies when custom date range is not specified
       if (filters.month === 'current') {
-        if (item.month !== latestMonth && item.month !== '08/2026') {
+        if (item.month !== currentMonthKey && item.month !== 'current') {
           return false;
         }
       } else if (filters.month && filters.month !== 'all') {
