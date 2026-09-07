@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardCheck,
   ExternalLink,
   Eye,
@@ -61,6 +63,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   dateDisplay,
   reports,
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [selectedFacility, setSelectedFacility] = useState<string | null>(null);
   const [filter, setFilter] = useState<ImageFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -276,8 +279,8 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   return (
     <div className="my-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className={`flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 ${isExpanded ? 'border-b border-slate-200' : ''}`}>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-[#1A3A5C]">
               <ClipboardCheck className="h-4 w-4 text-sky-700" />
@@ -287,24 +290,45 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
               {dateDisplay}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-500">
-            {facilityRows.length} cơ sở · {totalImages} ảnh · đạt {reviewSummary.approved} · không đạt {reviewSummary.rejected} · chờ {reviewSummary.pending}. Nhấn “Xem” để kiểm duyệt.
-          </p>
+          {isExpanded && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {facilityRows.length} cơ sở · {totalImages} ảnh · đạt {reviewSummary.approved} · không đạt {reviewSummary.rejected} · chờ {reviewSummary.pending}. Nhấn “Xem” để kiểm duyệt.
+            </p>
+          )}
         </div>
 
-        <label className="flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:w-64">
-          <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          <input
-            value={searchQuery}
-            onChange={event => setSearchQuery(event.target.value)}
-            placeholder="Tìm tên cơ sở..."
-            className="min-w-0 flex-1 bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
-          />
-        </label>
+        <div className={`flex items-center gap-2 ${isExpanded ? 'w-full sm:w-auto' : ''}`}>
+          {isExpanded && (
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:w-64 sm:flex-none">
+              <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <input
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Tìm tên cơ sở..."
+                className="min-w-0 flex-1 bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+              />
+            </label>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsExpanded(current => !current)}
+            aria-expanded={isExpanded}
+            aria-controls="yesterday-image-review-content"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-700 transition hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-200"
+          >
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+            {isExpanded ? 'Thu gọn' : 'Mở rộng'}
+          </button>
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[1050px] text-left text-xs text-slate-700">
+      {isExpanded && (
+        <div id="yesterday-image-review-content" className="overflow-x-auto">
+          <table className="w-full min-w-[1050px] text-left text-xs text-slate-700">
           <thead className="border-b border-slate-200 bg-white text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 text-center">STT</th>
@@ -400,8 +424,9 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
               );
             })}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
+      )}
 
       {selectedRow && (
         <div
