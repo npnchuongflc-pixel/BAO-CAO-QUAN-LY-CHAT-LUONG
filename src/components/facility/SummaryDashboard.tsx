@@ -1047,6 +1047,27 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                       <Cell key={`cell-${index}`} fill={entry.color} stroke="#ffffff" strokeWidth={2} />
                     ))}
                   </Pie>
+                  <text
+                    x="50%"
+                    y="46%"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    aria-label={`Tổng ${activeFacilitiesCount} cơ sở đã thực hiện`}
+                  >
+                    <tspan
+                      x="50%"
+                      className="fill-slate-900 text-[30px] font-black"
+                    >
+                      {activeFacilitiesCount}
+                    </tspan>
+                    <tspan
+                      x="50%"
+                      dy="1.75em"
+                      className="fill-slate-500 text-[10px] font-bold uppercase tracking-wider"
+                    >
+                      Tổng cơ sở
+                    </tspan>
+                  </text>
                   <RechartsTooltip 
                     contentStyle={{ 
                       backgroundColor: '#ffffff', 
