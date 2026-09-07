@@ -24,6 +24,16 @@ import { Sidebar, ReportTabId, REPORT_GROUPS } from './components/Sidebar';
 import { TeachingQualityTab } from './components/quality/TeachingQualityTab';
 import { FacilityQualityModule } from './components/facility/FacilityQualityModule';
 
+function getCurrentMonthRange(referenceDate = new Date()) {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+
+  return {
+    start: formatDateInput(new Date(year, month, 1)),
+    end: formatDateInput(new Date(year, month + 1, 0))
+  };
+}
+
 export default function App() {
   const [data, setData] = useState<SheetRowItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -35,12 +45,16 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
-  const [filters, setFilters] = useState<FilterState>({
-    start: '',
-    end: '',
-    facility: 'Tất cả',
-    subject: 'Tất cả',
-    course: 'Tất cả'
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const currentMonth = getCurrentMonthRange();
+
+    return {
+      start: currentMonth.start,
+      end: currentMonth.end,
+      facility: 'Tất cả',
+      subject: 'Tất cả',
+      course: 'Tất cả'
+    };
   });
   const [sortField, setSortField] = useState<string>('performance');
 
@@ -50,20 +64,6 @@ export default function App() {
     try {
       const items = await fetchGoogleSheetData();
       setData(items);
-
-      const allDates = items
-        .flatMap((e) => [e.sentAt, e.responseAt])
-        .filter((d): d is Date => !!d);
-
-      const latest = allDates.length
-        ? new Date(Math.max(...allDates.map((d) => d.getTime())))
-        : new Date();
-
-      setFilters((prev) => ({
-        ...prev,
-        start: prev.start || formatDateInput(new Date(latest.getFullYear(), latest.getMonth(), 1)),
-        end: prev.end || formatDateInput(latest)
-      }));
       setSyncTime(new Date());
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Không thể tải dữ liệu.');
@@ -100,16 +100,18 @@ export default function App() {
   // Preset Date Selection
   const handlePreset = useCallback(
     (preset: 'month' | '30' | '90' | 'year') => {
-      const allDates = data
-        .flatMap((e) => [e.sentAt, e.responseAt])
-        .filter((d): d is Date => !!d);
-      const anchor = allDates.length
-        ? new Date(Math.max(...allDates.map((d) => d.getTime())))
-        : new Date();
+      const anchor = new Date();
       const start = new Date(anchor);
+      const end = new Date(anchor);
 
       if (preset === 'month') {
-        start.setDate(1);
+        const currentMonth = getCurrentMonthRange(anchor);
+        setFilters((prev) => ({
+          ...prev,
+          start: currentMonth.start,
+          end: currentMonth.end
+        }));
+        return;
       } else if (preset === '30') {
         start.setDate(start.getDate() - 29);
       } else if (preset === '90') {
@@ -121,15 +123,19 @@ export default function App() {
       setFilters((prev) => ({
         ...prev,
         start: formatDateInput(start),
-        end: formatDateInput(anchor)
+        end: formatDateInput(end)
       }));
     },
-    [data]
+    []
   );
 
   const handleResetFilters = useCallback(() => {
+    const currentMonth = getCurrentMonthRange();
+
     setFilters((prev) => ({
       ...prev,
+      start: currentMonth.start,
+      end: currentMonth.end,
       facility: 'Tất cả',
       subject: 'Tất cả',
       course: 'Tất cả'
