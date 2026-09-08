@@ -251,7 +251,9 @@ export async function syncWarningsToGoogleSheet(
   });
 
   const targetDateStr = formatIsoToDateStr(date);
-  const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
+  const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
+  const customUrl = typeof window !== 'undefined' ? localStorage.getItem('custom_new_sheet_apps_script_url') : null;
+  const targetScriptUrl = customUrl?.trim() || defaultAppsScriptUrl;
 
   // 1. Thử gửi qua server backend nếu có
   try {
@@ -260,13 +262,21 @@ export async function syncWarningsToGoogleSheet(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date: targetDateStr,
+        scriptUrl: targetScriptUrl,
         records,
       }),
     });
 
     if (response.ok) {
-      const result = await response.json().catch(() => null);
-      if (result?.success) return result;
+      const text = await response.text().catch(() => '');
+      if (text) {
+        try {
+          const result = JSON.parse(text);
+          if (result?.success) return result;
+        } catch {
+          // ignore non-json
+        }
+      }
     }
   } catch (apiErr) {
     console.warn('API backend không phản hồi (có thể đang chạy trên host tĩnh Vercel/Netlify), kích hoạt fallback gửi trực tiếp Apps Script:', apiErr);
@@ -274,7 +284,7 @@ export async function syncWarningsToGoogleSheet(
 
   // 2. Fallback trực tiếp tới Google Apps Script (Hỗ trợ khi deploy frontend lên Vercel/Netlify/GitHub Pages)
   try {
-    const directResponse = await fetch(defaultAppsScriptUrl, {
+    const directResponse = await fetch(targetScriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
@@ -287,13 +297,22 @@ export async function syncWarningsToGoogleSheet(
       }),
     });
 
-    const directResult = await directResponse.json().catch(() => null);
-    if (directResponse.ok && (directResult?.success || directResult?.status === 'ok')) {
-      return {
-        success: true,
-        message: directResult?.message || `Đã đổ thành công ${records.length} cơ sở cảnh báo sang sheet "nhắc nhở"!`,
-        syncedCount: records.length,
-      };
+    const text = await directResponse.text().catch(() => '');
+    if (text) {
+      try {
+        const directResult = JSON.parse(text);
+        if (directResponse.ok && (directResult?.success || directResult?.status === 'ok')) {
+          return {
+            success: true,
+            message: directResult?.message || `Đã đổ chính xác ${records.length} cơ sở cảnh báo sang sheet "nhắc nhở"!`,
+            syncedCount: records.length,
+          };
+        }
+      } catch {
+        if (text.includes('Page not found') || text.includes('unable to open the file') || text.includes('accounts.google.com')) {
+          throw new Error("Link Apps Script chưa mở quyền công khai ('Bất kỳ ai' / Anyone) hoặc URL chưa đúng.");
+        }
+      }
     }
   } catch (directErr: any) {
     throw new Error(directErr?.message || 'Không thể kết nối Google Apps Script.');

@@ -486,16 +486,10 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           next[record.id] = record;
         });
         replaceLocalWarningAudits(next);
-        // Background sync to sheet "nhắc nhở"
-        syncWarningsToGoogleSheet(
-          activeWarningDateIso,
-          warningFacilities.map(({ coSo: c, reasons: r }) => ({ coSo: c, reasons: r })),
-          next
-        ).catch(() => {});
         return next;
       });
       setSyncFeedback({
-        message: `Đã bỏ ${resetRecords.length} nhận định. Các dòng cảnh báo vẫn được giữ để thống kê.`,
+        message: `Đã bỏ ${resetRecords.length} nhận định. Hãy bấm "Đổ vào sheet nhắc nhở" nếu bạn muốn cập nhật lên Google Sheet.`,
         type: 'success'
       });
       setTimeout(() => setSyncFeedback(null), 5000);
@@ -540,19 +534,12 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       const savedRecord = await saveWarningAudit(newRecord);
       saveLocalWarningAudit(savedRecord);
       setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
-      
-      // Background sync to sheet "nhắc nhở"
-      syncWarningsToGoogleSheet(
-        activeWarningDateIso,
-        warningFacilities.map(({ coSo: c, reasons: r }) => ({ coSo: c, reasons: r })),
-        { ...warningAudits, [auditId]: savedRecord }
-      ).catch(() => {});
 
       setSyncFeedback({
-        message: `${coSo}: ${label}. Đã cập nhật hai cột nhận định.`,
+        message: `${coSo}: ${label}. Hãy bấm nút "Đổ vào sheet nhắc nhở" khi hoàn tất để cập nhật Google Sheet.`,
         type: nextType === 'chua_xu_ly' ? 'info' : 'success'
       });
-      setTimeout(() => setSyncFeedback(null), 4000);
+      setTimeout(() => setSyncFeedback(null), 3500);
     } catch (error) {
       if (existing) {
         saveLocalWarningAudit(existing);
@@ -832,8 +819,8 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     {isLoadingAudits
                       ? 'Đang tải trạng thái đã lưu...'
                       : isAutoSyncingWarnings
-                      ? 'Đang tự ghi toàn bộ cảnh báo...'
-                      : `Đã tự ghi ${warningFacilities.length} dòng / ${totalWarningReasons} lỗi • ${unclassifiedWarningCount} chưa nhận định`}
+                      ? 'Đang cập nhật danh sách cảnh báo...'
+                      : `Danh sách: ${warningFacilities.length} cơ sở cảnh báo / ${totalWarningReasons} lỗi • ${unclassifiedWarningCount} chưa nhận định`}
                   </span>
                 </div>
 
@@ -1117,20 +1104,20 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     y="46%"
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    aria-label={`Tổng ${activeFacilitiesCount} cơ sở đã thực hiện`}
+                    aria-label={`Tổng ${totalRecords} lượt kiểm tra`}
                   >
                     <tspan
                       x="50%"
-                      className="fill-slate-900 text-[30px] font-black"
+                      className="fill-slate-900 text-[28px] sm:text-[30px] font-black"
                     >
-                      {activeFacilitiesCount}
+                      {totalRecords.toLocaleString('vi-VN')}
                     </tspan>
                     <tspan
                       x="50%"
                       dy="1.75em"
                       className="fill-slate-500 text-[10px] font-bold uppercase tracking-wider"
                     >
-                      Tổng cơ sở
+                      Tổng lượt kiểm tra
                     </tspan>
                   </text>
                   <RechartsTooltip 

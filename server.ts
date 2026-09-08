@@ -334,7 +334,7 @@ app.post('/api/image-reviews', async (req, res) => {
 });
 
 // Automated Daily Sync Engine & Store
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
 let configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
 interface AutoSyncLog {
   id: string;
@@ -689,7 +689,21 @@ app.post('/api/sync-warnings-to-sheet', async (req, res) => {
       signal: AbortSignal.timeout(30000),
     });
 
-    const syncJson: any = await syncResp.json().catch(() => null);
+    const respText = await syncResp.text().catch(() => '');
+    let syncJson: any = null;
+    if (respText) {
+      try {
+        syncJson = JSON.parse(respText);
+      } catch {
+        if (respText.includes('Page not found') || respText.includes('unable to open the file') || respText.includes('accounts.google.com')) {
+          return res.status(502).json({
+            success: false,
+            error: "Link Web App Google Apps Script chưa được cấp quyền công khai. Vui lòng vào Apps Script > 'Triển khai mới' > chọn 'Người có quyền truy cập' là 'Bất kỳ ai' (Anyone).",
+          });
+        }
+      }
+    }
+
     if (syncResp.ok && (syncJson?.success || syncJson?.status === 'ok')) {
       return res.json({
         success: true,

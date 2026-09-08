@@ -47,13 +47,94 @@ interface YesterdayHygieneReviewProps {
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
 const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v1';
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
 
-const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
+const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "ok",
+    message: "Google Apps Script Web App đang hoạt động bình thường! Sẵn sàng nhận dữ liệu."
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
   try {
     var payload = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var action = payload.action || "";
+
+    // =========================================================================
+    // 1. ĐỒNG BỘ CẢNH BÁO CƠ SỞ (Sheet "nhắc nhở")
+    // Tự động tìm/tạo sheet "nhắc nhở", xóa dòng cũ cùng ngày, ghi đè chính xác
+    // =========================================================================
+    if (action === "sync_warnings" || payload.sheetName === "nhắc nhở") {
+      var sheetName = payload.sheetName || "nhắc nhở";
+      var warningSheet = ss.getSheetByName(sheetName);
+      if (!warningSheet) {
+        warningSheet = ss.insertSheet(sheetName);
+      }
+
+      var warningHeaders = [
+        "Ngày", "Cơ sở", "Lý do cảnh báo", "Số lỗi",
+        "Đã nhắc nhở", "Lỗi app", "Trạng thái nhận định", "Người xử lý"
+      ];
+
+      if (warningSheet.getLastRow() === 0) {
+        warningSheet.appendRow(warningHeaders);
+        warningSheet.getRange(1, 1, 1, warningHeaders.length).setFontWeight("bold").setBackground("#fef3c7");
+      }
+
+      var records = payload.records || [];
+      var date = payload.date || "";
+
+      if (!records.length) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          message: "Không có bản ghi cảnh báo nào"
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var warningRows = records.map(function(r) {
+        return [
+          r.ngay || date || "",
+          r.coSo || "",
+          r.lyDoCanhBao || "",
+          r.soLoi !== undefined ? r.soLoi : (r.soLuotCanhBao !== undefined ? r.soLuotCanhBao : 1),
+          r.daNhacNho || "Không",
+          r.loiApp || "Không",
+          r.trangThai || "Chưa nhận định",
+          r.nguoiXuLy || ""
+        ];
+      });
+
+      // BẢO VỆ CHỐNG TRÙNG LẶP: Quét và XÓA các dòng cũ của ngày này trước khi ghi mới
+      var lastRow = warningSheet.getLastRow();
+      if (lastRow > 1 && date) {
+        var existingData = warningSheet.getRange(2, 1, lastRow - 1, 1).getValues();
+        for (var i = existingData.length - 1; i >= 0; i--) {
+          var rowDate = String(existingData[i][0]).trim();
+          if (rowDate === date || rowDate.indexOf(date) !== -1) {
+            warningSheet.deleteRow(i + 2);
+          }
+        }
+      }
+
+      // Ghi đúng danh sách cơ sở cảnh báo (ví dụ 17 cơ sở = đúng 17 dòng)
+      if (warningRows.length > 0) {
+        var startRow = warningSheet.getLastRow() + 1;
+        warningSheet.getRange(startRow, 1, warningRows.length, warningHeaders.length).setValues(warningRows);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        message: "Đã đổ chính xác " + warningRows.length + " cơ sở cảnh báo ngày " + date + " vào sheet '" + sheetName + "' (đã loại bỏ trùng lặp)!",
+        count: warningRows.length
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // =========================================================================
+    // 2. ĐỒNG BỘ TOÀN BỘ KIỂM DUYỆT VỆ SINH (Sheet "Kiểm duyệt vệ sinh")
+    // =========================================================================
     var sheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
 
     var headers = [
@@ -303,7 +384,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     }
   });
 
-  const DEFAULT_NEW_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
+  const DEFAULT_NEW_SHEET_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
   const [newSheetScriptUrl, setNewSheetScriptUrl] = useState(() => {
     try {
       if (typeof window === 'undefined') return DEFAULT_NEW_SHEET_URL;
