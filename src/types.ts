@@ -300,6 +300,9 @@ export interface HygieneReport {
   phanHoi: string;
   feedbackNguoiDung: string;
   linkAnh: string;
+  daDuyet?: string;
+  khongDat?: string;
+  rowIndex?: number;
 }
 
 export interface FacilityQualityReport {

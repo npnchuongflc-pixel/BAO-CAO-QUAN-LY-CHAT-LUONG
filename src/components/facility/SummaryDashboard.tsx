@@ -33,6 +33,7 @@ import {
   RotateCcw,
   Download,
   Cloud,
+  CloudUpload,
   RefreshCw
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
@@ -48,7 +49,8 @@ import {
   resetWarningAuditsForDate,
   downloadWarningAuditsCsv,
   formatIsoToDateStr,
-  getCurrentTimestampStr
+  getCurrentTimestampStr,
+  syncWarningsToGoogleSheet
 } from '../../services/warningAuditService';
 import { YesterdayHygieneReview } from './YesterdayHygieneReview';
 import { 
@@ -377,6 +379,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [syncFeedback, setSyncFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [isLoadingAudits, setIsLoadingAudits] = useState(false);
   const [isAutoSyncingWarnings, setIsAutoSyncingWarnings] = useState(false);
+  const [isSyncingWarningsToSheet, setIsSyncingWarningsToSheet] = useState(false);
   const [savingAuditId, setSavingAuditId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
   const lastWarningSyncFingerprint = useRef('');
@@ -483,6 +486,12 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           next[record.id] = record;
         });
         replaceLocalWarningAudits(next);
+        // Background sync to sheet "nhắc nhở"
+        syncWarningsToGoogleSheet(
+          activeWarningDateIso,
+          warningFacilities.map(({ coSo: c, reasons: r }) => ({ coSo: c, reasons: r })),
+          next
+        ).catch(() => {});
         return next;
       });
       setSyncFeedback({
@@ -531,6 +540,14 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       const savedRecord = await saveWarningAudit(newRecord);
       saveLocalWarningAudit(savedRecord);
       setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
+      
+      // Background sync to sheet "nhắc nhở"
+      syncWarningsToGoogleSheet(
+        activeWarningDateIso,
+        warningFacilities.map(({ coSo: c, reasons: r }) => ({ coSo: c, reasons: r })),
+        { ...warningAudits, [auditId]: savedRecord }
+      ).catch(() => {});
+
       setSyncFeedback({
         message: `${coSo}: ${label}. Đã cập nhật hai cột nhận định.`,
         type: nextType === 'chua_xu_ly' ? 'info' : 'success'
@@ -552,6 +569,39 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       setSyncFeedback({ message: `Chưa lưu được ${coSo}: ${message}`, type: 'error' });
     } finally {
       setSavingAuditId(null);
+    }
+  };
+
+  const handleSyncWarningsToGoogleSheet = async () => {
+    if (warningFacilities.length === 0) {
+      setSyncFeedback({
+        message: `Ngày ${activeWarningDisplayStr} không có cơ sở nào bị cảnh báo để đồng bộ.`,
+        type: 'info'
+      });
+      setTimeout(() => setSyncFeedback(null), 3000);
+      return;
+    }
+
+    setIsSyncingWarningsToSheet(true);
+    try {
+      const result = await syncWarningsToGoogleSheet(
+        activeWarningDateIso,
+        warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+        warningAudits
+      );
+      setSyncFeedback({
+        message: result.message || `Đã đổ ${warningFacilities.length} cơ sở cảnh báo vào sheet "nhắc nhở"!`,
+        type: 'success'
+      });
+      setTimeout(() => setSyncFeedback(null), 5000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đồng bộ';
+      setSyncFeedback({
+        message: `Đổ dữ liệu chưa thành công: ${message}`,
+        type: 'error'
+      });
+    } finally {
+      setIsSyncingWarningsToSheet(false);
     }
   };
 
@@ -788,6 +838,21 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={isSyncingWarningsToSheet || warningFacilities.length === 0}
+                    onClick={handleSyncWarningsToGoogleSheet}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                    title="Đổ dữ liệu cơ sở cảnh báo của ngày này sang sheet 'nhắc nhở' trên Google Sheet"
+                  >
+                    {isSyncingWarningsToSheet ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <CloudUpload className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isSyncingWarningsToSheet ? 'Đang đổ vào Sheet...' : 'Đổ vào sheet "nhắc nhở"'}</span>
+                  </button>
+
                   <button
                     type="button"
                     disabled={warningFacilities.length === 0}

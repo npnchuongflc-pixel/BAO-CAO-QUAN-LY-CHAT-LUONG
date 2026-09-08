@@ -10,6 +10,7 @@ export interface ImageReviewRecord {
   coSo: string;
   khuVuc: string;
   linkAnh: string;
+  rowIndex?: number;
   nguoiBaoCao: string;
   reviewed: boolean;
   reviewStatus: 'pending' | 'approved' | 'rejected';

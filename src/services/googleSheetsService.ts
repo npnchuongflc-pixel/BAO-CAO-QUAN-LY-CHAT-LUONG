@@ -134,6 +134,8 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
       const phanHoi = getCleanKey(row, ['Phản hồi', 'PHẢN HỒI', 'Response']) || '';
       const feedbackNguoiDung = getCleanKey(row, ['Feedback từ người dùng', 'FEEDBACK TỪ NGƯỜI DÙNG', 'Feedback']) || '';
       const linkAnh = getCleanKey(row, ['Link ảnh', 'LINK ẢNH', 'Image']) || 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80';
+      const daDuyet = getCleanKey(row, ['Đã duyệt', 'ĐÃ DUYỆT', 'Approved', 'Đã Duyệt', 'Đạt']) || '';
+      const khongDat = getCleanKey(row, ['Không đạt', 'KHÔNG ĐẠT', 'Rejected', 'Không Đạt']) || '';
 
       let diemSo = 85;
       if (diemRaw) {
@@ -143,6 +145,7 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
 
       liveReports.push({
         id: `sheet-hyg-${idx + 1}`,
+        rowIndex: idx + 2, // Header is row 1
         ngay,
         gio,
         nguoiKiemTra,
@@ -154,7 +157,9 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
         chiTiet,
         phanHoi,
         feedbackNguoiDung,
-        linkAnh: linkAnh.startsWith('http') ? linkAnh : 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80'
+        linkAnh: linkAnh.startsWith('http') ? linkAnh : 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=800&q=80',
+        daDuyet,
+        khongDat,
       });
     });
 

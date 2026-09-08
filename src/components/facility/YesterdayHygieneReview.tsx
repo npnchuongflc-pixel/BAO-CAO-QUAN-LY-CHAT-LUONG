@@ -1,16 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
+  Clock,
+  CloudUpload,
+  Copy,
+  Download,
   ExternalLink,
   Eye,
+  FileSpreadsheet,
+  History,
   Image as ImageIcon,
+  RefreshCw,
   Search,
+  Settings,
   User,
   X,
+  Zap,
 } from 'lucide-react';
 import { HygieneReport } from './facilityTypes';
 import {
@@ -36,7 +46,212 @@ interface YesterdayHygieneReviewProps {
 }
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
+const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v1';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
+
+const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
+  try {
+    var payload = JSON.parse(e.postData.contents);
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
+
+    var headers = [
+      "Ngày", "Giờ", "Người kiểm tra", "Cơ sở", "Khu vực",
+      "Trạng thái", "Điểm số", "Chi tiết", "Phản hồi",
+      "Feedback từ người dùng", "Link ảnh", "Đã duyệt", "Không đạt", "Thời gian đồng bộ"
+    ];
+
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(headers);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
+    }
+
+    var records = payload.records || [];
+    var date = payload.date || "";
+    var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
+
+    if (!records.length) {
+      return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Không có bản ghi" })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var rowsToAppend = records.map(function(r) {
+      return [
+        r.ngay || "",
+        r.gio || "",
+        r.nguoiKiemTra || "",
+        r.coSo || "",
+        r.khuVuc || "",
+        r.trangThai || "",
+        r.diemSo !== undefined ? r.diemSo : "",
+        r.chiTiet || "",
+        r.phanHoi || "",
+        r.feedbackNguoiDung || "",
+        r.linkAnh || "",
+        r.daDuyet || "",
+        r.khongDat || "",
+        nowStr
+      ];
+    });
+
+    // Tránh trùng lặp nếu đồng bộ lại cùng ngày
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1 && date) {
+      var existingData = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var i = existingData.length - 1; i >= 0; i--) {
+        var rowDate = String(existingData[i][0]).trim();
+        if (rowDate === date || rowDate.indexOf(date) !== -1) {
+          sheet.deleteRow(i + 2);
+        }
+      }
+    }
+
+    if (rowsToAppend.length > 0) {
+      var startRow = sheet.getLastRow() + 1;
+      sheet.getRange(startRow, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      message: "Đã ghi nhận thành công " + rowsToAppend.length + " dòng cho ngày " + date + " sang Sheet mới!",
+      count: rowsToAppend.length
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * TỰ ĐỘNG KÉO DỮ LIỆU HẰNG NGÀY (DAILY AUTO-SYNC)
+ * Tự động lấy toàn bộ kiểm tra vệ sinh ngày hôm trước từ Sheet gốc về Sheet này
+ */
+function dailyAutoSyncHygieneData() {
+  var SOURCE_SHEET_ID = "1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY";
+  var SOURCE_GID = "0";
+  var csvUrl = "https://docs.google.com/spreadsheets/d/" + SOURCE_SHEET_ID + "/export?format=csv&gid=" + SOURCE_GID;
+
+  var response = UrlFetchApp.fetch(csvUrl, { muteHttpExceptions: true });
+  if (response.getResponseCode() !== 200) {
+    Logger.log("Lỗi tải Sheet gốc: " + response.getResponseCode());
+    return;
+  }
+
+  var csvData = Utilities.parseCsv(response.getContentText());
+  if (csvData.length < 2) return;
+
+  var headers = csvData[0];
+  var colNgay = -1, colGio = -1, colNguoi = -1, colCoSo = -1, colKhuVuc = -1;
+  var colTrangThai = -1, colDiem = -1, colChiTiet = -1, colPhanHoi = -1, colFeedback = -1, colLinkAnh = -1;
+  var colDaDuyet = -1, colKhongDat = -1;
+
+  for (var c = 0; c < headers.length; c++) {
+    var h = headers[c].toString().trim().toLowerCase();
+    if (h.indexOf("ngày") !== -1 || h === "date") colNgay = c;
+    else if (h.indexOf("giờ") !== -1 || h === "time") colGio = c;
+    else if (h.indexOf("người") !== -1 || h.indexOf("nhân viên") !== -1) colNguoi = c;
+    else if (h.indexOf("cơ sở") !== -1 || h.indexOf("facility") !== -1) colCoSo = c;
+    else if (h.indexOf("khu vực") !== -1 || h.indexOf("area") !== -1) colKhuVuc = c;
+    else if (h.indexOf("trạng thái") !== -1 || h.indexOf("status") !== -1) colTrangThai = c;
+    else if (h.indexOf("điểm") !== -1 || h.indexOf("score") !== -1) colDiem = c;
+    else if (h.indexOf("chi tiết") !== -1 || h.indexOf("detail") !== -1) colChiTiet = c;
+    else if (h.indexOf("phản hồi") !== -1 || h.indexOf("response") !== -1) colPhanHoi = c;
+    else if (h.indexOf("feedback") !== -1) colFeedback = c;
+    else if (h.indexOf("ảnh") !== -1 || h.indexOf("link") !== -1 || h.indexOf("image") !== -1) colLinkAnh = c;
+    else if (h.indexOf("đã duyệt") !== -1 || h.indexOf("approved") !== -1) colDaDuyet = c;
+    else if (h.indexOf("không đạt") !== -1 || h.indexOf("rejected") !== -1) colKhongDat = c;
+  }
+
+  // Lấy ngày hôm trước theo giờ Việt Nam
+  var now = new Date();
+  var yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+  var targetDmy = Utilities.formatDate(yesterday, "Asia/Ho_Chi_Minh", "dd/MM/yyyy");
+  var targetIso = Utilities.formatDate(yesterday, "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
+
+  var matchingRows = [];
+  for (var r = 1; r < csvData.length; r++) {
+    var row = csvData[r];
+    var rawDate = colNgay >= 0 ? String(row[colNgay]).trim() : "";
+    if (rawDate === targetDmy || rawDate === targetIso || rawDate.indexOf(targetDmy) !== -1 || rawDate.indexOf(targetIso) !== -1) {
+      matchingRows.push({
+        ngay: rawDate,
+        gio: colGio >= 0 ? row[colGio] : "",
+        nguoiKiemTra: colNguoi >= 0 ? row[colNguoi] : "",
+        coSo: colCoSo >= 0 ? row[colCoSo] : "",
+        khuVuc: colKhuVuc >= 0 ? row[colKhuVuc] : "",
+        trangThai: colTrangThai >= 0 ? row[colTrangThai] : "",
+        diemSo: colDiem >= 0 ? row[colDiem] : "",
+        chiTiet: colChiTiet >= 0 ? row[colChiTiet] : "",
+        phanHoi: colPhanHoi >= 0 ? row[colPhanHoi] : "",
+        feedbackNguoiDung: colFeedback >= 0 ? row[colFeedback] : "",
+        linkAnh: colLinkAnh >= 0 ? row[colLinkAnh] : "",
+        daDuyet: colDaDuyet >= 0 ? row[colDaDuyet] : "",
+        khongDat: colKhongDat >= 0 ? row[colKhongDat] : ""
+      });
+    }
+  }
+
+  if (matchingRows.length === 0) {
+    Logger.log("Không có dòng nào thuộc ngày hôm trước: " + targetDmy);
+    return;
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
+  var sheetHeaders = [
+    "Ngày", "Giờ", "Người kiểm tra", "Cơ sở", "Khu vực",
+    "Trạng thái", "Điểm số", "Chi tiết", "Phản hồi",
+    "Feedback từ người dùng", "Link ảnh", "Đã duyệt", "Không đạt", "Thời gian đồng bộ"
+  ];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(sheetHeaders);
+    sheet.getRange(1, 1, 1, sheetHeaders.length).setFontWeight("bold").setBackground("#e2e8f0");
+  }
+
+  // Xóa ngày trùng nếu đã đổ trước đó
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var datesInSheet = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    for (var i = datesInSheet.length - 1; i >= 0; i--) {
+      var d = String(datesInSheet[i][0]).trim();
+      if (d === targetDmy || d === targetIso || d.indexOf(targetDmy) !== -1 || d.indexOf(targetIso) !== -1) {
+        sheet.deleteRow(i + 2);
+      }
+    }
+  }
+
+  var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
+  var rowsToInsert = matchingRows.map(function(item) {
+    return [
+      item.ngay, item.gio, item.nguoiKiemTra, item.coSo, item.khuVuc,
+      item.trangThai, item.diemSo, item.chiTiet, item.phanHoi,
+      item.feedbackNguoiDung, item.linkAnh, item.daDuyet, item.khongDat, nowStr
+    ];
+  });
+
+  if (rowsToInsert.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToInsert.length, sheetHeaders.length).setValues(rowsToInsert);
+    Logger.log("Đã tự động đổ thành công " + rowsToInsert.length + " dòng ngày " + targetDmy);
+  }
+}
+
+/**
+ * CÀI ĐẶT LỊCH TỰ ĐỘNG CHẠY HẰNG NGÀY (Chạy 1 lần duy nhất trong Apps Script)
+ * Tự động kích hoạt vào lúc 01:00 AM - 02:00 AM mỗi sáng trên Google Cloud
+ */
+function taoLichTuDongHangNgay() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "dailyAutoSyncHygieneData") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  ScriptApp.newTrigger("dailyAutoSyncHygieneData")
+    .timeBased()
+    .everyDays(1)
+    .atHour(1)
+    .create();
+  Logger.log("ĐÃ CÀI ĐẶT LỊCH TỰ ĐỘNG CHẠY MỖI SÁNG LÚC 1H THÀNH CÔNG!");
+}`;
 
 const getScore100 = (report: HygieneReport) => {
   let score = report.diemSo || 0;
@@ -51,11 +266,14 @@ const formatReviewedTime = (value: string) => {
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 };
 
-const getReviewStatus = (record?: ImageReviewRecord): ReviewStatus => {
+const getReviewStatus = (record?: ImageReviewRecord, report?: HygieneReport): ReviewStatus => {
   if (record?.reviewStatus === 'approved' || record?.reviewStatus === 'rejected') {
     return record.reviewStatus;
   }
-  return record?.reviewed ? 'approved' : 'pending';
+  if (record?.reviewed) return 'approved';
+  if (report?.daDuyet?.trim()) return 'approved';
+  if (report?.khongDat?.trim()) return 'rejected';
+  return 'pending';
 };
 
 export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
@@ -83,6 +301,61 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       return '';
     }
   });
+
+  const DEFAULT_NEW_SHEET_URL = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
+  const [newSheetScriptUrl, setNewSheetScriptUrl] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return DEFAULT_NEW_SHEET_URL;
+      return window.localStorage.getItem(NEW_SHEET_STORAGE_KEY) || DEFAULT_NEW_SHEET_URL;
+    } catch {
+      return DEFAULT_NEW_SHEET_URL;
+    }
+  });
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncAllStatus, setSyncAllStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [isTriggeringAutoSync, setIsTriggeringAutoSync] = useState(false);
+  const [autoSyncInfo, setAutoSyncInfo] = useState<{
+    enabled: boolean;
+    configuredUrl: string;
+    hasFullUrl: boolean;
+    targetYesterdayDate: string;
+    lastAutoSyncDate: string;
+    recentLogs: Array<{
+      id: string;
+      date: string;
+      timestamp: string;
+      count: number;
+      status: 'success' | 'error';
+      message: string;
+    }>;
+    scheduleInfo: string;
+  } | null>(null);
+
+  const fetchAutoSyncStatus = async () => {
+    try {
+      const res = await fetch('/api/auto-sync-status');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAutoSyncInfo(data);
+      }
+    } catch {
+      // Ignore background fetch error
+    }
+  };
+
+  useEffect(() => {
+    fetchAutoSyncStatus();
+    // Also sync local storage script URL to backend if present
+    if (newSheetScriptUrl.trim()) {
+      fetch('/api/auto-sync-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scriptUrl: newSheetScriptUrl.trim() }),
+      }).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -163,7 +436,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     let approved = 0;
     let rejected = 0;
     facilityRows.forEach(row => row.images.forEach(image => {
-      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)], image);
       if (status === 'approved') approved += 1;
       if (status === 'rejected') rejected += 1;
     }));
@@ -183,7 +456,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   const selectedImages = useMemo(() => {
     if (!selectedRow) return [];
     return selectedRow.images.filter(image => {
-      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)], image);
       if (filter !== 'all') return status === filter;
       return true;
     });
@@ -193,7 +466,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     const reviewId = getImageReviewId(report);
     const cleanReviewer = reviewerName.trim();
     const previousRecord = imageReviews[reviewId];
-    const currentStatus = getReviewStatus(previousRecord);
+    const currentStatus = getReviewStatus(previousRecord, report);
     const nextStatus: ReviewStatus = currentStatus === requestedStatus ? 'pending' : requestedStatus;
 
     if (nextStatus !== 'pending' && !cleanReviewer) {
@@ -207,6 +480,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     const optimisticRecord: ImageReviewRecord = {
       id: reviewId,
       reportId: report.id,
+      rowIndex: report.rowIndex,
       ngay: dateIso,
       gio: report.gio || '',
       coSo: report.coSo,
@@ -277,6 +551,157 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     };
   }, [imageReviews, selectedRow]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NEW_SHEET_STORAGE_KEY, newSheetScriptUrl);
+    } catch {
+      // ignore
+    }
+  }, [newSheetScriptUrl]);
+
+  const reportsForDate = useMemo(() => {
+    return reports.filter(report => normalizeDateToIso(report.ngay) === dateIso);
+  }, [reports, dateIso]);
+
+  const preparedDateRecords = useMemo(() => {
+    return reportsForDate.map(report => {
+      const reviewId = getImageReviewId(report);
+      const review = imageReviews[reviewId];
+      const reviewStatus = getReviewStatus(review, report);
+      const reviewer = review?.nguoiKiemDuyet || (reviewStatus === 'approved' ? (report.daDuyet || 'Đã duyệt') : reviewStatus === 'rejected' ? (report.khongDat || 'Không đạt') : '');
+      const reviewTime = review?.thoiGianKiemDuyet ? new Date(review.thoiGianKiemDuyet).toLocaleString('vi-VN') : '';
+      const reviewNote = reviewer ? (reviewTime ? `${reviewer} (${reviewTime})` : reviewer) : '';
+
+      const daDuyet = reviewStatus === 'approved' ? (reviewNote || 'Đã duyệt') : '';
+      const khongDat = reviewStatus === 'rejected' ? (reviewNote || 'Không đạt') : '';
+
+      return {
+        ngay: report.ngay,
+        gio: report.gio,
+        nguoiKiemTra: report.nguoiKiemTra,
+        coSo: report.coSo,
+        khuVuc: report.khuVuc,
+        trangThai: report.trangThai,
+        diemSo: report.diemSo,
+        chiTiet: report.chiTiet,
+        phanHoi: report.phanHoi,
+        feedbackNguoiDung: report.feedbackNguoiDung,
+        linkAnh: report.linkAnh,
+        daDuyet,
+        khongDat,
+      };
+    });
+  }, [reportsForDate, imageReviews]);
+
+  const handleDownloadCsv = () => {
+    if (!preparedDateRecords.length) {
+      setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu vệ sinh nào trong ngày này để tải về.' });
+      return;
+    }
+    const headers = [
+      'Ngày', 'Giờ', 'Người kiểm tra', 'Cơ sở', 'Khu vực',
+      'Trạng thái', 'Điểm số', 'Chi tiết', 'Phản hồi',
+      'Feedback từ người dùng', 'Link ảnh', 'Đã duyệt', 'Không đạt'
+    ];
+    const escapeCsv = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = preparedDateRecords.map(r => [
+      r.ngay, r.gio, r.nguoiKiemTra, r.coSo, r.khuVuc,
+      r.trangThai, r.diemSo, r.chiTiet, r.phanHoi,
+      r.feedbackNguoiDung, r.linkAnh, r.daDuyet, r.khongDat
+    ]);
+    const csvContent = '\uFEFF' + [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `kiem-duyet-ve-sinh-${dateIso}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setSyncAllStatus({ type: 'success', message: `Đã xuất file CSV với ${preparedDateRecords.length} dòng thành công!` });
+  };
+
+  const handleSyncAllToNewSheet = async () => {
+    if (!preparedDateRecords.length) {
+      setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu kiểm tra vệ sinh nào trong ngày này để ghi.' });
+      return;
+    }
+    setIsSyncingAll(true);
+    setSyncAllStatus(null);
+    try {
+      const res = await fetch('/api/sync-day-to-new-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: dateIso,
+          scriptUrl: newSheetScriptUrl.trim() || undefined,
+          records: preparedDateRecords,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSyncAllStatus({
+          type: 'success',
+          message: data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`,
+        });
+      } else {
+        if (data.error && data.error.includes('Chưa cấu hình URL')) {
+          setShowSettingsModal(true);
+        }
+        setSyncAllStatus({
+          type: 'error',
+          message: data.error || 'Đồng bộ sang Sheet mới thất bại.',
+        });
+      }
+    } catch (err: any) {
+      setSyncAllStatus({
+        type: 'error',
+        message: err.message || 'Lỗi mạng kết nối máy chủ.',
+      });
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
+  const handleTriggerDailyAutoSyncNow = async () => {
+    setIsTriggeringAutoSync(true);
+    setSyncAllStatus(null);
+    try {
+      const res = await fetch('/api/trigger-daily-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: dateIso,
+          scriptUrl: newSheetScriptUrl.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSyncAllStatus({
+          type: 'success',
+          message: data.message || `Đã tự động lấy và đổ ${data.count || 0} dòng sang Sheet Mới thành công!`,
+        });
+        fetchAutoSyncStatus();
+      } else {
+        if (data.error && (data.error.includes('Chưa cấu hình') || data.error.includes('URL'))) {
+          setShowSettingsModal(true);
+        }
+        setSyncAllStatus({
+          type: 'error',
+          message: data.error || 'Tự động đổ dữ liệu chưa thành công.',
+        });
+      }
+    } catch (err: any) {
+      setSyncAllStatus({
+        type: 'error',
+        message: err.message || 'Lỗi mạng khi kích hoạt tự động đổ dữ liệu.',
+      });
+    } finally {
+      setIsTriggeringAutoSync(false);
+    }
+  };
+
   return (
     <div className="my-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className={`flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 ${isExpanded ? 'border-b border-slate-200' : ''}`}>
@@ -288,6 +713,10 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             </h3>
             <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-800">
               {dateDisplay}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800" title="Chức năng tự động lấy dữ liệu ngày hôm trước đổ về Sheet mới hằng ngày">
+              <Clock className="h-3 w-3 text-emerald-600" />
+              Tự động đổ hàng ngày lúc 01:00 AM
             </span>
           </div>
           {isExpanded && (
@@ -327,8 +756,105 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       </div>
 
       {isExpanded && (
-        <div id="yesterday-image-review-content" className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left text-xs text-slate-700">
+        <>
+          {/* Daily Auto-Sync Status & One-Click Trigger Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-emerald-200/80 bg-gradient-to-r from-emerald-50/90 to-teal-50/70 px-4 py-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  autoSyncInfo?.enabled || newSheetScriptUrl ? 'animate-ping bg-emerald-400' : 'bg-amber-400'
+                }`} />
+                <span className={`relative inline-flex h-2 w-2 rounded-full ${
+                  autoSyncInfo?.enabled || newSheetScriptUrl ? 'bg-emerald-500' : 'bg-amber-500'
+                }`} />
+              </span>
+              <span className="font-bold text-slate-800">
+                Tự động đổ về Sheet Mới:
+              </span>
+              <span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${
+                autoSyncInfo?.enabled || newSheetScriptUrl
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
+                {autoSyncInfo?.enabled || newSheetScriptUrl
+                  ? '✓ Đang bật (Hằng ngày lúc 01:00 AM)'
+                  : 'Chưa cài URL Sheet Mới'}
+              </span>
+              {autoSyncInfo?.lastAutoSyncDate && (
+                <span className="text-[11px] text-slate-500">
+                  · Ngày hoàn tất gần nhất: <strong>{autoSyncInfo.lastAutoSyncDate}</strong>
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerDailyAutoSyncNow}
+                disabled={isTriggeringAutoSync}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-800 disabled:opacity-50"
+                title="Kiểm tra Sheet gốc và tự động lấy đổ ngày hôm qua sang Sheet Mới ngay lập tức"
+              >
+                {isTriggeringAutoSync ? (
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Zap className="h-3 w-3 text-amber-300" />
+                )}
+                {isTriggeringAutoSync ? 'Đang đổ tự động...' : 'Chạy tự động đổ ngay'}
+              </button>
+            </div>
+          </div>
+
+          {/* Action toolbar for Day Sync / Export to New Sheet */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                Toàn bộ dữ liệu ngày: <strong>{preparedDateRecords.length}</strong> dòng
+              </span>
+              <span className="text-xs text-slate-300">|</span>
+              <span className="text-xs text-slate-500">
+                Đã duyệt: <strong className="text-emerald-700">{reviewSummary.approved}</strong> · Không đạt: <strong className="text-rose-600">{reviewSummary.rejected}</strong> · Chờ duyệt: <strong className="text-amber-600">{reviewSummary.pending}</strong>
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSyncAllToNewSheet}
+                disabled={isSyncingAll || !preparedDateRecords.length}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                title="Ghi toàn bộ dữ liệu ngày hôm trước kèm 2 cột Đã duyệt & Không đạt sang Sheet mới"
+              >
+                {isSyncingAll ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CloudUpload className="h-3.5 w-3.5" />
+                )}
+                {isSyncingAll ? 'Đang ghi vào Sheet mới...' : 'Đồng bộ toàn bộ ngày sang Sheet mới'}
+              </button>
+            </div>
+          </div>
+
+          {syncAllStatus && (
+            <div className={`flex items-center justify-between border-b px-4 py-2 text-xs font-medium ${
+              syncAllStatus.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : 'border-rose-200 bg-rose-50 text-rose-800'
+            }`}>
+              <span>{syncAllStatus.message}</span>
+              <button
+                type="button"
+                onClick={() => setSyncAllStatus(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div id="yesterday-image-review-content" className="overflow-x-auto">
+          <table className="w-full min-w-[850px] text-left text-xs text-slate-700">
           <thead className="border-b border-slate-200 bg-white text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 text-center">STT</th>
@@ -336,8 +862,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
               <th className="px-4 py-3 text-center">Chỉ tiêu/ngày</th>
               <th className="px-4 py-3 text-center">Đã thực hiện</th>
               <th className="px-4 py-3">Tiến độ ngày</th>
-              <th className="px-4 py-3 text-center">Điểm số TB</th>
-              <th className="px-4 py-3 text-center">Số ảnh</th>
               <th className="px-4 py-3 text-center">Kiểm duyệt</th>
               <th className="px-4 py-3 text-center">Báo cáo chi tiết</th>
             </tr>
@@ -384,16 +908,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    {row.performed ? (
-                      <span className={`text-sm font-black ${row.averageScore < 70 ? 'text-rose-700' : row.averageScore < 80 ? 'text-amber-700' : 'text-slate-900'}`}>
-                        {row.averageScore.toFixed(0)} <span className="text-[10px] font-semibold text-slate-400">/100</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center font-bold text-slate-800">{row.images.length}</td>
                   <td className="px-4 py-3">
                     <div className="mx-auto w-28">
                       <div className="mb-1 flex items-center justify-between text-[10px] font-bold">
@@ -426,6 +940,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
           </tbody>
           </table>
         </div>
+        </>
       )}
 
       {selectedRow && (
@@ -521,7 +1036,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   {selectedImages.map((report, index) => {
                     const reviewId = getImageReviewId(report);
                     const review = imageReviews[reviewId];
-                    const reviewStatus = getReviewStatus(review);
+                    const reviewStatus = getReviewStatus(review, report);
                     const approved = reviewStatus === 'approved';
                     const rejected = reviewStatus === 'rejected';
 
@@ -622,6 +1137,148 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   <p>{selectedRow.images.length === 0 ? 'Cơ sở chưa có ảnh báo cáo trong ngày này.' : 'Không có ảnh phù hợp với bộ lọc.'}</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSettingsModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4"
+          onClick={() => setShowSettingsModal(false)}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+                <h4 className="text-sm font-bold text-slate-800">Cấu hình Google Sheet Mới độc lập</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5 space-y-4 text-xs text-slate-600">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-900 font-bold">
+                  <Zap className="h-4 w-4 text-emerald-600" />
+                  <span>Cơ chế tự động đổ dữ liệu hằng ngày (Daily Auto-Sync)</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-emerald-800">
+                  Hệ thống tự động kiểm tra Sheet gốc và đổ toàn bộ dữ liệu kiểm tra vệ sinh của ngày hôm trước (kèm 2 cột <em>Đã duyệt</em> & <em>Không đạt</em>) sang Google Sheet mới vào lúc <strong>01:00 AM mỗi sáng (Giờ Việt Nam)</strong>.
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                  <span className="font-semibold text-slate-700">Trạng thái hiện tại:</span>
+                  <span className={`rounded-full px-2 py-0.5 font-bold ${
+                    autoSyncInfo?.enabled || newSheetScriptUrl
+                      ? 'bg-emerald-200 text-emerald-900'
+                      : 'bg-amber-100 text-amber-900'
+                  }`}>
+                    {autoSyncInfo?.enabled || newSheetScriptUrl ? '✓ Đang bật (Chạy tự động lúc 01:00 AM)' : 'Chưa kích hoạt (Cần dán link bên dưới)'}
+                  </span>
+                  {autoSyncInfo?.lastAutoSyncDate && (
+                    <span className="text-slate-500">· Ngày hoàn thành gần nhất: <strong>{autoSyncInfo.lastAutoSyncDate}</strong></span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Đường dẫn Web App (Apps Script URL) của Sheet Mới:
+                </label>
+                <input
+                  type="url"
+                  value={newSheetScriptUrl}
+                  onChange={e => setNewSheetScriptUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
+                />
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Dán URL Web App của Sheet mới vào đây để kích hoạt cơ chế tự động đổ dữ liệu.
+                </p>
+              </div>
+
+              {autoSyncInfo?.recentLogs && autoSyncInfo.recentLogs.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <History className="h-3.5 w-3.5 text-slate-600" />
+                    <span>Nhật ký tự động đổ dữ liệu gần nhất:</span>
+                  </div>
+                  <div className="max-h-32 overflow-y-auto space-y-1.5 text-[11px]">
+                    {autoSyncInfo.recentLogs.map(log => (
+                      <div
+                        key={log.id}
+                        className={`flex items-center justify-between rounded-md px-2.5 py-1.5 ${
+                          log.status === 'success' ? 'bg-emerald-100/60 text-emerald-900' : 'bg-rose-100/60 text-rose-900'
+                        }`}
+                      >
+                        <span className="font-semibold">{log.date}: {log.message}</span>
+                        <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                          {new Date(log.timestamp).toLocaleTimeString('vi-VN')} {new Date(log.timestamp).toLocaleDateString('vi-VN')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800">Mã Google Apps Script để dán vào Sheet Mới:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE);
+                      setCopiedScript(true);
+                      setTimeout(() => setCopiedScript(false), 2500);
+                    }}
+                    className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 shadow-xs"
+                  >
+                    {copiedScript ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {copiedScript ? 'Đã sao chép!' : 'Sao chép mã script'}
+                  </button>
+                </div>
+                <pre className="max-h-48 overflow-x-auto rounded-lg bg-slate-900 p-3 font-mono text-[10px] text-emerald-300 leading-relaxed">
+                  {APPS_SCRIPT_TEMPLATE}
+                </pre>
+              </div>
+
+              <div className="space-y-1.5 text-[11px] text-slate-600 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
+                <strong className="text-slate-800 block text-xs">2 cách tự động đổ dữ liệu hàng ngày:</strong>
+                <p>
+                  <strong>Cách 1 (Khuyên dùng - Tự động qua hệ thống web):</strong> Dán link Web App vào ô trên và nhấn <em>"Lưu & Kích hoạt tự động"</em>. Máy chủ sẽ tự động chạy hàng ngày lúc 01:00 AM.
+                </p>
+                <p>
+                  <strong>Cách 2 (Chạy độc lập trên Google Cloud):</strong> Trong trình soạn thảo Apps Script của Google Sheet mới, ở menu dropdown chọn hàm <code>taoLichTuDongHangNgay</code> rồi nhấn nút <strong>Chạy (Run)</strong> một lần. Google sẽ tự động kích hoạt hẹn giờ kéo dữ liệu mỗi sáng vĩnh viễn mà không phụ thuộc vào bất cứ đâu!
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (newSheetScriptUrl.trim()) {
+                    await fetch('/api/auto-sync-config', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ scriptUrl: newSheetScriptUrl.trim() }),
+                    }).catch(() => {});
+                    fetchAutoSyncStatus();
+                  }
+                  setShowSettingsModal(false);
+                }}
+                className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
+              >
+                Lưu & Kích hoạt tự động
+              </button>
             </div>
           </div>
         </div>

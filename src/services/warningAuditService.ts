@@ -186,3 +186,42 @@ export function downloadWarningAuditsCsv(
   anchor.remove();
   URL.revokeObjectURL(url);
 }
+
+export async function syncWarningsToGoogleSheet(
+  date: string,
+  warningFacilities: WarningFacilityItem[],
+  audits: Record<string, WarningAuditRecord>,
+): Promise<{ success: boolean; message: string; syncedCount: number }> {
+  const records = warningFacilities.map(({ coSo, reasons = [] }) => {
+    const audit = audits[`${coSo}_${date}`];
+    return {
+      ngay: formatIsoToDateStr(date),
+      coSo,
+      soLuotCanhBao: audit?.soLuotCanhBao || Math.max(1, reasons.length),
+      soLoi: audit?.soLuotCanhBao || Math.max(1, reasons.length),
+      lyDoCanhBao: audit?.lyDoCanhBao || reasons.join('; '),
+      daNhacNho: audit?.loaiTrangThai === 'da_nhac_nho' ? 'Có' : 'Không',
+      loiApp: audit?.loaiTrangThai === 'loi_app' ? 'Có' : 'Không',
+      trangThai: audit?.trangThai || 'Chưa nhận định',
+      thoiGianPhatHien: audit?.thoiGianPhatHien || '',
+      thoiGianXuLy: audit?.thoiGianTich || '',
+      thoiGianTich: audit?.thoiGianTich || '',
+      nguoiXuLy: audit?.nguoiXuLy || (audit?.loaiTrangThai && audit.loaiTrangThai !== 'chua_xu_ly' ? 'Quản lý kiểm tra' : ''),
+    };
+  });
+
+  const response = await fetch('/api/sync-warnings-to-sheet', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      date: formatIsoToDateStr(date),
+      records,
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.success) {
+    throw new Error(result?.error || `Lỗi khi đồng bộ sang Google Sheet (HTTP ${response.status})`);
+  }
+  return result;
+}
