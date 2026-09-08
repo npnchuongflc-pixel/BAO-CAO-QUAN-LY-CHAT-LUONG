@@ -229,21 +229,24 @@ function fetchTeachingDataViaGviz(): Promise<TeachingAuditItem[]> {
       }
     };
 
-    script.onerror = () => {
-      cleanup();
-      // Fallback to backend proxy
+    const handleTeachingProxyFallback = () => {
       fetch('/api/teaching-sheet-data')
-        .then((r) => r.json())
+        .then(async (r) => {
+          const t = await r.text().catch(() => '');
+          return t ? JSON.parse(t) : null;
+        })
         .then(resolveProxyData)
         .catch((err) => reject(err));
     };
 
+    script.onerror = () => {
+      cleanup();
+      handleTeachingProxyFallback();
+    };
+
     timeoutId = window.setTimeout(() => {
       cleanup();
-      fetch('/api/teaching-sheet-data')
-        .then((r) => r.json())
-        .then(resolveProxyData)
-        .catch((err) => reject(err));
+      handleTeachingProxyFallback();
     }, 15000);
 
     script.src = `https://docs.google.com/spreadsheets/d/${TEACHING_SPREADSHEET_ID}/gviz/tq?gid=${TEACHING_SHEET_GID}&tqx=out:json;responseHandler:${callbackName}`;
@@ -257,26 +260,29 @@ export async function fetchTeachingData(): Promise<TeachingAuditItem[]> {
       cache: 'no-store',
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (response.ok) {
+      const text = await response.text().catch(() => '');
+      if (text) {
+        try {
+          const result = JSON.parse(text);
+          if (result?.success && typeof result?.data?.csv === 'string') {
+            const items = parseTeachingCsvRows(result.data.csv);
+            if (items.length > 0) return items;
+          }
+          if (result?.success && result?.data?.table) {
+            return parseTeachingTableRows(result.data.table);
+          }
+        } catch {
+          // Ignore parse error
+        }
+      }
     }
-
-    const result = await response.json();
-    if (result.success && typeof result.data?.csv === 'string') {
-      const items = parseTeachingCsvRows(result.data.csv);
-      if (items.length > 0) return items;
-    }
-
-    // Compatibility with an older server response during rolling updates.
-    if (result.success && result.data?.table) {
-      return parseTeachingTableRows(result.data.table);
-    }
-
-    throw new Error(result.error || 'Dữ liệu Google Sheets không đúng định dạng');
-  } catch (error) {
-    console.warn('CSV source unavailable, falling back to Google Visualization data:', error);
-    return fetchTeachingDataViaGviz();
+  } catch (err) {
+    // Expected on static environments without proxy
   }
+
+  // Fallback to GViz directly
+  return fetchTeachingDataViaGviz();
 }
 
 // Filter dataset based on current filter state

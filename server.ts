@@ -619,7 +619,7 @@ app.post('/api/sync-day-to-new-sheet', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Thiếu thông tin ngày hoặc danh sách bản ghi.' });
     }
 
-    const targetUrl = scriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL;
+    const targetUrl = scriptUrl || configuredNewSheetScriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
     if (!targetUrl) {
       return res.status(400).json({
         success: false,

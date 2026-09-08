@@ -110,34 +110,30 @@ export function fetchGoogleSheetData(): Promise<SheetRowItem[]> {
       }
     };
 
-    script.onerror = () => {
-      cleanup();
-      // Fallback to backend proxy route
+    const handleBackendFallback = () => {
       fetch('/api/sheet-data')
-        .then(r => r.json())
+        .then(async r => {
+          const t = await r.text().catch(() => '');
+          return t ? JSON.parse(t) : null;
+        })
         .then(res => {
-          if (res.success && res.data?.table) {
+          if (res?.success && res?.data?.table) {
             resolve(parseTableRows(res.data.table));
           } else {
-            reject(new Error(res.error || 'Không thể tải dữ liệu qua backend proxy'));
+            reject(new Error(res?.error || 'Không thể tải dữ liệu Google Sheets'));
           }
         })
         .catch(err => reject(err));
     };
 
+    script.onerror = () => {
+      cleanup();
+      handleBackendFallback();
+    };
+
     timeoutId = window.setTimeout(() => {
       cleanup();
-      // Try fallback on timeout
-      fetch('/api/sheet-data')
-        .then(r => r.json())
-        .then(res => {
-          if (res.success && res.data?.table) {
-            resolve(parseTableRows(res.data.table));
-          } else {
-            reject(new Error('Hết thời gian kết nối Google Sheets (Timeout)'));
-          }
-        })
-        .catch(err => reject(err));
+      handleBackendFallback();
     }, 12000);
 
     const encodedSheet = encodeURIComponent(SHEET_NAME);

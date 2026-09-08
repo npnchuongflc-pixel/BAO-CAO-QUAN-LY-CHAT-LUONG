@@ -49,32 +49,77 @@ export const getImageReviewId = (report: HygieneReport) => {
   return `image-${hashText(identity)}`;
 };
 
-const parseResponse = async (response: Response): Promise<ImageReviewApiResponse> => {
-  const result = await response.json().catch(() => null) as ImageReviewApiResponse | null;
-  if (!response.ok || !result?.success) {
-    throw new Error(result?.error || `API kiểm duyệt ảnh HTTP ${response.status}`);
+const LOCAL_IMAGE_REVIEWS_STORAGE_KEY = 'facility_image_reviews_v1';
+
+function getLocalImageReviews(): Record<string, ImageReviewRecord> {
+  try {
+    const raw = localStorage.getItem(LOCAL_IMAGE_REVIEWS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
   }
-  return result;
+}
+
+function saveLocalImageReview(record: ImageReviewRecord) {
+  try {
+    const data = getLocalImageReviews();
+    data[record.id] = record;
+    localStorage.setItem(LOCAL_IMAGE_REVIEWS_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+const parseResponse = async (response: Response): Promise<ImageReviewApiResponse | null> => {
+  const text = await response.text().catch(() => '');
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as ImageReviewApiResponse;
+  } catch {
+    return null;
+  }
 };
 
 export async function fetchImageReviews(date: string): Promise<ImageReviewRecord[]> {
-  const response = await fetch(`/api/image-reviews?date=${encodeURIComponent(date)}&_=${Date.now()}`, {
-    cache: 'no-store',
-  });
-  const result = await parseResponse(response);
-  return result.records || [];
+  try {
+    const response = await fetch(`/api/image-reviews?date=${encodeURIComponent(date)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (response.ok) {
+      const result = await parseResponse(response);
+      if (result?.success && Array.isArray(result.records)) {
+        return result.records;
+      }
+    }
+  } catch (err) {
+    console.warn('Backend image-reviews không phản hồi, dùng bộ nhớ trình duyệt:', err);
+  }
+
+  // Fallback: Đọc từ localStorage
+  const localMap = getLocalImageReviews();
+  return Object.values(localMap).filter(r => r.ngay === date);
 }
 
 export async function saveImageReview(record: ImageReviewRecord): Promise<{
   record: ImageReviewRecord;
   warning?: string;
 }> {
-  const response = await fetch('/api/image-reviews', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'upsert', record }),
-  });
-  const result = await parseResponse(response);
-  if (!result.record) throw new Error('Máy chủ không trả về bản ghi kiểm duyệt vừa lưu.');
-  return { record: result.record, warning: result.warning };
+  // Luôn lưu local trước
+  saveLocalImageReview(record);
+
+  try {
+    const response = await fetch('/api/image-reviews', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'upsert', record }),
+    });
+    if (response.ok) {
+      const result = await parseResponse(response);
+      if (result?.success && result?.record) {
+        return { record: result.record, warning: result.warning };
+      }
+    }
+  } catch (err) {
+    console.warn('Backend không khả dụng khi lưu kiểm duyệt ảnh, đã lưu vào bộ nhớ trình duyệt:', err);
+  }
+
+  return { record };
 }

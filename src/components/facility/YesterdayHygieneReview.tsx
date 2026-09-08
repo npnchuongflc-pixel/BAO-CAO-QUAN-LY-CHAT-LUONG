@@ -47,6 +47,7 @@ interface YesterdayHygieneReviewProps {
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
 const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v1';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
 
 const APPS_SCRIPT_TEMPLATE = `function doPost(e) {
@@ -336,9 +337,16 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   const fetchAutoSyncStatus = async () => {
     try {
       const res = await fetch('/api/auto-sync-status');
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setAutoSyncInfo(data);
+      if (!res.ok) return;
+      const text = await res.text().catch(() => '');
+      if (!text) return;
+      try {
+        const data = JSON.parse(text);
+        if (data?.success) {
+          setAutoSyncInfo(data);
+        }
+      } catch {
+        // Not valid JSON, ignore
       }
     } catch {
       // Ignore background fetch error
@@ -633,6 +641,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       let isSuccess = false;
       let successMsg = '';
 
+      // 1. Thử qua backend nếu server có endpoint
       try {
         const res = await fetch('/api/sync-day-to-new-sheet', {
           method: 'POST',
@@ -643,34 +652,58 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             records: preparedDateRecords,
           }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success) {
-            isSuccess = true;
-            successMsg = data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+        const text = await res.text().catch(() => '');
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            if (res.ok && data?.success) {
+              isSuccess = true;
+              successMsg = data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+            }
+          } catch {
+            // Non-JSON response, ignore
           }
         }
       } catch (e) {
         console.warn('API backend chưa phản hồi, chuyển sang đồng bộ trực tiếp Apps Script:', e);
       }
 
+      // 2. Fallback: Gửi trực tiếp đến Google Apps Script từ trình duyệt
       if (!isSuccess) {
         const targetUrl = newSheetScriptUrl.trim() || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
-        const directResp = await fetch(targetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({
-            action: 'sync_full_day_hygiene_reviews',
-            date: dateIso,
-            count: preparedDateRecords.length,
-            records: preparedDateRecords,
-            timestamp: new Date().toISOString(),
-          }),
-        });
-        const directData = await directResp.json().catch(() => null);
-        if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
-          isSuccess = true;
-          successMsg = directData?.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+        let directErrorHint = '';
+        try {
+          const directResp = await fetch(targetUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'sync_full_day_hygiene_reviews',
+              date: dateIso,
+              count: preparedDateRecords.length,
+              records: preparedDateRecords,
+              timestamp: new Date().toISOString(),
+            }),
+          });
+          const text = await directResp.text().catch(() => '');
+          if (text) {
+            try {
+              const directData = JSON.parse(text);
+              if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
+                isSuccess = true;
+                successMsg = directData?.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+              }
+            } catch {
+              if (text.includes('Page not found') || text.includes('unable to open the file') || text.includes('accounts.google.com')) {
+                directErrorHint = "Link Web App Google Apps Script chưa được cấp quyền công khai hoặc đã bị thay đổi URL. Vui lòng vào Apps Script > 'Triển khai mới' > chọn 'Người có quyền truy cập' là 'Bất kỳ ai' (Anyone).";
+              }
+            }
+          }
+        } catch (err: any) {
+          directErrorHint = err.message || 'Không thể kết nối trực tiếp đến Google Apps Script.';
+        }
+
+        if (!isSuccess && directErrorHint) {
+          throw new Error(directErrorHint);
         }
       }
 
@@ -682,7 +715,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       } else {
         setSyncAllStatus({
           type: 'error',
-          message: 'Đồng bộ sang Sheet mới chưa thành công. Vui lòng kiểm tra lại kết nối.',
+          message: 'Đồng bộ sang Sheet mới chưa thành công. Vui lòng kiểm tra lại kết nối mạng hoặc URL Apps Script.',
         });
       }
     } catch (err: any) {
@@ -699,28 +732,85 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setIsTriggeringAutoSync(true);
     setSyncAllStatus(null);
     try {
-      const res = await fetch('/api/trigger-daily-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: dateIso,
-          scriptUrl: newSheetScriptUrl.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      let isSuccess = false;
+      let successMsg = '';
+      let directErrorHint = '';
+
+      // 1. Thử gọi backend /api/trigger-daily-sync
+      try {
+        const res = await fetch('/api/trigger-daily-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: dateIso,
+            scriptUrl: newSheetScriptUrl.trim() || undefined,
+          }),
+        });
+        const text = await res.text().catch(() => '');
+        if (text) {
+          try {
+            const data = JSON.parse(text);
+            if (res.ok && data?.success) {
+              isSuccess = true;
+              successMsg = data.message || `Đã tự động lấy và đổ ${data.count || 0} dòng sang Sheet Mới thành công!`;
+              fetchAutoSyncStatus();
+            }
+          } catch {
+            // Non-JSON response, ignore
+          }
+        }
+      } catch (e) {
+        console.warn('Backend trigger không phản hồi, kích hoạt fallback đổ trực tiếp:', e);
+      }
+
+      // 2. Fallback: Nếu backend không phản hồi (ví dụ deploy trên Vercel/Netlify không có server Node.js),
+      // tự động đổ danh sách dữ liệu hiện tại trực tiếp sang Web App Google Apps Script!
+      if (!isSuccess && preparedDateRecords.length > 0) {
+        const targetUrl = newSheetScriptUrl.trim() || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+        try {
+          const directResp = await fetch(targetUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'sync_full_day_hygiene_reviews',
+              date: dateIso,
+              count: preparedDateRecords.length,
+              records: preparedDateRecords,
+              timestamp: new Date().toISOString(),
+            }),
+          });
+          const text = await directResp.text().catch(() => '');
+          if (text) {
+            try {
+              const directData = JSON.parse(text);
+              if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
+                isSuccess = true;
+                successMsg = directData?.message || `Đã tự động đổ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+              }
+            } catch {
+              if (text.includes('Page not found') || text.includes('unable to open the file') || text.includes('accounts.google.com')) {
+                directErrorHint = "Link Web App Google Apps Script chưa được cấp quyền công khai hoặc đã bị thay đổi URL. Vui lòng vào Apps Script > 'Triển khai mới' > chọn 'Người có quyền truy cập' là 'Bất kỳ ai' (Anyone).";
+              }
+            }
+          }
+        } catch (err: any) {
+          directErrorHint = err.message || 'Không thể kết nối trực tiếp đến Google Apps Script.';
+        }
+
+        if (!isSuccess && directErrorHint) {
+          throw new Error(directErrorHint);
+        }
+      }
+
+      if (isSuccess) {
         setSyncAllStatus({
           type: 'success',
-          message: data.message || `Đã tự động lấy và đổ ${data.count || 0} dòng sang Sheet Mới thành công!`,
+          message: successMsg,
         });
-        fetchAutoSyncStatus();
       } else {
-        if (data.error && (data.error.includes('Chưa cấu hình') || data.error.includes('URL'))) {
-          setShowSettingsModal(true);
-        }
         setSyncAllStatus({
           type: 'error',
-          message: data.error || 'Tự động đổ dữ liệu chưa thành công.',
+          message: 'Tự động đổ dữ liệu chưa thành công. Vui lòng kiểm tra lại URL Google Apps Script.',
         });
       }
     } catch (err: any) {

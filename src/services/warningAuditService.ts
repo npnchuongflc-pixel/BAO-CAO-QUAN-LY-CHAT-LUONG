@@ -33,21 +33,28 @@ interface WarningApiResponse {
 
 const STORAGE_WARNING_AUDITS_KEY = 'facility_warning_audits_v2';
 
-const parseJsonResponse = async (response: Response): Promise<WarningApiResponse> => {
-  const result = await response.json().catch(() => null) as WarningApiResponse | null;
-  if (!response.ok || !result?.success) {
-    throw new Error(result?.error || `API lưu cảnh báo HTTP ${response.status}`);
+const parseJsonResponse = async (response: Response): Promise<WarningApiResponse | null> => {
+  const text = await response.text().catch(() => '');
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as WarningApiResponse;
+  } catch {
+    return null;
   }
-  return result;
 };
 
-const postWarningAction = async (payload: Record<string, unknown>) => {
-  const response = await fetch('/api/warning-audits', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return parseJsonResponse(response);
+const postWarningAction = async (payload: Record<string, unknown>): Promise<WarningApiResponse | null> => {
+  try {
+    const response = await fetch('/api/warning-audits', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return parseJsonResponse(response);
+  } catch (err) {
+    console.warn('Backend warning-audits không phản hồi:', err);
+    return null;
+  }
 };
 
 export function getLocalWarningAudits(): Record<string, WarningAuditRecord> {
@@ -97,17 +104,33 @@ export function getCurrentTimestampStr(): string {
 }
 
 export async function fetchWarningAuditsForDate(date: string): Promise<WarningAuditRecord[]> {
-  const response = await fetch(`/api/warning-audits?date=${encodeURIComponent(date)}&_=${Date.now()}`, {
-    cache: 'no-store',
-  });
-  const result = await parseJsonResponse(response);
-  return result.records || [];
+  try {
+    const response = await fetch(`/api/warning-audits?date=${encodeURIComponent(date)}&_=${Date.now()}`, {
+      cache: 'no-store',
+    });
+    if (response.ok) {
+      const result = await parseJsonResponse(response);
+      if (result?.success && Array.isArray(result.records)) {
+        return result.records;
+      }
+    }
+  } catch (err) {
+    console.warn('Backend warning-audits không phản hồi, sử dụng bộ nhớ trình duyệt:', err);
+  }
+
+  // Fallback: Đọc từ localStorage
+  const local = getLocalWarningAudits();
+  return Object.values(local).filter(r => r.ngay === date);
 }
 
 export async function saveWarningAudit(record: WarningAuditRecord): Promise<WarningAuditRecord> {
+  // Luôn lưu local trước
+  saveLocalWarningAudit(record);
+
   const result = await postWarningAction({ action: 'upsert', record });
-  if (!result.record) throw new Error('Máy chủ không trả về bản ghi vừa lưu.');
-  return result.record;
+  if (result?.record) return result.record;
+
+  return record;
 }
 
 export async function syncWarningFacilitiesForDate(
@@ -126,13 +149,30 @@ export async function syncWarningFacilitiesForDate(
     daNhacNho: false,
     loiApp: false,
   }));
+
   const result = await postWarningAction({ action: 'sync_list', date, records });
-  return { records: result.records || [], warning: result.warning };
+  if (result?.records) {
+    return { records: result.records, warning: result.warning };
+  }
+
+  // Fallback local storage
+  const local = getLocalWarningAudits();
+  const merged = records.map(r => local[r.id] || r);
+  return { records: merged };
 }
 
 export async function resetWarningAuditsForDate(date: string): Promise<WarningAuditRecord[]> {
   const result = await postWarningAction({ action: 'reset_date', date });
-  return result.records || [];
+  if (result?.records) return result.records;
+
+  // Fallback local storage
+  const current = getLocalWarningAudits();
+  const remaining: Record<string, WarningAuditRecord> = {};
+  Object.entries(current).forEach(([k, v]) => {
+    if (v.ngay !== date) remaining[k] = v;
+  });
+  replaceLocalWarningAudits(remaining);
+  return [];
 }
 
 const escapeCsvCell = (value: unknown) => {
