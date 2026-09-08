@@ -242,7 +242,7 @@ app.get('/api/image-reviews', (req, res) => {
 });
 
 // Automated Daily Sync Engine & Store
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz0KaluYvWaWNgVHCK9zesGJs2mnu5koEg9NQ9v76ndZZPXlaog1mUpuaK4x851aomp/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
 let configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
 
 app.post('/api/image-reviews', async (req, res) => {
