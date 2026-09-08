@@ -251,7 +251,7 @@ export async function syncWarningsToGoogleSheet(
   });
 
   const targetDateStr = formatIsoToDateStr(date);
-  const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
+  const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbz0KaluYvWaWNgVHCK9zesGJs2mnu5koEg9NQ9v76ndZZPXlaog1mUpuaK4x851aomp/exec';
   const customUrl = typeof window !== 'undefined' ? localStorage.getItem('custom_new_sheet_apps_script_url') : null;
   const targetScriptUrl = customUrl?.trim() || defaultAppsScriptUrl;
 

@@ -98,7 +98,7 @@ export async function fetchImageReviews(date: string): Promise<ImageReviewRecord
   return Object.values(localMap).filter(r => r.ngay === date);
 }
 
-export async function saveImageReview(record: ImageReviewRecord): Promise<{
+export async function saveImageReview(record: ImageReviewRecord, scriptUrl?: string): Promise<{
   record: ImageReviewRecord;
   warning?: string;
 }> {
@@ -109,7 +109,7 @@ export async function saveImageReview(record: ImageReviewRecord): Promise<{
     const response = await fetch('/api/image-reviews', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'upsert', record }),
+      body: JSON.stringify({ action: 'upsert', record, scriptUrl }),
     });
     if (response.ok) {
       const result = await parseResponse(response);
@@ -122,4 +122,29 @@ export async function saveImageReview(record: ImageReviewRecord): Promise<{
   }
 
   return { record };
+}
+
+export async function batchSaveImageReviews(records: ImageReviewRecord[], scriptUrl?: string): Promise<{
+  records: ImageReviewRecord[];
+  warning?: string;
+}> {
+  records.forEach(r => saveLocalImageReview(r));
+
+  try {
+    const response = await fetch('/api/image-reviews', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'batch_upsert', records, scriptUrl }),
+    });
+    if (response.ok) {
+      const result = await parseResponse(response);
+      if (result?.success && Array.isArray(result.records)) {
+        return { records: result.records, warning: result.warning };
+      }
+    }
+  } catch (err) {
+    console.warn('Backend không khả dụng khi lưu kiểm duyệt ảnh hàng loạt:', err);
+  }
+
+  return { records };
 }

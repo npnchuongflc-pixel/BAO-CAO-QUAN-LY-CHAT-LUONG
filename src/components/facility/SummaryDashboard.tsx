@@ -32,7 +32,10 @@ import {
   ClipboardList,
   RotateCcw,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  Code2,
+  Copy,
+  Check
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
 import {
@@ -49,7 +52,7 @@ import {
   getCurrentTimestampStr,
   syncWarningsToGoogleSheet
 } from '../../services/warningAuditService';
-import { YesterdayHygieneReview } from './YesterdayHygieneReview';
+import { YesterdayHygieneReview, APPS_SCRIPT_TEMPLATE } from './YesterdayHygieneReview';
 import { 
   PieChart, 
   Pie, 
@@ -379,6 +382,8 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [isSyncingWarningsToSheet, setIsSyncingWarningsToSheet] = useState(false);
   const [savingAuditId, setSavingAuditId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
   const lastWarningSyncFingerprint = useRef('');
   const hasAutoSyncedInitialForDate = useRef<Record<string, boolean>>({});
   const autoSyncDebounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -847,6 +852,16 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
                   <button
                     type="button"
+                    onClick={() => setShowScriptModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                    title="Mở mã Apps Script mới nhất để dán vào Google Sheet (giúp điều chỉnh trực tiếp trên hàng và xóa hàng thừa)"
+                  >
+                    <Code2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Mã Apps Script (Sửa lỗi hàng thừa)</span>
+                  </button>
+
+                  <button
+                    type="button"
                     disabled={isClearingAll || isLoadingAudits || warningFacilities.length === 0}
                     onClick={handleClearAllWarningChecks}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 disabled:opacity-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
@@ -1054,6 +1069,92 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Modal hướng dẫn cập nhật Apps Script */}
+            {showScriptModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+                <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <Code2 className="h-5 w-5 text-emerald-600" />
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-sm">Cập nhật mã Google Apps Script trên Google Sheet</h3>
+                        <p className="text-[11px] text-slate-500">Giúp điều chỉnh trực tiếp trên hàng đã có & loại bỏ hàng thừa trùng lặp</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowScriptModal(false)}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors cursor-pointer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+
+                  <div className="overflow-y-auto p-5 space-y-4 text-xs text-slate-600">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 text-emerald-900 font-bold">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>Cơ chế điều chỉnh trực tiếp trên hàng đã đổ</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-emerald-900">
+                        Khi bạn dán mã script mới này vào Google Sheet:
+                        <br />
+                        • Mỗi khi bạn <strong>tích ô</strong> ("Đã nhắc nhở", "Lỗi app") hoặc <strong>bỏ tất cả nhận định</strong>, Google Sheet sẽ <strong>tìm đúng hàng của cơ sở đó trong ngày và cập nhật trực tiếp tại chỗ</strong>.
+                        <br />
+                        • Các hàng bị trùng lặp do những lần đồng bộ trước đây sẽ <strong>tự động được dọn sạch hoàn toàn</strong>, không còn bị sinh thêm hàng mới thừa thãi.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="font-bold text-slate-800 text-xs">3 bước cập nhật siêu nhanh (chỉ mất 1 phút):</h4>
+                      <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-700 leading-relaxed">
+                        <li>
+                          Mở file Google Sheet của bạn &gt; Trên thanh menu bấm <strong>Tiện ích mở rộng (Extensions)</strong> &gt; Chọn <strong>Apps Script</strong>.
+                        </li>
+                        <li>
+                          Trong file <code>Code.gs</code>, xóa hết mã cũ rồi <strong>Dán (Ctrl+V)</strong> toàn bộ đoạn mã bên dưới vào.
+                        </li>
+                        <li>
+                          Bấm nút <strong>Lưu (Save icon)</strong> &gt; Bấm nút màu xanh <strong>Triển khai (Deploy)</strong> &gt; Chọn <strong>Quản lý bản triển khai (Manage deployments)</strong> &gt; Bấm icon <strong>Cây bút (Chỉnh sửa)</strong> &gt; Tại mục <em>Phiên bản</em> chọn <strong>Phiên bản mới (New version)</strong> &gt; Bấm <strong>Triển khai (Deploy)</strong>.
+                        </li>
+                      </ol>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-900 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-emerald-400">Mã Google Apps Script mới nhất:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE);
+                            setCopiedScript(true);
+                            setTimeout(() => setCopiedScript(false), 2500);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
+                        >
+                          {copiedScript ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          <span>{copiedScript ? 'Đã sao chép!' : 'Sao chép mã script'}</span>
+                        </button>
+                      </div>
+                      <pre className="max-h-60 overflow-x-auto overflow-y-auto rounded-lg bg-slate-950 p-3 font-mono text-[10px] text-emerald-300 leading-relaxed custom-scrollbar">
+                        {APPS_SCRIPT_TEMPLATE}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end border-t border-slate-200 bg-slate-50 px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowScriptModal(false)}
+                      className="rounded-lg bg-slate-200 hover:bg-slate-300 px-4 py-2 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                    >
+                      Đóng
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

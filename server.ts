@@ -241,12 +241,96 @@ app.get('/api/image-reviews', (req, res) => {
   res.json({ success: true, date, records, count: records.length });
 });
 
+// Automated Daily Sync Engine & Store
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz0KaluYvWaWNgVHCK9zesGJs2mnu5koEg9NQ9v76ndZZPXlaog1mUpuaK4x851aomp/exec';
+let configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+
 app.post('/api/image-reviews', async (req, res) => {
   try {
     const payload = req.body;
+    const targetScriptUrl = (payload?.scriptUrl || configuredNewSheetScriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL).trim();
+
+    if (payload?.action === 'batch_upsert') {
+      const inputRecords: any[] = Array.isArray(payload.records) ? payload.records : [];
+      const savedList: ImageReviewRecord[] = [];
+      const updatesForSheet: any[] = [];
+      const now = new Date().toISOString();
+
+      for (const rec of inputRecords) {
+        const id = typeof rec?.id === 'string' ? rec.id.trim().slice(0, 240) : '';
+        const date = rec?.ngay;
+        const facility = typeof rec?.coSo === 'string' ? rec.coSo.trim().slice(0, 160) : '';
+        const imageUrl = typeof rec?.linkAnh === 'string' ? rec.linkAnh.trim().slice(0, 3000) : '';
+        const reviewer = typeof rec?.nguoiKiemDuyet === 'string' ? rec.nguoiKiemDuyet.trim().slice(0, 160) : '';
+        const reviewStatus = rec?.reviewStatus || 'pending';
+
+        if (!id || !date || !facility) continue;
+
+        const revTime = rec.thoiGianKiemDuyet ? new Date(rec.thoiGianKiemDuyet).toLocaleString('vi-VN') : '';
+        const revNote = reviewer ? (revTime ? `${reviewer} (${revTime})` : reviewer) : '';
+
+        const saved: ImageReviewRecord = {
+          id,
+          reportId: rec.reportId || '',
+          rowIndex: rec.rowIndex,
+          ngay: date,
+          gio: rec.gio || '',
+          coSo: facility,
+          khuVuc: rec.khuVuc || '',
+          linkAnh: imageUrl,
+          nguoiBaoCao: rec.nguoiBaoCao || '',
+          reviewed: reviewStatus === 'approved',
+          reviewStatus,
+          trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : reviewStatus === 'rejected' ? 'Không đạt' : 'Chưa duyệt',
+          nguoiKiemDuyet: reviewer,
+          thoiGianKiemDuyet: rec.thoiGianKiemDuyet || now,
+          updatedAt: now,
+          syncedToSheet: true,
+        };
+        imageReviewStore.set(`reviews/${date}/${encodeURIComponent(id)}`, saved);
+        savedList.push(saved);
+
+        updatesForSheet.push({
+          linkAnh: imageUrl,
+          ngay: date,
+          gio: rec.gio || '',
+          coSo: facility,
+          khuVuc: rec.khuVuc || '',
+          daDuyet: reviewStatus === 'approved' ? (revNote || reviewer || 'Đã duyệt') : '',
+          khongDat: reviewStatus === 'rejected' ? (revNote || reviewer || 'Không đạt') : '',
+          reviewStatus,
+          reviewer,
+        });
+      }
+
+      let syncWarning = '';
+      if (targetScriptUrl && updatesForSheet.length > 0) {
+        try {
+          const syncResp = await fetch(targetScriptUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              action: 'batch_update_image_reviews',
+              updates: updatesForSheet,
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
+          const syncJson: any = await syncResp.json().catch(() => null);
+          if (!syncResp.ok || (!syncJson?.success && syncJson?.status !== 'ok')) {
+            syncWarning = syncJson?.error || `Google Sheet API HTTP ${syncResp.status}`;
+          }
+        } catch (err: any) {
+          syncWarning = err.message || 'Lỗi kết nối Google Sheet';
+        }
+      }
+
+      return res.json({ success: true, records: savedList, warning: syncWarning || undefined });
+    }
+
     if (payload?.action !== 'upsert') {
       return res.status(400).json({ success: false, error: 'Thao tác không hợp lệ.' });
     }
+
     const record = payload.record;
     const id = typeof record?.id === 'string' ? record.id.trim().slice(0, 240) : '';
     const date = record?.ngay;
@@ -268,6 +352,9 @@ app.post('/api/image-reviews', async (req, res) => {
 
     const rowIndex = typeof record?.rowIndex === 'number' ? record.rowIndex : undefined;
     const now = new Date().toISOString();
+    const revTime = record?.thoiGianKiemDuyet ? new Date(record.thoiGianKiemDuyet).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN');
+    const revNote = reviewer ? `${reviewer} (${revTime})` : '';
+
     const savedRecord: ImageReviewRecord = {
       id,
       reportId: record.reportId || '',
@@ -288,26 +375,27 @@ app.post('/api/image-reviews', async (req, res) => {
     };
 
     let syncWarning = '';
-    const appsScriptUrl = process.env.WARNING_APPS_SCRIPT_URL;
-    const apiToken = process.env.WARNING_API_TOKEN || '';
-    if (appsScriptUrl) {
+    if (targetScriptUrl) {
       try {
-        const syncResp = await fetch(appsScriptUrl, {
+        const syncResp = await fetch(targetScriptUrl, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             action: 'upsert_image_review',
-            token: apiToken,
             record: savedRecord,
             rowIndex: savedRecord.rowIndex,
             linkAnh: savedRecord.linkAnh,
+            ngay: savedRecord.ngay,
+            gio: savedRecord.gio,
+            coSo: savedRecord.coSo,
+            khuVuc: savedRecord.khuVuc,
             reviewStatus: savedRecord.reviewStatus,
             reviewer: savedRecord.nguoiKiemDuyet,
-            // Column L (Đã duyệt) and Column M (Không đạt)
-            daDuyet: savedRecord.reviewStatus === 'approved' ? (savedRecord.nguoiKiemDuyet || 'Đã duyệt') : '',
-            khongDat: savedRecord.reviewStatus === 'rejected' ? (savedRecord.nguoiKiemDuyet || 'Không đạt') : '',
+            // Column 12 (Đã duyệt) and Column 13 (Không đạt)
+            daDuyet: savedRecord.reviewStatus === 'approved' ? (revNote || savedRecord.nguoiKiemDuyet || 'Đã duyệt') : '',
+            khongDat: savedRecord.reviewStatus === 'rejected' ? (revNote || savedRecord.nguoiKiemDuyet || 'Không đạt') : '',
           }),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(15000),
         });
         const syncJson: any = await syncResp.json().catch(() => null);
         if (syncResp.ok && (syncJson?.success || syncJson?.status === 'ok')) {
@@ -321,7 +409,6 @@ app.post('/api/image-reviews', async (req, res) => {
         savedRecord.syncError = syncWarning;
       }
     } else {
-      // Review is saved locally in memory and automatically merged into the new Sheet on sync
       savedRecord.syncedToSheet = true;
       syncWarning = '';
     }
@@ -332,10 +419,6 @@ app.post('/api/image-reviews', async (req, res) => {
     res.status(500).json({ success: false, error: err.message || 'Lỗi máy chủ' });
   }
 });
-
-// Automated Daily Sync Engine & Store
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
-let configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
 interface AutoSyncLog {
   id: string;
   date: string;
@@ -709,6 +792,7 @@ app.post('/api/sync-warnings-to-sheet', async (req, res) => {
         success: true,
         message: syncJson?.message || `Đã đổ thành công ${records.length} cơ sở cảnh báo sang sheet "nhắc nhở"!`,
         syncedCount: records.length,
+        totalRows: syncJson?.totalRows,
       });
     } else {
       return res.status(502).json({

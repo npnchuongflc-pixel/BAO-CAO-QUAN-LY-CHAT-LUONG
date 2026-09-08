@@ -16,6 +16,7 @@ import {
   History,
   Image as ImageIcon,
   RefreshCw,
+  RotateCcw,
   Search,
   Settings,
   User,
@@ -30,6 +31,7 @@ import {
 } from '../../utils/facilityUtils';
 import { normalizeDateToIso } from '../../utils/dateUtils';
 import {
+  batchSaveImageReviews,
   fetchImageReviews,
   getImageReviewId,
   ImageReviewRecord,
@@ -47,14 +49,38 @@ interface YesterdayHygieneReviewProps {
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
 const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v1';
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz0KaluYvWaWNgVHCK9zesGJs2mnu5koEg9NQ9v76ndZZPXlaog1mUpuaK4x851aomp/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
 
-const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
+export const APPS_SCRIPT_TEMPLATE = `function doGet(e) {
   return ContentService.createTextOutput(JSON.stringify({
     status: "ok",
     message: "Google Apps Script Web App đang hoạt động bình thường! Sẵn sàng nhận dữ liệu."
   })).setMimeType(ContentService.MimeType.JSON);
+}
+
+// Hàm chuẩn hóa định dạng ngày từ Cell (Date object hoặc String) về dạng chuẩn dd/MM/yyyy
+function formatCellDate(val) {
+  if (!val) return "";
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "Asia/Ho_Chi_Minh", "dd/MM/yyyy");
+  }
+  var s = String(val).trim();
+  // Khớp định dạng yyyy-MM-dd hoặc yyyy/MM/dd
+  var mYmd = s.match(/^(\\d{4})[\\/-](\\d{1,2})[\\/-](\\d{1,2})/);
+  if (mYmd) {
+    return ("0" + mYmd[3]).slice(-2) + "/" + ("0" + mYmd[2]).slice(-2) + "/" + mYmd[1];
+  }
+  // Khớp định dạng dd/MM/yyyy hoặc dd-MM-yyyy
+  var mDmy = s.match(/^(\\d{1,2})[\\/-](\\d{1,2})[\\/-](\\d{4})/);
+  if (mDmy) {
+    return ("0" + mDmy[1]).slice(-2) + "/" + ("0" + mDmy[2]).slice(-2) + "/" + mDmy[3];
+  }
+  var d = new Date(val);
+  if (!isNaN(d.getTime())) {
+    return Utilities.formatDate(d, "Asia/Ho_Chi_Minh", "dd/MM/yyyy");
+  }
+  return s;
 }
 
 function doPost(e) {
@@ -65,7 +91,7 @@ function doPost(e) {
 
     // =========================================================================
     // 1. ĐỒNG BỘ CẢNH BÁO CƠ SỞ (Sheet "nhắc nhở")
-    // Tự động tìm/tạo sheet "nhắc nhở", xóa dòng cũ cùng ngày, ghi đè chính xác
+    // ĐIỀU CHỈNH TRỰC TIẾP TRÊN HÀNG ĐÃ ĐỔ, DỌN SẠCH DÒNG THỪA TRÙNG LẶP
     // =========================================================================
     if (action === "sync_warnings" || payload.sheetName === "nhắc nhở") {
       var sheetName = payload.sheetName || "nhắc nhở";
@@ -79,24 +105,34 @@ function doPost(e) {
         "Đã nhắc nhở", "Lỗi app", "Trạng thái nhận định", "Người xử lý"
       ];
 
-      if (warningSheet.getLastRow() === 0) {
+      var lastRow = warningSheet.getLastRow();
+      if (lastRow === 0) {
         warningSheet.appendRow(warningHeaders);
         warningSheet.getRange(1, 1, 1, warningHeaders.length).setFontWeight("bold").setBackground("#fef3c7");
+        lastRow = 1;
       }
 
       var records = payload.records || [];
-      var date = payload.date || "";
+      var targetDateStr = formatCellDate(payload.date || "");
 
-      if (!records.length) {
+      if (!records.length && !targetDateStr) {
         return ContentService.createTextOutput(JSON.stringify({
           success: true,
           message: "Không có bản ghi cảnh báo nào"
         })).setMimeType(ContentService.MimeType.JSON);
       }
 
-      var warningRows = records.map(function(r) {
-        return [
-          r.ngay || date || "",
+      // Chuẩn bị danh sách bản ghi mới theo Map: Key = ngày + "|" + cơ sở (viết thường)
+      var incomingMap = {};
+      var incomingKeys = [];
+      var incomingUsed = {};
+
+      records.forEach(function(r) {
+        var recDate = formatCellDate(r.ngay || targetDateStr);
+        var recFacility = String(r.coSo || "").trim().toLowerCase();
+        var key = recDate + "|" + recFacility;
+        var rowArr = [
+          r.ngay || targetDateStr || "",
           r.coSo || "",
           r.lyDoCanhBao || "",
           r.soLoi !== undefined ? r.soLoi : (r.soLuotCanhBao !== undefined ? r.soLuotCanhBao : 1),
@@ -105,35 +141,180 @@ function doPost(e) {
           r.trangThai || "Chưa nhận định",
           r.nguoiXuLy || ""
         ];
+        incomingMap[key] = rowArr;
+        incomingKeys.push(key);
+        incomingUsed[key] = false;
       });
 
-      // BẢO VỆ CHỐNG TRÙNG LẶP: Quét và XÓA các dòng cũ của ngày này trước khi ghi mới
-      var lastRow = warningSheet.getLastRow();
-      if (lastRow > 1 && date) {
-        var existingData = warningSheet.getRange(2, 1, lastRow - 1, 1).getValues();
-        for (var i = existingData.length - 1; i >= 0; i--) {
-          var rowDate = String(existingData[i][0]).trim();
-          if (rowDate === date || rowDate.indexOf(date) !== -1) {
-            warningSheet.deleteRow(i + 2);
+      // Đọc toàn bộ dữ liệu hiện có trong Sheet "nhắc nhở" (từ hàng 2 trở đi)
+      var finalRows = [];
+      if (lastRow > 1) {
+        var existingData = warningSheet.getRange(2, 1, lastRow - 1, 8).getValues();
+        for (var i = 0; i < existingData.length; i++) {
+          var row = existingData[i];
+          var rowDate = formatCellDate(row[0]);
+          var rowFacility = String(row[1] || "").trim().toLowerCase();
+          var rowKey = rowDate + "|" + rowFacility;
+
+          // Nếu dòng này thuộc danh sách cơ sở đang cập nhật của ngày này:
+          if (incomingMap.hasOwnProperty(rowKey)) {
+            if (!incomingUsed[rowKey]) {
+              // CẬP NHẬT TRỰC TIẾP TRÊN HÀNG ĐÃ CÓ (giữ nguyên vị trí hàng, không tạo dòng mới)
+              finalRows.push(incomingMap[rowKey]);
+              incomingUsed[rowKey] = true;
+            } else {
+              // Đã xuất hiện trước đó: Bỏ qua dòng trùng lặp thừa thãi để dọn sạch bảng
+            }
+          } else {
+            // Dòng thuộc ngày khác hoặc cơ sở khác: GIỮ NGUYÊN HOÀN TOÀN
+            finalRows.push([
+              row[0] instanceof Date ? formatCellDate(row[0]) : row[0],
+              row[1], row[2], row[3], row[4], row[5], row[6], row[7]
+            ]);
           }
         }
       }
 
-      // Ghi đúng danh sách cơ sở cảnh báo (ví dụ 17 cơ sở = đúng 17 dòng)
-      if (warningRows.length > 0) {
-        var startRow = warningSheet.getLastRow() + 1;
-        warningSheet.getRange(startRow, 1, warningRows.length, warningHeaders.length).setValues(warningRows);
+      // Thêm những cơ sở mới của ngày chưa từng có trong Sheet trước đây
+      for (var k = 0; k < incomingKeys.length; k++) {
+        var keyToCheck = incomingKeys[k];
+        if (!incomingUsed[keyToCheck]) {
+          finalRows.push(incomingMap[keyToCheck]);
+          incomingUsed[keyToCheck] = true;
+        }
+      }
+
+      // Ghi đè lại bảng dữ liệu: cập nhật trực tiếp tại hàng cũ, xóa sạch hàng trùng
+      if (lastRow > 1) {
+        warningSheet.getRange(2, 1, lastRow - 1, 8).clearContent();
+      }
+      if (finalRows.length > 0) {
+        warningSheet.getRange(2, 1, finalRows.length, 8).setValues(finalRows);
       }
 
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
-        message: "Đã đổ chính xác " + warningRows.length + " cơ sở cảnh báo ngày " + date + " vào sheet '" + sheetName + "' (đã loại bỏ trùng lặp)!",
-        count: warningRows.length
+        message: "Đã cập nhật trực tiếp trên hàng của sheet '" + sheetName + "' (đã dọn sạch hàng thừa trùng lặp)!",
+        count: records.length,
+        totalRows: finalRows.length
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // =========================================================================
-    // 2. ĐỒNG BỘ TOÀN BỘ KIỂM DUYỆT VỆ SINH (Sheet "Kiểm duyệt vệ sinh")
+    // 2. CẬP NHẬT TRỰC TIẾP HÀNG KIỂM DUYỆT ẢNH (Sheet "Kiểm duyệt vệ sinh")
+    // Khi nhân viên nhấn xem và nhấn tick ("Đã duyệt" hoặc "Không đạt")
+    // =========================================================================
+    if (action === "upsert_image_review" || action === "update_image_review") {
+      var hygieneSheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
+      var lastRow = hygieneSheet.getLastRow();
+      var targetDate = formatCellDate(payload.ngay || (payload.record && payload.record.ngay) || "");
+      var targetLink = String(payload.linkAnh || (payload.record && payload.record.linkAnh) || "").trim();
+      var targetFacility = String(payload.coSo || (payload.record && payload.record.coSo) || "").trim().toLowerCase();
+      var targetArea = String(payload.khuVuc || (payload.record && payload.record.khuVuc) || "").trim().toLowerCase();
+      var targetTime = String(payload.gio || (payload.record && payload.record.gio) || "").trim();
+
+      var daDuyetVal = payload.daDuyet !== undefined ? payload.daDuyet : (payload.reviewStatus === "approved" ? (payload.reviewer || "Đã duyệt") : "");
+      var khongDatVal = payload.khongDat !== undefined ? payload.khongDat : (payload.reviewStatus === "rejected" ? (payload.reviewer || "Không đạt") : "");
+      var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
+
+      var foundRow = -1;
+      if (lastRow > 1) {
+        var data = hygieneSheet.getRange(2, 1, lastRow - 1, 14).getValues();
+        for (var i = 0; i < data.length; i++) {
+          var rDate = formatCellDate(data[i][0]);
+          var rLink = String(data[i][10] || "").trim();
+          var rCoSo = String(data[i][3] || "").trim().toLowerCase();
+          var rKhuVuc = String(data[i][4] || "").trim().toLowerCase();
+          var rGio = String(data[i][1] || "").trim();
+
+          var match = false;
+          if (targetLink && rLink && targetLink === rLink) {
+            match = true;
+          } else if (targetDate && rDate === targetDate && targetFacility && rCoSo === targetFacility && targetArea && rKhuVuc === targetArea && (!targetTime || !rGio || targetTime === rGio)) {
+            match = true;
+          }
+
+          if (match) {
+            foundRow = i + 2;
+            break;
+          }
+        }
+      }
+
+      if (foundRow > 1) {
+        // CẬP NHẬT TRỰC TIẾP TRÊN HÀNG ĐÃ CÓ TRONG SHEET:
+        // Cột 12: Đã duyệt, Cột 13: Không đạt, Cột 14: Thời gian đồng bộ
+        hygieneSheet.getRange(foundRow, 12, 1, 3).setValues([[daDuyetVal, khongDatVal, nowStr]]);
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          message: "Đã cập nhật trực tiếp hàng " + foundRow + " trong sheet 'Kiểm duyệt vệ sinh'!",
+          updatedRow: foundRow
+        })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        // Nếu hàng chưa có trong sheet: Thêm hàng mới vào sheet
+        var rec = payload.record || {};
+        var newRow = [
+          targetDate,
+          payload.gio || rec.gio || "",
+          rec.nguoiBaoCao || rec.nguoiKiemTra || "",
+          payload.coSo || rec.coSo || "",
+          payload.khuVuc || rec.khuVuc || "",
+          rec.trangThai || "",
+          rec.diemSo !== undefined ? rec.diemSo : "",
+          rec.chiTiet || "",
+          rec.phanHoi || "",
+          rec.feedbackNguoiDung || "",
+          targetLink,
+          daDuyetVal,
+          khongDatVal,
+          nowStr
+        ];
+        hygieneSheet.appendRow(newRow);
+        return ContentService.createTextOutput(JSON.stringify({
+          success: true,
+          message: "Đã thêm mới và cập nhật hàng trong sheet 'Kiểm duyệt vệ sinh'!",
+          appendedRow: hygieneSheet.getLastRow()
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // Cập nhật hàng loạt nhiều ảnh của 1 cơ sở (khi nhấn Duyệt tất cả hoặc Hủy tất cả)
+    if (action === "batch_update_image_reviews") {
+      var hygieneSheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
+      var lastRow = hygieneSheet.getLastRow();
+      var updates = payload.updates || [];
+      var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
+
+      if (lastRow > 1 && updates.length > 0) {
+        var data = hygieneSheet.getRange(2, 1, lastRow - 1, 14).getValues();
+        var linkMap = {};
+        for (var u = 0; u < updates.length; u++) {
+          var item = updates[u];
+          var uLink = String(item.linkAnh || "").trim();
+          if (uLink) linkMap[uLink] = item;
+        }
+
+        for (var i = 0; i < data.length; i++) {
+          var rLink = String(data[i][10] || "").trim();
+          if (rLink && linkMap.hasOwnProperty(rLink)) {
+            var matched = linkMap[rLink];
+            data[i][11] = matched.daDuyet || "";
+            data[i][12] = matched.khongDat || "";
+            data[i][13] = nowStr;
+          }
+        }
+        hygieneSheet.getRange(2, 1, lastRow - 1, 14).setValues(data);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        message: "Đã cập nhật đồng loạt các hàng trong sheet 'Kiểm duyệt vệ sinh'!"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // =========================================================================
+    // 3. ĐỒNG BỘ TOÀN BỘ KIỂM DUYỆT VỆ SINH (Sheet "Kiểm duyệt vệ sinh")
+    // Cập nhật trực tiếp trên hàng đã có trong Sheet, KHÔNG xóa hàng cũ
     // =========================================================================
     var sheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
 
@@ -156,9 +337,18 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Không có bản ghi" })).setMimeType(ContentService.MimeType.JSON);
     }
 
-    var rowsToAppend = records.map(function(r) {
-      return [
-        r.ngay || "",
+    // Xây dựng incomingMap cho các bản ghi vệ sinh
+    var incomingMap = {};
+    var incomingKeys = [];
+    var incomingUsed = {};
+
+    records.forEach(function(r) {
+      var recDate = formatCellDate(r.ngay || date);
+      var recLink = String(r.linkAnh || "").trim();
+      var recKey = recLink ? recLink : (recDate + "|" + String(r.coSo || "").trim().toLowerCase() + "|" + String(r.khuVuc || "").trim().toLowerCase() + "|" + String(r.gio || "").trim());
+      
+      var rowArr = [
+        r.ngay || date || "",
         r.gio || "",
         r.nguoiKiemTra || "",
         r.coSo || "",
@@ -173,29 +363,63 @@ function doPost(e) {
         r.khongDat || "",
         nowStr
       ];
+      incomingMap[recKey] = rowArr;
+      incomingKeys.push(recKey);
+      incomingUsed[recKey] = false;
     });
 
-    // Tránh trùng lặp nếu đồng bộ lại cùng ngày
     var lastRow = sheet.getLastRow();
-    if (lastRow > 1 && date) {
-      var existingData = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-      for (var i = existingData.length - 1; i >= 0; i--) {
-        var rowDate = String(existingData[i][0]).trim();
-        if (rowDate === date || rowDate.indexOf(date) !== -1) {
-          sheet.deleteRow(i + 2);
+    var finalRows = [];
+    if (lastRow > 1) {
+      var existingData = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+      for (var i = 0; i < existingData.length; i++) {
+        var row = existingData[i];
+        var rDate = formatCellDate(row[0]);
+        var rLink = String(row[10] || "").trim();
+        var rKey = rLink ? rLink : (rDate + "|" + String(row[3] || "").trim().toLowerCase() + "|" + String(row[4] || "").trim().toLowerCase() + "|" + String(row[1] || "").trim());
+
+        if (incomingMap.hasOwnProperty(rKey)) {
+          if (!incomingUsed[rKey]) {
+            // CẬP NHẬT TRỰC TIẾP TRÊN HÀNG ĐÃ CÓ TRONG SHEET:
+            // Bảo lưu giá trị Đã duyệt (cột 12) & Không đạt (cột 13) nếu dòng cũ đã có mà bản ghi mới chưa có
+            var newRow = incomingMap[rKey].slice();
+            if (!newRow[11] && row[11]) newRow[11] = row[11];
+            if (!newRow[12] && row[12]) newRow[12] = row[12];
+            finalRows.push(newRow);
+            incomingUsed[rKey] = true;
+          }
+        } else {
+          // Giữ nguyên các hàng khác đã có sẵn trong Sheet
+          finalRows.push([
+            row[0] instanceof Date ? formatCellDate(row[0]) : row[0],
+            row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13]
+          ]);
         }
       }
     }
 
-    if (rowsToAppend.length > 0) {
-      var startRow = sheet.getLastRow() + 1;
-      sheet.getRange(startRow, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    // Thêm các bản ghi mới chưa từng có trong Sheet
+    for (var k = 0; k < incomingKeys.length; k++) {
+      var kToCheck = incomingKeys[k];
+      if (!incomingUsed[kToCheck]) {
+        finalRows.push(incomingMap[kToCheck]);
+        incomingUsed[kToCheck] = true;
+      }
+    }
+
+    // Cập nhật lại Sheet trực tiếp theo hàng mà không làm mất cấu trúc
+    if (lastRow > 1) {
+      sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+    }
+    if (finalRows.length > 0) {
+      sheet.getRange(2, 1, finalRows.length, headers.length).setValues(finalRows);
     }
 
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
-      message: "Đã ghi nhận thành công " + rowsToAppend.length + " dòng cho ngày " + date + " sang Sheet mới!",
-      count: rowsToAppend.length
+      message: "Đã cập nhật trực tiếp trên hàng của sheet 'Kiểm duyệt vệ sinh' thành công!",
+      count: records.length,
+      totalRows: finalRows.length
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() })).setMimeType(ContentService.MimeType.JSON);
@@ -205,6 +429,7 @@ function doPost(e) {
 /**
  * TỰ ĐỘNG KÉO DỮ LIỆU HẰNG NGÀY (DAILY AUTO-SYNC)
  * Tự động lấy toàn bộ kiểm tra vệ sinh ngày hôm trước từ Sheet gốc về Sheet này
+ * Cập nhật trực tiếp trên hàng đã có, không xóa hàng cũ
  */
 function dailyAutoSyncHygieneData() {
   var SOURCE_SHEET_ID = "1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY";
@@ -288,31 +513,69 @@ function dailyAutoSyncHygieneData() {
     sheet.getRange(1, 1, 1, sheetHeaders.length).setFontWeight("bold").setBackground("#e2e8f0");
   }
 
-  // Xóa ngày trùng nếu đã đổ trước đó
+  var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
+
+  // Đọc dữ liệu hiện có trong Sheet "Kiểm duyệt vệ sinh" để cập nhật trực tiếp thay vì deleteRow
   var lastRow = sheet.getLastRow();
+  var finalRows = [];
+  var incomingMap = {};
+  var incomingKeys = [];
+  var incomingUsed = {};
+
+  matchingRows.forEach(function(item) {
+    var recDate = formatCellDate(item.ngay || targetDmy);
+    var recLink = String(item.linkAnh || "").trim();
+    var recKey = recLink ? recLink : (recDate + "|" + String(item.coSo || "").trim().toLowerCase() + "|" + String(item.khuVuc || "").trim().toLowerCase() + "|" + String(item.gio || "").trim());
+    var rowArr = [
+      item.ngay, item.gio, item.nguoiKiemTra, item.coSo, item.khuVuc,
+      item.trangThai, item.diemSo, item.chiTiet, item.phanHoi,
+      item.feedbackNguoiDung, item.linkAnh, item.daDuyet || "", item.khongDat || "", nowStr
+    ];
+    incomingMap[recKey] = rowArr;
+    incomingKeys.push(recKey);
+    incomingUsed[recKey] = false;
+  });
+
   if (lastRow > 1) {
-    var datesInSheet = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-    for (var i = datesInSheet.length - 1; i >= 0; i--) {
-      var d = String(datesInSheet[i][0]).trim();
-      if (d === targetDmy || d === targetIso || d.indexOf(targetDmy) !== -1 || d.indexOf(targetIso) !== -1) {
-        sheet.deleteRow(i + 2);
+    var existingData = sheet.getRange(2, 1, lastRow - 1, sheetHeaders.length).getValues();
+    for (var i = 0; i < existingData.length; i++) {
+      var row = existingData[i];
+      var rDate = formatCellDate(row[0]);
+      var rLink = String(row[10] || "").trim();
+      var rKey = rLink ? rLink : (rDate + "|" + String(row[3] || "").trim().toLowerCase() + "|" + String(row[4] || "").trim().toLowerCase() + "|" + String(row[1] || "").trim());
+
+      if (incomingMap.hasOwnProperty(rKey)) {
+        if (!incomingUsed[rKey]) {
+          var updatedRow = incomingMap[rKey].slice();
+          // Giữ lại kết quả kiểm duyệt của nhân viên (Cột 12, 13) nếu đã có
+          if (!updatedRow[11] && row[11]) updatedRow[11] = row[11];
+          if (!updatedRow[12] && row[12]) updatedRow[12] = row[12];
+          finalRows.push(updatedRow);
+          incomingUsed[rKey] = true;
+        }
+      } else {
+        finalRows.push([
+          row[0] instanceof Date ? formatCellDate(row[0]) : row[0],
+          row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11], row[12], row[13]
+        ]);
       }
     }
   }
 
-  var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
-  var rowsToInsert = matchingRows.map(function(item) {
-    return [
-      item.ngay, item.gio, item.nguoiKiemTra, item.coSo, item.khuVuc,
-      item.trangThai, item.diemSo, item.chiTiet, item.phanHoi,
-      item.feedbackNguoiDung, item.linkAnh, item.daDuyet, item.khongDat, nowStr
-    ];
-  });
+  for (var k = 0; k < incomingKeys.length; k++) {
+    var kCheck = incomingKeys[k];
+    if (!incomingUsed[kCheck]) {
+      finalRows.push(incomingMap[kCheck]);
+      incomingUsed[kCheck] = true;
+    }
+  }
 
-  if (rowsToInsert.length > 0) {
-    var startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, rowsToInsert.length, sheetHeaders.length).setValues(rowsToInsert);
-    Logger.log("Đã tự động đổ thành công " + rowsToInsert.length + " dòng ngày " + targetDmy);
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, sheetHeaders.length).clearContent();
+  }
+  if (finalRows.length > 0) {
+    sheet.getRange(2, 1, finalRows.length, sheetHeaders.length).setValues(finalRows);
+    Logger.log("Đã tự động cập nhật trực tiếp trên hàng của sheet 'Kiểm duyệt vệ sinh': " + finalRows.length + " dòng.");
   }
 }
 
@@ -384,7 +647,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     }
   });
 
-  const DEFAULT_NEW_SHEET_URL = 'https://script.google.com/macros/s/AKfycbymAv6NVa-8F3FDxP92_vW8htu7XKAGR0yltiHqDyAWzj80eSMUwH4INaUm-h9dnt6o/exec';
+  const DEFAULT_NEW_SHEET_URL = 'https://script.google.com/macros/s/AKfycbz0KaluYvWaWNgVHCK9zesGJs2mnu5koEg9NQ9v76ndZZPXlaog1mUpuaK4x851aomp/exec';
   const [newSheetScriptUrl, setNewSheetScriptUrl] = useState(() => {
     try {
       if (typeof window === 'undefined') return DEFAULT_NEW_SHEET_URL;
@@ -592,11 +855,11 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setSavingReviewId(reviewId);
 
     try {
-      const result = await saveImageReview(optimisticRecord);
+      const result = await saveImageReview(optimisticRecord, newSheetScriptUrl);
       setImageReviews(current => ({ ...current, [reviewId]: result.record }));
       setSyncNotice(result.warning
-        ? { tone: 'warning', message: `Đã lưu trên hệ thống; Google Sheet đang chờ đồng bộ: ${result.warning}` }
-        : { tone: 'success', message: 'Đã lưu và đồng bộ vào Google Sheet.' });
+        ? { tone: 'warning', message: `Đã lưu trên hệ thống; Google Sheet: ${result.warning}` }
+        : { tone: 'success', message: '✓ Đã cập nhật trực tiếp hàng tương ứng trong Google Sheet!' });
     } catch (error) {
       setImageReviews(current => {
         const next = { ...current };
@@ -610,6 +873,134 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       });
     } finally {
       setSavingReviewId(null);
+    }
+  };
+
+  const [isBatchSaving, setIsBatchSaving] = useState(false);
+
+  const handleBatchApproveFacility = async () => {
+    if (!selectedRow || !selectedRow.images.length) return;
+    const cleanReviewer = reviewerName.trim();
+    if (!cleanReviewer) {
+      setReviewerError(true);
+      return;
+    }
+    setReviewerError(false);
+    setSyncNotice(null);
+    setIsBatchSaving(true);
+
+    const timestamp = new Date().toISOString();
+    const updatedRecords: ImageReviewRecord[] = selectedRow.images.map(report => {
+      const reviewId = getImageReviewId(report);
+      return {
+        id: reviewId,
+        reportId: report.id,
+        rowIndex: report.rowIndex,
+        ngay: dateIso,
+        gio: report.gio || '',
+        coSo: report.coSo,
+        khuVuc: report.khuVuc || '',
+        linkAnh: report.linkAnh,
+        nguoiBaoCao: report.nguoiKiemTra || '',
+        reviewed: true,
+        reviewStatus: 'approved',
+        trangThaiKiemDuyet: 'Đã duyệt',
+        nguoiKiemDuyet: cleanReviewer,
+        thoiGianKiemDuyet: timestamp,
+        syncedToSheet: false,
+      };
+    });
+
+    setImageReviews(current => {
+      const next = { ...current };
+      updatedRecords.forEach(rec => {
+        next[rec.id] = rec;
+      });
+      return next;
+    });
+
+    try {
+      const result = await batchSaveImageReviews(updatedRecords, newSheetScriptUrl);
+      if (result.records) {
+        setImageReviews(current => {
+          const next = { ...current };
+          result.records.forEach(rec => {
+            next[rec.id] = rec;
+          });
+          return next;
+        });
+      }
+      setSyncNotice({
+        tone: 'success',
+        message: `✓ Đã duyệt đạt tất cả ${updatedRecords.length} ảnh và cập nhật trực tiếp hàng trong Sheet!`
+      });
+    } catch (error) {
+      setSyncNotice({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Không thể lưu duyệt hàng loạt.',
+      });
+    } finally {
+      setIsBatchSaving(false);
+    }
+  };
+
+  const handleBatchResetFacility = async () => {
+    if (!selectedRow || !selectedRow.images.length) return;
+    setSyncNotice(null);
+    setIsBatchSaving(true);
+
+    const timestamp = new Date().toISOString();
+    const updatedRecords: ImageReviewRecord[] = selectedRow.images.map(report => {
+      const reviewId = getImageReviewId(report);
+      return {
+        id: reviewId,
+        reportId: report.id,
+        rowIndex: report.rowIndex,
+        ngay: dateIso,
+        gio: report.gio || '',
+        coSo: report.coSo,
+        khuVuc: report.khuVuc || '',
+        linkAnh: report.linkAnh,
+        nguoiBaoCao: report.nguoiKiemTra || '',
+        reviewed: false,
+        reviewStatus: 'pending',
+        trangThaiKiemDuyet: 'Chưa duyệt',
+        nguoiKiemDuyet: '',
+        thoiGianKiemDuyet: timestamp,
+        syncedToSheet: false,
+      };
+    });
+
+    setImageReviews(current => {
+      const next = { ...current };
+      updatedRecords.forEach(rec => {
+        next[rec.id] = rec;
+      });
+      return next;
+    });
+
+    try {
+      const result = await batchSaveImageReviews(updatedRecords, newSheetScriptUrl);
+      if (result.records) {
+        setImageReviews(current => {
+          const next = { ...current };
+          result.records.forEach(rec => {
+            next[rec.id] = rec;
+          });
+          return next;
+        });
+      }
+      setSyncNotice({
+        tone: 'success',
+        message: `✓ Đã bỏ lựa chọn ${updatedRecords.length} ảnh và cập nhật hàng tương ứng trong Sheet!`
+      });
+    } catch (error) {
+      setSyncNotice({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Không thể cập nhật.',
+      });
+    } finally {
+      setIsBatchSaving(false);
     }
   };
 
@@ -959,54 +1350,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
       {isExpanded && (
         <>
-          {/* Daily Auto-Sync Status & One-Click Trigger Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-emerald-200/80 bg-gradient-to-r from-emerald-50/90 to-teal-50/70 px-4 py-2 text-xs">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                  autoSyncInfo?.enabled || newSheetScriptUrl ? 'animate-ping bg-emerald-400' : 'bg-amber-400'
-                }`} />
-                <span className={`relative inline-flex h-2 w-2 rounded-full ${
-                  autoSyncInfo?.enabled || newSheetScriptUrl ? 'bg-emerald-500' : 'bg-amber-500'
-                }`} />
-              </span>
-              <span className="font-bold text-slate-800">
-                Tự động đổ về Sheet Mới:
-              </span>
-              <span className={`rounded-full px-2 py-0.5 font-bold text-[11px] ${
-                autoSyncInfo?.enabled || newSheetScriptUrl
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                  : 'bg-amber-100 text-amber-800 border border-amber-300'
-              }`}>
-                {autoSyncInfo?.enabled || newSheetScriptUrl
-                  ? '✓ Đang bật (Hằng ngày lúc 01:00 AM)'
-                  : 'Chưa cài URL Sheet Mới'}
-              </span>
-              {autoSyncInfo?.lastAutoSyncDate && (
-                <span className="text-[11px] text-slate-500">
-                  · Ngày hoàn tất gần nhất: <strong>{autoSyncInfo.lastAutoSyncDate}</strong>
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleTriggerDailyAutoSyncNow}
-                disabled={isTriggeringAutoSync}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-800 disabled:opacity-50"
-                title="Kiểm tra Sheet gốc và tự động lấy đổ ngày hôm qua sang Sheet Mới ngay lập tức"
-              >
-                {isTriggeringAutoSync ? (
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Zap className="h-3 w-3 text-amber-300" />
-                )}
-                {isTriggeringAutoSync ? 'Đang đổ tự động...' : 'Chạy tự động đổ ngay'}
-              </button>
-            </div>
-          </div>
-
           {/* Action toolbar for Day Sync / Export to New Sheet */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -1212,22 +1555,47 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-1.5">
-                  {([
-                    ['all', 'Tất cả', selectedRow.images.length],
-                    ['pending', 'Chưa đánh giá', selectedCounts.pending],
-                    ['approved', 'Đã duyệt', selectedCounts.approved],
-                    ['rejected', 'Không đạt', selectedCounts.rejected],
-                  ] as Array<[ImageFilter, string, number]>).map(([value, label, count]) => (
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ['all', 'Tất cả', selectedRow.images.length],
+                      ['pending', 'Chưa đánh giá', selectedCounts.pending],
+                      ['approved', 'Đã duyệt', selectedCounts.approved],
+                      ['rejected', 'Không đạt', selectedCounts.rejected],
+                    ] as Array<[ImageFilter, string, number]>).map(([value, label, count]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setFilter(value)}
+                        className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${filter === value ? 'border-sky-700 bg-sky-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      >
+                        {label} ({count})
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
                     <button
-                      key={value}
                       type="button"
-                      onClick={() => setFilter(value)}
-                      className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold ${filter === value ? 'border-sky-700 bg-sky-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                      onClick={handleBatchApproveFacility}
+                      disabled={isBatchSaving || selectedRow.images.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-[11px] font-bold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
+                      title="Duyệt đạt tất cả ảnh của cơ sở này và tự động cập nhật hàng trong Sheet"
                     >
-                      {label} ({count})
+                      {isBatchSaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      Duyệt đạt tất cả ({selectedRow.images.length})
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={handleBatchResetFacility}
+                      disabled={isBatchSaving || selectedRow.images.length === 0}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                      title="Bỏ đánh giá tất cả ảnh của cơ sở này"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Bỏ chọn tất cả
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
