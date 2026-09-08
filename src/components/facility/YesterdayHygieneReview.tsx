@@ -630,28 +630,59 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setIsSyncingAll(true);
     setSyncAllStatus(null);
     try {
-      const res = await fetch('/api/sync-day-to-new-sheet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date: dateIso,
-          scriptUrl: newSheetScriptUrl.trim() || undefined,
-          records: preparedDateRecords,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
+      let isSuccess = false;
+      let successMsg = '';
+
+      try {
+        const res = await fetch('/api/sync-day-to-new-sheet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: dateIso,
+            scriptUrl: newSheetScriptUrl.trim() || undefined,
+            records: preparedDateRecords,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            isSuccess = true;
+            successMsg = data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+          }
+        }
+      } catch (e) {
+        console.warn('API backend chưa phản hồi, chuyển sang đồng bộ trực tiếp Apps Script:', e);
+      }
+
+      if (!isSuccess) {
+        const targetUrl = newSheetScriptUrl.trim() || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+        const directResp = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'sync_full_day_hygiene_reviews',
+            date: dateIso,
+            count: preparedDateRecords.length,
+            records: preparedDateRecords,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        const directData = await directResp.json().catch(() => null);
+        if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
+          isSuccess = true;
+          successMsg = directData?.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+        }
+      }
+
+      if (isSuccess) {
         setSyncAllStatus({
           type: 'success',
-          message: data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`,
+          message: successMsg,
         });
       } else {
-        if (data.error && data.error.includes('Chưa cấu hình URL')) {
-          setShowSettingsModal(true);
-        }
         setSyncAllStatus({
           type: 'error',
-          message: data.error || 'Đồng bộ sang Sheet mới thất bại.',
+          message: 'Đồng bộ sang Sheet mới chưa thành công. Vui lòng kiểm tra lại kết nối.',
         });
       }
     } catch (err: any) {

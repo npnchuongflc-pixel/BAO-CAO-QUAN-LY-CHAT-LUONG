@@ -210,18 +210,54 @@ export async function syncWarningsToGoogleSheet(
     };
   });
 
-  const response = await fetch('/api/sync-warnings-to-sheet', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      date: formatIsoToDateStr(date),
-      records,
-    }),
-  });
+  const targetDateStr = formatIsoToDateStr(date);
+  const defaultAppsScriptUrl = 'https://script.google.com/macros/s/AKfycbxS5wpoxh0JRuoVltb0f_3LyXjouwI69vbbMJ1gdj89FFmdEOXXCe8UyferT1dvC1um/exec';
 
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.success) {
-    throw new Error(result?.error || `Lỗi khi đồng bộ sang Google Sheet (HTTP ${response.status})`);
+  // 1. Thử gửi qua server backend nếu có
+  try {
+    const response = await fetch('/api/sync-warnings-to-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date: targetDateStr,
+        records,
+      }),
+    });
+
+    if (response.ok) {
+      const result = await response.json().catch(() => null);
+      if (result?.success) return result;
+    }
+  } catch (apiErr) {
+    console.warn('API backend không phản hồi (có thể đang chạy trên host tĩnh Vercel/Netlify), kích hoạt fallback gửi trực tiếp Apps Script:', apiErr);
   }
-  return result;
+
+  // 2. Fallback trực tiếp tới Google Apps Script (Hỗ trợ khi deploy frontend lên Vercel/Netlify/GitHub Pages)
+  try {
+    const directResponse = await fetch(defaultAppsScriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'sync_warnings',
+        sheetName: 'nhắc nhở',
+        date: targetDateStr,
+        count: records.length,
+        records,
+        timestamp: new Date().toISOString(),
+      }),
+    });
+
+    const directResult = await directResponse.json().catch(() => null);
+    if (directResponse.ok && (directResult?.success || directResult?.status === 'ok')) {
+      return {
+        success: true,
+        message: directResult?.message || `Đã đổ thành công ${records.length} cơ sở cảnh báo sang sheet "nhắc nhở"!`,
+        syncedCount: records.length,
+      };
+    }
+  } catch (directErr: any) {
+    throw new Error(directErr?.message || 'Không thể kết nối Google Apps Script.');
+  }
+
+  throw new Error('Đồng bộ sang Google Sheet chưa thành công.');
 }
