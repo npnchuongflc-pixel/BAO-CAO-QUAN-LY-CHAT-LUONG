@@ -100,8 +100,8 @@ function doPost(e) {
           r.coSo || "",
           r.lyDoCanhBao || "",
           r.soLoi !== undefined ? r.soLoi : (r.soLuotCanhBao !== undefined ? r.soLuotCanhBao : 1),
-          r.daNhacNho || "Không",
-          r.loiApp || "Không",
+          r.daNhacNho || "",
+          r.loiApp || "",
           r.trangThai || "Chưa nhận định",
           r.nguoiXuLy || ""
         ];

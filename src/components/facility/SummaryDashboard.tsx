@@ -31,9 +31,7 @@ import {
   Search,
   ClipboardList,
   RotateCcw,
-  Download,
   Cloud,
-  CloudUpload,
   RefreshCw
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
@@ -47,7 +45,6 @@ import {
   saveWarningAudit,
   syncWarningFacilitiesForDate,
   resetWarningAuditsForDate,
-  downloadWarningAuditsCsv,
   formatIsoToDateStr,
   getCurrentTimestampStr,
   syncWarningsToGoogleSheet
@@ -383,6 +380,42 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [savingAuditId, setSavingAuditId] = useState<string | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
   const lastWarningSyncFingerprint = useRef('');
+  const hasAutoSyncedInitialForDate = useRef<Record<string, boolean>>({});
+  const autoSyncDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // Hàm tự động đổ dữ liệu về Google Sheet không cần nhấn nút
+  const autoSyncToGoogleSheet = async (
+    targetAudits: Record<string, WarningAuditRecord>,
+    successMessage?: string,
+    isInitial = false
+  ) => {
+    if (warningFacilities.length === 0 || !activeWarningDateIso) return;
+    setIsSyncingWarningsToSheet(true);
+    try {
+      await syncWarningsToGoogleSheet(
+        activeWarningDateIso,
+        warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+        targetAudits
+      );
+      if (successMessage) {
+        setSyncFeedback({
+          message: successMessage,
+          type: 'success'
+        });
+        setTimeout(() => setSyncFeedback(null), 3500);
+      } else if (isInitial) {
+        setSyncFeedback({
+          message: `Đã tự động cập nhật danh sách cảnh báo vào sheet "nhắc nhở"!`,
+          type: 'success'
+        });
+        setTimeout(() => setSyncFeedback(null), 3500);
+      }
+    } catch (err) {
+      console.warn('Tự động đổ vào sheet nhắc nhở chưa thành công:', err);
+    } finally {
+      setIsSyncingWarningsToSheet(false);
+    }
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -425,7 +458,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   ), [warningFacilities]);
 
   useEffect(() => {
-    if (!isDataReady || !activeWarningDateIso) return;
+    if (!isDataReady || !activeWarningDateIso || warningFacilities.length === 0) return;
     const fingerprint = `${activeWarningDateIso}|${warningSyncFingerprint}`;
     if (lastWarningSyncFingerprint.current === fingerprint) return;
     lastWarningSyncFingerprint.current = fingerprint;
@@ -436,16 +469,26 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       activeWarningDateIso,
       warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
     )
-      .then(({ records, warning }) => {
+      .then(async ({ records, warning }) => {
         if (!isActive) return;
+        let mergedAudits: Record<string, WarningAuditRecord> = {};
         setWarningAudits(previous => {
           const next = { ...previous };
           records.forEach(record => {
             next[record.id] = record;
           });
           replaceLocalWarningAudits(next);
+          mergedAudits = next;
           return next;
         });
+
+        // Tự động đổ dữ liệu cảnh báo hằng ngày vào Google Sheet mà không cần bấm nút
+        // Ban đầu 2 cột "Đã nhắc nhở" và "Lỗi app" sẽ hoàn toàn trống
+        if (!hasAutoSyncedInitialForDate.current[activeWarningDateIso]) {
+          hasAutoSyncedInitialForDate.current[activeWarningDateIso] = true;
+          await autoSyncToGoogleSheet(mergedAudits, undefined, true);
+        }
+
         if (warning) {
           setSyncFeedback({
             message: `Cảnh báo đã lưu trên website nhưng chưa ghi được vào Google Sheet: ${warning}`,
@@ -467,6 +510,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     };
   }, [activeWarningDateIso, isDataReady, warningFacilities, warningSyncFingerprint]);
 
+  // Hủy tất cả nhận định đã chọn và tự động cập nhật trống vào Google Sheet
   const handleClearAllWarningChecks = async () => {
     if (warningFacilities.length === 0) {
       setSyncFeedback({
@@ -480,19 +524,18 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     setIsClearingAll(true);
     try {
       const resetRecords = await resetWarningAuditsForDate(activeWarningDateIso);
-      setWarningAudits(previous => {
-        const next = { ...previous };
-        resetRecords.forEach(record => {
-          next[record.id] = record;
-        });
-        replaceLocalWarningAudits(next);
-        return next;
+      const next: Record<string, WarningAuditRecord> = { ...warningAudits };
+      resetRecords.forEach(record => {
+        next[record.id] = record;
       });
-      setSyncFeedback({
-        message: `Đã bỏ ${resetRecords.length} nhận định. Hãy bấm "Đổ vào sheet nhắc nhở" nếu bạn muốn cập nhật lên Google Sheet.`,
-        type: 'success'
-      });
-      setTimeout(() => setSyncFeedback(null), 5000);
+      replaceLocalWarningAudits(next);
+      setWarningAudits(next);
+
+      // Tự động đồng bộ hủy hết lựa chọn ban đầu lên Google Sheet (cả 2 cột trống)
+      await autoSyncToGoogleSheet(
+        next,
+        `Đã hủy tất cả nhận định và tự động cập nhật trống vào sheet "nhắc nhở".`
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể đặt lại nhận định';
       setSyncFeedback({ message: `Đặt lại chưa thành công: ${message}`, type: 'error' });
@@ -501,6 +544,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     }
   };
 
+  // Tích vào ô nào sẽ cập nhật đúng ô đó vào Google Sheet theo thời gian thực
   const handleToggleWarningAudit = async (coSo: string, targetType: 'da_nhac_nho' | 'loi_app', reasons: string[]) => {
     const auditId = `${coSo}_${activeWarningDateIso}`;
     const existing = warningAudits[auditId];
@@ -530,16 +574,22 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         emailThucHien: ''
       };
       saveLocalWarningAudit(newRecord);
-      setWarningAudits(previous => ({ ...previous, [auditId]: newRecord }));
+      const updatedAudits = { ...warningAudits, [auditId]: newRecord };
+      setWarningAudits(updatedAudits);
+
       const savedRecord = await saveWarningAudit(newRecord);
       saveLocalWarningAudit(savedRecord);
-      setWarningAudits(previous => ({ ...previous, [auditId]: savedRecord }));
+      const finalAudits = { ...updatedAudits, [auditId]: savedRecord };
+      setWarningAudits(finalAudits);
 
-      setSyncFeedback({
-        message: `${coSo}: ${label}. Hãy bấm nút "Đổ vào sheet nhắc nhở" khi hoàn tất để cập nhật Google Sheet.`,
-        type: nextType === 'chua_xu_ly' ? 'info' : 'success'
-      });
-      setTimeout(() => setSyncFeedback(null), 3500);
+      // Tự động cập nhật đúng ô đó vào Google Sheet (debounce 400ms)
+      if (autoSyncDebounceTimer.current) clearTimeout(autoSyncDebounceTimer.current);
+      autoSyncDebounceTimer.current = setTimeout(() => {
+        autoSyncToGoogleSheet(
+          finalAudits,
+          `${coSo}: ${label} • Đã tự động cập nhật vào sheet "nhắc nhở".`
+        );
+      }, 400);
     } catch (error) {
       if (existing) {
         saveLocalWarningAudit(existing);
@@ -557,52 +607,6 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     } finally {
       setSavingAuditId(null);
     }
-  };
-
-  const handleSyncWarningsToGoogleSheet = async () => {
-    if (warningFacilities.length === 0) {
-      setSyncFeedback({
-        message: `Ngày ${activeWarningDisplayStr} không có cơ sở nào bị cảnh báo để đồng bộ.`,
-        type: 'info'
-      });
-      setTimeout(() => setSyncFeedback(null), 3000);
-      return;
-    }
-
-    setIsSyncingWarningsToSheet(true);
-    try {
-      const result = await syncWarningsToGoogleSheet(
-        activeWarningDateIso,
-        warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
-        warningAudits
-      );
-      setSyncFeedback({
-        message: result.message || `Đã đổ ${warningFacilities.length} cơ sở cảnh báo vào sheet "nhắc nhở"!`,
-        type: 'success'
-      });
-      setTimeout(() => setSyncFeedback(null), 5000);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể đồng bộ';
-      setSyncFeedback({
-        message: `Đổ dữ liệu chưa thành công: ${message}`,
-        type: 'error'
-      });
-    } finally {
-      setIsSyncingWarningsToSheet(false);
-    }
-  };
-
-  const handleDownloadWarningCsv = () => {
-    downloadWarningAuditsCsv(
-      activeWarningDateIso,
-      warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
-      warningAudits
-    );
-    setSyncFeedback({
-      message: `Đã tải nhật ký cảnh báo ngày ${activeWarningDisplayStr}.`,
-      type: 'success'
-    });
-    setTimeout(() => setSyncFeedback(null), 3000);
   };
 
   const totalWarningReasons = warningFacilities.reduce(
@@ -825,38 +829,28 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    disabled={isSyncingWarningsToSheet || warningFacilities.length === 0}
-                    onClick={handleSyncWarningsToGoogleSheet}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Đổ dữ liệu cơ sở cảnh báo của ngày này sang sheet 'nhắc nhở' trên Google Sheet"
-                  >
-                    {isSyncingWarningsToSheet ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <CloudUpload className="w-3.5 h-3.5" />
-                    )}
-                    <span>{isSyncingWarningsToSheet ? 'Đang đổ vào Sheet...' : 'Đổ vào sheet "nhắc nhở"'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={warningFacilities.length === 0}
-                    onClick={handleDownloadWarningCsv}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1B5EA6] hover:bg-[#154d89] disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Tải nhật ký cảnh báo của ngày đang xem để mở bằng Excel"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Tải nhật ký CSV</span>
-                  </button>
+                  {/* Trạng thái tự động đồng bộ Google Sheet */}
+                  {isSyncingWarningsToSheet ? (
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-900 border border-amber-300 rounded-lg text-xs font-semibold shadow-2xs animate-pulse">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-700" />
+                      <span>Đang tự động đồng bộ Google Sheet...</span>
+                    </div>
+                  ) : (
+                    <div 
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-lg text-xs font-semibold shadow-2xs"
+                      title="Dữ liệu cảnh báo tự động đổ về Google Sheet (tab 'nhắc nhở') hằng ngày và cập nhật thời gian thực khi bạn tích chọn"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Tự động đồng bộ: Sheet "nhắc nhở"</span>
+                    </div>
+                  )}
 
                   <button
                     type="button"
                     disabled={isClearingAll || isLoadingAudits || warningFacilities.length === 0}
                     onClick={handleClearAllWarningChecks}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-rose-50 disabled:opacity-50 text-slate-700 hover:text-rose-700 border border-slate-300 hover:border-rose-300 rounded-lg text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-                    title="Bỏ nhận định nhưng vẫn giữ nguyên các dòng cảnh báo để thống kê"
+                    title="Bỏ tất cả nhận định đã tích và tự động làm trống 2 cột trên Google Sheet"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
                     <span>{isClearingAll ? 'Đang đặt lại...' : 'Bỏ tất cả nhận định'}</span>
