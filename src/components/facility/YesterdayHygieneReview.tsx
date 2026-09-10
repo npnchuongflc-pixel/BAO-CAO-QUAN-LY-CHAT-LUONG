@@ -223,7 +223,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       const images = facilityReports.filter(report => (
         report.linkAnh?.trim() && !report.linkAnh.includes(HYGIENE_PLACEHOLDER_IMAGE)
       ));
-      const target = getFacilityDailyTarget(coSo);
+      const target = getFacilityDailyTarget(coSo, dateIso);
       const performed = facilityReports.length;
       const progress = target > 0 ? Math.min(100, (performed / target) * 100) : 0;
       const scores = facilityReports.map(getScore100);

@@ -2788,45 +2788,216 @@ main {
   }
 }
 
+@page {
+  size: A4 landscape;
+  margin: 8mm 10mm 10mm 10mm;
+}
+
 @media print {
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Hide navigation, sidebars, toolbars, interactive controls */
+  .app-sidebar,
+  .sidebar-backdrop,
+  .sidebar-toggle-mobile-btn,
   .topbar,
+  .app-footer,
   .filter-panel,
   .top-actions,
-  .export-button {
+  .export-button,
+  .no-print,
+  [data-no-print="true"],
+  button:not(.print-keep),
+  input[type="text"],
+  input[type="search"],
+  .custom-scrollbar::-webkit-scrollbar,
+  .tooltip,
+  .recharts-tooltip-wrapper,
+  .recharts-default-tooltip {
     display: none !important;
   }
-  .hero {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    padding: 22px;
-    background: var(--navy) !important;
+
+  /* App Shell & Main Layout Resets */
+  .app-shell {
+    display: block !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
   }
+
+  .app-main-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  main {
+    min-height: auto !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .tab-view-wrapper {
+    background: #ffffff !important;
+    min-height: auto !important;
+    padding: 0 !important;
+  }
+
+  /* Print Header & Footer */
+  .print-document-header {
+    display: block !important;
+  }
+
+  .print-document-footer {
+    display: block !important;
+  }
+
+  /* Avoid unwanted page cuts inside card containers */
+  .panel,
+  .chart-wrap,
+  .kpi-card,
+  .kpi-grid,
+  .insight-strip,
+  .dashboard-grid,
+  .facility-summary-section,
+  .facility-timeline-container {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* KPI Grid Row in CSAT tab */
   .kpi-grid {
-    grid-template-columns: repeat(3, 1fr);
+    display: grid !important;
+    grid-template-columns: repeat(6, 1fr) !important;
+    gap: 6px !important;
   }
+
+  .kpi-card {
+    min-height: 0 !important;
+    padding: 8px 10px !important;
+  }
+
+  /* Dashboard Grid Charts side by side */
   .dashboard-grid {
-    display: block;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
   }
-  .panel {
-    break-inside: avoid;
-    box-shadow: none;
-    margin-bottom: 12px;
+
+  /* Facility Quality Summary KPIs (3 columns on A4 landscape) */
+  .facility-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
   }
-  .table-panel {
-    box-shadow: none;
+
+  /* Warning List & Pie Chart side by side on landscape */
+  .facility-warning-pie-row {
+    display: grid !important;
+    grid-template-columns: 7fr 5fr !important;
+    gap: 12px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 12px !important;
   }
+
+  /* Table formatting optimized for A4 Landscape */
+  .overflow-x-auto,
+  .overflow-y-auto,
   .table-scroll {
-    overflow: visible;
+    overflow: visible !important;
+    max-height: none !important;
   }
-  .table-scroll table,
-  .table-scroll th {
-    min-width: 0;
-    font-size: 8px;
+
+  table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8.5pt !important;
+    page-break-inside: auto !important;
   }
-  .app-footer {
-    break-before: page;
+
+  thead {
+    display: table-header-group !important;
   }
-  .insight-strip {
-    grid-template-columns: repeat(2, 1fr);
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  th, td {
+    padding: 3.5px 5px !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+  }
+
+  /* Timeline Chart on A4 Landscape */
+  .facility-timeline-plot {
+    height: 190px !important;
+    overflow: visible !important;
+  }
+
+  .facility-timeline-container {
+    padding: 10px !important;
+  }
+
+  /* Modal print adjustments: when printing with modal open */
+  .print-modal-backdrop {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .print-modal-box {
+    position: static !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 }

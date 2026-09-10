@@ -35,9 +35,11 @@ import {
   RefreshCw,
   Code2,
   Copy,
-  Check
+  Check,
+  Printer
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
+import { triggerPrintToPdf } from '../../utils/printUtils';
 import {
   WarningAuditRecord,
   getLocalWarningAudits,
@@ -685,6 +687,20 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             </div>
           )}
 
+          {/* Print PDF Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const name = isHygiene ? 'Bao_Cao_Giam_Sat_Ve_Sinh' : 'Bao_Cao_Chat_Luong_Co_So';
+              triggerPrintToPdf({ title: name });
+            }}
+            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+            title="In dashboard hiện tại ra file PDF (Khổ ngang A4)"
+          >
+            <Printer className="w-3.5 h-3.5 text-white" />
+            <span>In PDF (A4)</span>
+          </button>
+
           {onOpenDetailModal && (
             <button
               onClick={() => onOpenDetailModal('all')}
@@ -699,7 +715,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5 facility-kpi-grid">
         {/* KPI 1: Số cơ sở đã thực hiện (CLICKABLE TO SEE DONE vs NOT DONE) */}
         <div 
           onClick={() => setIsModalOpen(true)}
@@ -717,7 +733,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             </p>
             
             <div className="mt-1 flex items-center gap-1">
-              <span className="inline-flex items-center gap-1 text-[10px] bg-[#1B5EA6]/10 text-[#1B5EA6] group-hover:bg-[#1B5EA6] group-hover:text-white px-2 py-0.5 rounded font-medium transition-colors">
+              <span className="inline-flex items-center gap-1 text-[10px] bg-[#1B5EA6]/10 text-[#1B5EA6] group-hover:bg-[#1B5EA6] group-hover:text-white px-2 py-0.5 rounded font-medium transition-colors print:hidden">
                 Ấn vào để xem chi tiết ↗
               </span>
             </div>
@@ -764,7 +780,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       </div>
 
       {/* SECTION: PIE CHART & DIRECT WARNING ALERTS LIST */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 my-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 my-6 facility-warning-pie-row">
         
         {/* LEFT COLUMN: DIRECT WARNING ALERTS LIST (7 cols) */}
         <div className="lg:col-span-7 bg-amber-50/30 border border-amber-200/80 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
@@ -1073,7 +1089,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             <span className="text-[10px] text-slate-500">Đã thực hiện: {activeFacilitiesCount}/{summaries.length} cơ sở</span>
           </div>
 
-          <div className="h-[300px] sm:h-[340px] w-full my-auto py-2">
+          <div className="h-[300px] sm:h-[340px] print:h-[210px] w-full my-auto py-2">
             {activeFacilitiesCount === 0 ? (
               <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
                 Chưa có cơ sở nào thực hiện kiểm tra
@@ -1241,7 +1257,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           </div>
 
           {/* RANKING TOGGLE BUTTONS */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 print:hidden">
             <button
               onClick={() => setRankingSortMode('frequency')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1289,7 +1305,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     {isHygiene ? 'Điểm Số TB' : 'Số Sự Cố / Xử Lý'}
                   </th>
                   <th className="py-3 px-4">Lần Kiểm Tra Cuối</th>
-                  <th className="py-3 px-4 text-center">Báo Cáo Chi Tiết</th>
+                  <th className="py-3 px-4 text-center print:hidden">Báo Cáo Chi Tiết</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1451,7 +1467,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                       </td>
 
                       {/* Báo Cáo Chi Tiết Button */}
-                      <td className="py-3 px-4 text-center">
+                      <td className="py-3 px-4 text-center print:hidden">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();

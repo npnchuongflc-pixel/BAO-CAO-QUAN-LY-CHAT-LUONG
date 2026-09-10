@@ -1,9 +1,10 @@
 import React from 'react';
-import { Menu, ExternalLink, RefreshCw } from 'lucide-react';
+import { Menu, ExternalLink, RefreshCw, Printer } from 'lucide-react';
 import { SOURCE_URL } from '../services/sheetService';
 import { ReportTabId, REPORT_GROUPS } from './Sidebar';
 import chessLogo from '../assets/brands/co-vua-sai-gon.png';
 import artLogo from '../assets/brands/saigon-art.png';
+import { triggerPrintToPdf } from '../utils/printUtils';
 
 interface HeaderProps {
   activeTab?: ReportTabId;
@@ -19,6 +20,18 @@ export const Header: React.FC<HeaderProps> = ({
   loading = false,
 }) => {
   const currentItem = REPORT_GROUPS.flatMap((g) => g.items).find((item) => item.id === activeTab);
+
+  const handlePrint = () => {
+    let reportName = 'Bao_Cao_Quan_Ly_Chat_Luong';
+    if (activeTab === 'integrated-quality-report') {
+      reportName = 'Bao_Cao_Chat_Luong_Co_So_Vat_Chat_Ve_Sinh';
+    } else if (activeTab === 'teaching-quality') {
+      reportName = 'Bao_Cao_Chat_Luong_Giang_Day';
+    } else if (activeTab === 'survey') {
+      reportName = 'Bao_Cao_Khao_Sat_Y_Kien_Hoc_Vien_Zalo_OA';
+    }
+    triggerPrintToPdf({ title: reportName });
+  };
 
   return (
     <header className="topbar">
@@ -57,6 +70,16 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div className="top-actions">
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="top-action-btn bg-slate-800 hover:bg-slate-900 text-white font-semibold cursor-pointer transition shadow-2xs hover:shadow-xs flex items-center gap-1.5"
+          title="In báo cáo ra định dạng PDF (Tối ưu khổ ngang A4)"
+        >
+          <Printer className="w-3.5 h-3.5 text-white" />
+          <span>In PDF (A4)</span>
+        </button>
+
         <a href={SOURCE_URL} target="_blank" rel="noreferrer" className="top-link-btn">
           <ExternalLink className="w-3.5 h-3.5" />
           <span>Dữ liệu nguồn</span>

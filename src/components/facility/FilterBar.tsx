@@ -8,8 +8,10 @@ import {
   MapPin, 
   Filter, 
   X, 
-  Download 
+  Download,
+  Printer
 } from 'lucide-react';
+import { triggerPrintToPdf } from '../../utils/printUtils';
 
 interface FilterBarProps {
   mode: ReportMode;
@@ -106,10 +108,25 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Print PDF Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const modeName = mode === 'hygiene' ? 'Bao_Cao_Ve_Sinh' : 'Bao_Cao_Chat_Luong_Co_So';
+              triggerPrintToPdf({ title: modeName });
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 border border-slate-700 text-xs font-semibold text-white transition-colors cursor-pointer shadow-2xs"
+            title="In báo cáo ra file PDF (Khổ ngang A4)"
+          >
+            <Printer className="w-3.5 h-3.5 text-white" />
+            <span>In PDF</span>
+          </button>
+
           {/* Export CSV */}
           <button
+            type="button"
             onClick={onExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-medium text-emerald-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-medium text-emerald-700 transition-colors cursor-pointer"
             title="Xuất danh sách đã lọc ra CSV"
           >
             <Download className="w-3.5 h-3.5" />

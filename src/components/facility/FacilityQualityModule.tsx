@@ -20,6 +20,8 @@ import { normalizeDateToIso } from '../../utils/dateUtils';
 import { RecordDetailModal } from './RecordDetailModal';
 import { ImageLightBoxModal } from './ImageLightBoxModal';
 import { FacilityDetailReportsModal } from './FacilityDetailReportsModal';
+import { PrintReportHeader } from '../PrintReportHeader';
+import { PrintReportFooter } from '../PrintReportFooter';
 
 export const FacilityQualityModule: React.FC = () => {
   const [mode, setMode] = useState<ReportMode>('hygiene');
@@ -498,6 +500,19 @@ export const FacilityQualityModule: React.FC = () => {
           </div>
         )}
 
+        {/* Print Only Header for A4 PDF exports */}
+        <PrintReportHeader
+          title={mode === 'hygiene' ? 'BÁO CÁO GIÁM SÁT VỆ SINH CƠ SỞ VẬT CHẤT' : 'BÁO CÁO GIÁM SÁT CHẤT LƯỢNG & SỰ CỐ CƠ SỞ'}
+          subtitle={`Hệ thống quản trị cơ sở • Phạm vi: ${filters.coSo === 'all' ? 'Tất cả 19 cơ sở' : filters.coSo}`}
+          dateRange={
+            filters.tuNgay && filters.denNgay
+              ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
+              : filters.thang !== 'all'
+              ? `Tháng ${filters.thang}`
+              : 'Toàn thời gian'
+          }
+        />
+
         {/* Filters Bar */}
         <FilterBar
           mode={mode}
@@ -533,6 +548,9 @@ export const FacilityQualityModule: React.FC = () => {
           rawQualityReports={qualityReports}
           isDataReady={hasLoadedData && !syncErrors[mode]}
         />
+
+        {/* Print Only Footer */}
+        <PrintReportFooter />
       </main>
 
       {/* MODALS */}
