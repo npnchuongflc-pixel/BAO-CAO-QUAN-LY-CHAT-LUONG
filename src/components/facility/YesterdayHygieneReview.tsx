@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
-  Clock,
   CloudUpload,
   Code2,
   Copy,
@@ -861,10 +860,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             </h3>
             <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-800">
               {dateDisplay}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800" title="Chức năng tự động lấy dữ liệu ngày hôm trước đổ về Sheet mới hằng ngày">
-              <Clock className="h-3 w-3 text-emerald-600" />
-              Tự động đổ hàng ngày lúc 01:00 AM
             </span>
           </div>
           {isExpanded && (
