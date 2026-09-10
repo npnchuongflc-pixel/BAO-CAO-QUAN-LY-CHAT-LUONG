@@ -12,18 +12,23 @@ interface PrintReportHeaderProps {
   title: string;
   subtitle?: string;
   dateRangeText?: string;
+  dateRange?: string;
   facilityText?: string;
   extraMeta?: string;
+  pageNumber?: string;
 }
 
 export const PrintReportHeader: React.FC<PrintReportHeaderProps> = ({
   title,
   subtitle = 'BÁO CÁO QUẢN LÝ CHẤT LƯỢNG NỘI BỘ',
   dateRangeText,
+  dateRange,
   facilityText,
   extraMeta,
+  pageNumber,
 }) => {
   const printTimestamp = formatPrintDateTime();
+  const effectiveDateRange = dateRangeText || dateRange;
 
   return (
     <div className="hidden print:block print-document-header mb-4 pb-3 border-b-2 border-slate-800 text-slate-900">
@@ -56,7 +61,9 @@ export const PrintReportHeader: React.FC<PrintReportHeaderProps> = ({
 
         {/* Document Classification & Timestamp */}
         <div className="text-right text-[9.5px] text-slate-600 leading-tight">
-          <p className="font-bold text-slate-800">MÃ TÀI LIỆU: QLCL-BC/{new Date().getFullYear()}</p>
+          <p className="font-bold text-slate-800">
+            MÃ TÀI LIỆU: QLCL-BC/{new Date().getFullYear()} {pageNumber ? `• ${pageNumber}` : ''}
+          </p>
           <p>Thời điểm in: <span className="font-semibold text-slate-800">{printTimestamp}</span></p>
           <p className="text-[9px] text-slate-500 italic">Định dạng: Chuẩn A4 Landscape (Khổ ngang)</p>
         </div>
@@ -77,10 +84,10 @@ export const PrintReportHeader: React.FC<PrintReportHeaderProps> = ({
       {/* Filter Scope Meta Bar */}
       <div className="mt-2 py-1.5 px-3 bg-slate-100 border border-slate-200 rounded-md flex items-center justify-between text-[10px] font-medium text-slate-700">
         <div className="flex items-center gap-4 flex-wrap">
-          {dateRangeText && (
+          {effectiveDateRange && (
             <div>
               <span className="text-slate-500 font-normal">Thời gian:</span>{' '}
-              <strong className="text-slate-900">{dateRangeText}</strong>
+              <strong className="text-slate-900">{effectiveDateRange}</strong>
             </div>
           )}
           {facilityText && (

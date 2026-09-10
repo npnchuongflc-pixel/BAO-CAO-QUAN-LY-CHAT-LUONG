@@ -479,7 +479,7 @@ export const FacilityQualityModule: React.FC = () => {
   return (
     <div className="tab-view-wrapper min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Main Container */}
-      <main className="flex-1 w-full max-w-none py-0">
+      <main className={`flex-1 w-full max-w-none py-0 ${detailModalFacility !== null ? 'print:hidden' : ''}`}>
         {syncErrors[mode] && (
           <div
             role="alert"
@@ -500,10 +500,11 @@ export const FacilityQualityModule: React.FC = () => {
           </div>
         )}
 
-        {/* Print Only Header for A4 PDF exports */}
+        {/* Print Only Header for A4 PDF exports (Page 1) */}
         <PrintReportHeader
           title={mode === 'hygiene' ? 'BÁO CÁO GIÁM SÁT VỆ SINH CƠ SỞ VẬT CHẤT' : 'BÁO CÁO GIÁM SÁT CHẤT LƯỢNG & SỰ CỐ CƠ SỞ'}
           subtitle={`Hệ thống quản trị cơ sở • Phạm vi: ${filters.coSo === 'all' ? 'Tất cả 19 cơ sở' : filters.coSo}`}
+          pageNumber="Trang 1/2"
           dateRange={
             filters.tuNgay && filters.denNgay
               ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
@@ -548,9 +549,6 @@ export const FacilityQualityModule: React.FC = () => {
           rawQualityReports={qualityReports}
           isDataReady={hasLoadedData && !syncErrors[mode]}
         />
-
-        {/* Print Only Footer */}
-        <PrintReportFooter />
       </main>
 
       {/* MODALS */}

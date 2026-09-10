@@ -143,55 +143,73 @@ export const FacilityDetailReportsModal: React.FC<FacilityDetailReportsModalProp
         </div>
 
         {/* Modal Body - Chart + Detail Table */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50/60 space-y-6 print:p-0 print:bg-white print:overflow-visible">
-          {/* Print only header */}
-          <PrintReportHeader
-            title={facilityName === 'all' ? 'BÁO CÁO TOÀN DIỆN CÁC CƠ SỞ' : `BÁO CÁO CHI TIẾT CƠ SỞ: ${facilityName.toUpperCase()}`}
-            subtitle={`Hệ thống quản lý chất lượng cơ sở • ${targetConfig ? (targetConfig.weekday === targetConfig.weekend ? `Quy định ${targetConfig.weekday} ảnh/ngày` : `Quy định: T2-T6: ${targetConfig.weekday} ảnh • T7-CN: ${targetConfig.weekend} ảnh`) : ''}`}
-            dateRange={
-              filters.tuNgay && filters.denNgay
-                ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
-                : filters.thang !== 'all'
-                ? `Tháng ${filters.thang}`
-                : 'Toàn thời gian'
-            }
-          />
-
-          {/* Facility Timeline Execution Chart */}
-          <div>
-            <FacilityTimelineChart
-              mode={mode}
-              selectedFacility={facilityName}
-              hygieneReports={hygieneReports}
-              qualityReports={qualityReports}
-              filters={{ ...filters, coSo: facilityName }}
-              onSelectFacility={(fac) => onFacilityChange(fac)}
-              onFilterChange={onFilterChange}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50/60 space-y-6 print:p-0 print:bg-white print:overflow-visible print:space-y-0">
+          {/* MODAL PAGE 1: HEADER & TIMELINE CHART */}
+          <div className="facility-modal-print-page-1">
+            <PrintReportHeader
+              title={facilityName === 'all' ? 'BÁO CÁO TOÀN DIỆN CÁC CƠ SỞ' : `BÁO CÁO CHI TIẾT CƠ SỞ: ${facilityName.toUpperCase()}`}
+              subtitle={`Hệ thống quản lý chất lượng cơ sở • ${targetConfig ? (targetConfig.weekday === targetConfig.weekend ? `Quy định ${targetConfig.weekday} ảnh/ngày` : `Quy định: T2-T6: ${targetConfig.weekday} ảnh • T7-CN: ${targetConfig.weekend} ảnh`) : ''}`}
+              pageNumber="Trang 1/2"
+              dateRange={
+                filters.tuNgay && filters.denNgay
+                  ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
+                  : filters.thang !== 'all'
+                  ? `Tháng ${filters.thang}`
+                  : 'Toàn thời gian'
+              }
             />
-          </div>
 
-          {/* Detailed Reports Table */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 text-slate-800 shadow-2xs print:shadow-none print:border-slate-200 print:rounded-none">
-            <div className="mb-3 px-2 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 font-display">
-                <FileText className="w-4 h-4 text-emerald-600" />
-                Danh Sách Nhật Ký Báo Cáo ({count})
-              </h4>
-              <span className="text-xs text-slate-500 font-medium print:hidden">
-                Nhấn vào dòng bất kỳ để xem chi tiết ảnh chụp và phản hồi
-              </span>
+            {/* Facility Timeline Execution Chart */}
+            <div className="mb-4 print:mb-0">
+              <FacilityTimelineChart
+                mode={mode}
+                selectedFacility={facilityName}
+                hygieneReports={hygieneReports}
+                qualityReports={qualityReports}
+                filters={{ ...filters, coSo: facilityName }}
+                onSelectFacility={(fac) => onFacilityChange(fac)}
+                onFilterChange={onFilterChange}
+              />
             </div>
-            <DetailTable
-              mode={mode}
-              hygieneReports={filteredHygiene}
-              qualityReports={filteredQuality}
-              onSelectRecord={onSelectRecord}
-              onOpenImageModal={onOpenImageModal}
-            />
           </div>
 
-          {/* Print only footer */}
-          <PrintReportFooter />
+          {/* MODAL PAGE 2: DETAILED LOGS TABLE & SIGNATURE FOOTER */}
+          <div className="facility-modal-print-page-2">
+            {/* Header Trang 2 chuyên dụng cho Modal khi in */}
+            <div className="hidden print:block mb-2 pb-1.5 border-b border-slate-300">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 text-xs uppercase tracking-wide">
+                  DANH SÁCH NHẬT KÝ KIỂM TRA &amp; ĐÁNH GIÁ CHI TIẾT - {facilityName.toUpperCase()}
+                </span>
+                <span className="text-[9.5px] font-bold text-slate-700">Trang 2/2</span>
+              </div>
+            </div>
+
+            {/* Detailed Reports Table */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl p-3 sm:p-4 text-slate-800 shadow-2xs print:shadow-none print:border-none print:p-0 print:rounded-none">
+              <div className="mb-3 px-2 flex items-center justify-between print:hidden">
+                <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 font-display">
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  Danh Sách Nhật Ký Báo Cáo ({count})
+                </h4>
+                <span className="text-xs text-slate-500 font-medium">
+                  Nhấn vào dòng bất kỳ để xem chi tiết ảnh chụp và phản hồi
+                </span>
+              </div>
+              <DetailTable
+                mode={mode}
+                hygieneReports={filteredHygiene}
+                qualityReports={filteredQuality}
+                onSelectRecord={onSelectRecord}
+                onOpenImageModal={onOpenImageModal}
+              />
+            </div>
+
+            {/* Print only footer */}
+            <div className="hidden print:block mt-3">
+              <PrintReportFooter />
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -2894,6 +2894,96 @@ main {
     margin-bottom: 12px !important;
   }
 
+  /* Enforce exact 1-page-per-section pagination */
+  .facility-print-page-1,
+  .facility-modal-print-page-1 {
+    display: block !important;
+    width: 100% !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .facility-print-page-2,
+  .facility-modal-print-page-2 {
+    display: block !important;
+    width: 100% !important;
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  /* Specific styling for Page 1 of Facility Dashboard */
+  .facility-print-page-1 .facility-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .facility-print-page-1 .facility-kpi-grid > div {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .facility-print-page-1 .facility-warning-pie-row {
+    display: grid !important;
+    grid-template-columns: 6.5fr 5.5fr !important;
+    gap: 10px !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Compact alert list: 2-column grid in print to stay within page 1 */
+  .facility-warning-pie-row .custom-scrollbar {
+    max-height: none !important;
+    overflow: visible !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 6px !important;
+  }
+
+  .facility-warning-pie-row .custom-scrollbar > div {
+    padding: 6px 8px !important;
+    border-radius: 6px !important;
+    font-size: 8pt !important;
+    margin: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Table formatting on Page 2: perfectly fits 19 rows + signatures */
+  .facility-print-page-2 table {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 8pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .facility-print-page-2 th,
+  .facility-print-page-2 td {
+    padding: 2px 4px !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+
+  .facility-print-page-2 th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+    font-size: 8pt !important;
+  }
+
   /* KPI Grid Row in CSAT tab */
   .kpi-grid {
     display: grid !important;

@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { normalizeDateToIso } from '../../utils/dateUtils';
 import { triggerPrintToPdf } from '../../utils/printUtils';
+import { PrintReportFooter } from '../PrintReportFooter';
 import {
   WarningAuditRecord,
   getLocalWarningAudits,
@@ -624,98 +625,100 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   }).length;
 
   return (
-    <section className="bg-white text-slate-800 rounded-2xl p-5 sm:p-6 mb-8 shadow-xs border border-slate-200/90">
-      {/* Header of Summary Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/90">
-        <div>
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-[#1B5EA6]" />
-            <h2 className="text-base sm:text-lg font-bold tracking-tight text-[#1A3A5C] font-display">
-              TỔNG HỢP THỰC HIỆN CÁC CƠ SỞ {filters.thang !== 'all' ? `(${filters.thang})` : ''}
-            </h2>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Bảng thống kê số lần thực hiện, tỷ lệ đạt và trạng thái của từng cơ sở theo bộ lọc được chọn
-          </p>
-        </div>
-
-        {/* Report & Facility Hygiene Filter Switcher & Open All Reports Button */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {onModeChange && (
-            <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => onModeChange('hygiene')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  mode === 'hygiene'
-                    ? 'bg-[#1B5EA6] text-white shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-                }`}
-                title="Lọc xem báo cáo Kiểm tra Vệ sinh"
-              >
-                <ClipboardList className={`w-3.5 h-3.5 ${mode === 'hygiene' ? 'text-sky-200' : 'text-slate-500'}`} />
-                <span>Báo Cáo Vệ Sinh</span>
-                {typeof hygieneCount === 'number' && (
-                  <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-bold font-mono ${
-                    mode === 'hygiene' ? 'bg-[#1A3A5C] text-white' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {hygieneCount}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onModeChange('quality')}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  mode === 'quality'
-                    ? 'bg-[#4CAF8A] text-white shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
-                }`}
-                title="Lọc xem báo cáo Chất lượng cơ sở"
-              >
-                <Building2 className={`w-3.5 h-3.5 ${mode === 'quality' ? 'text-emerald-100' : 'text-slate-500'}`} />
-                <span>Chất Lượng Cơ Sở</span>
-                {typeof qualityCount === 'number' && (
-                  <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-bold font-mono ${
-                    mode === 'quality' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'
-                  }`}>
-                    {qualityCount}
-                  </span>
-                )}
-              </button>
+    <section className="bg-white text-slate-800 rounded-2xl p-5 sm:p-6 mb-8 shadow-xs border border-slate-200/90 print:p-0 print:m-0 print:border-none print:shadow-none print:bg-transparent">
+      {/* PAGE 1 IN PRINT: OVERVIEW KPI + WARNING ALERTS + SCORE PIE CHART */}
+      <div className="facility-print-page-1">
+        {/* Header of Summary Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/90 print:pb-2 print:mb-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-[#1B5EA6]" />
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-[#1A3A5C] font-display">
+                TỔNG HỢP THỰC HIỆN CÁC CƠ SỞ {filters.thang !== 'all' ? `(${filters.thang})` : ''}
+              </h2>
             </div>
-          )}
+            <p className="text-xs text-slate-500 mt-1 print:text-[10px]">
+              Bảng thống kê số lần thực hiện, tỷ lệ đạt và trạng thái của từng cơ sở theo bộ lọc được chọn
+            </p>
+          </div>
 
-          {/* Print PDF Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const name = isHygiene ? 'Bao_Cao_Giam_Sat_Ve_Sinh' : 'Bao_Cao_Chat_Luong_Co_So';
-              triggerPrintToPdf({ title: name });
-            }}
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
-            title="In dashboard hiện tại ra file PDF (Khổ ngang A4)"
-          >
-            <Printer className="w-3.5 h-3.5 text-white" />
-            <span>In PDF (A4)</span>
-          </button>
+          {/* Report & Facility Hygiene Filter Switcher & Open All Reports Button */}
+          <div className="flex items-center gap-3 flex-wrap print:hidden">
+            {onModeChange && (
+              <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => onModeChange('hygiene')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    mode === 'hygiene'
+                      ? 'bg-[#1B5EA6] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                  }`}
+                  title="Lọc xem báo cáo Kiểm tra Vệ sinh"
+                >
+                  <ClipboardList className={`w-3.5 h-3.5 ${mode === 'hygiene' ? 'text-sky-200' : 'text-slate-500'}`} />
+                  <span>Báo Cáo Vệ Sinh</span>
+                  {typeof hygieneCount === 'number' && (
+                    <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-bold font-mono ${
+                      mode === 'hygiene' ? 'bg-[#1A3A5C] text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {hygieneCount}
+                    </span>
+                  )}
+                </button>
 
-          {onOpenDetailModal && (
+                <button
+                  type="button"
+                  onClick={() => onModeChange('quality')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    mode === 'quality'
+                      ? 'bg-[#4CAF8A] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
+                  }`}
+                  title="Lọc xem báo cáo Chất lượng cơ sở"
+                >
+                  <Building2 className={`w-3.5 h-3.5 ${mode === 'quality' ? 'text-emerald-100' : 'text-slate-500'}`} />
+                  <span>Chất Lượng Cơ Sở</span>
+                  {typeof qualityCount === 'number' && (
+                    <span className={`px-1.5 py-0.2 text-[10px] rounded-md font-bold font-mono ${
+                      mode === 'quality' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {qualityCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Print PDF Button */}
             <button
-              onClick={() => onOpenDetailModal('all')}
-              className="flex items-center gap-1.5 bg-[#1B5EA6]/10 hover:bg-[#1B5EA6]/20 text-[#1B5EA6] border border-[#1B5EA6]/30 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
-              title="Mở popup danh sách báo cáo chi tiết"
+              type="button"
+              onClick={() => {
+                const name = isHygiene ? 'Bao_Cao_Giam_Sat_Ve_Sinh' : 'Bao_Cao_Chat_Luong_Co_So';
+                triggerPrintToPdf({ title: name });
+              }}
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+              title="In dashboard hiện tại ra file PDF (Khổ ngang A4)"
             >
-              <FileText className="w-4 h-4 text-[#1B5EA6]" />
-              <span>Xem Tất Cả Nhật Ký</span>
+              <Printer className="w-3.5 h-3.5 text-white" />
+              <span>In PDF (A4)</span>
             </button>
-          )}
-        </div>
-      </div>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5 facility-kpi-grid">
+            {onOpenDetailModal && (
+              <button
+                onClick={() => onOpenDetailModal('all')}
+                className="flex items-center gap-1.5 bg-[#1B5EA6]/10 hover:bg-[#1B5EA6]/20 text-[#1B5EA6] border border-[#1B5EA6]/30 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer"
+                title="Mở popup danh sách báo cáo chi tiết"
+              >
+                <FileText className="w-4 h-4 text-[#1B5EA6]" />
+                <span>Xem Tất Cả Nhật Ký</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* KPI Cards Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-5 facility-kpi-grid print:my-2 print:gap-3">
         {/* KPI 1: Số cơ sở đã thực hiện (CLICKABLE TO SEE DONE vs NOT DONE) */}
         <div 
           onClick={() => setIsModalOpen(true)}
@@ -1169,9 +1172,11 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         </div>
 
       </div>
+      </div>
+      {/* END OF PAGE 1 IN PRINT */}
 
-      {/* FULL WIDTH ACCORDION: THÔNG BÁO QUY TẮC XẾP HẠNG */}
-      <div className="my-5 bg-slate-50 border border-slate-200/80 rounded-xl overflow-hidden transition-all">
+      {/* FULL WIDTH ACCORDION: THÔNG BÁO QUY TẮC XẾP HẠNG (CHỈ HIỂN THỊ TRÊN WEB) */}
+      <div className="my-5 bg-slate-50 border border-slate-200/80 rounded-xl overflow-hidden transition-all print:hidden">
         <button
           onClick={() => setShowRankingRules(!showRankingRules)}
           className="w-full p-3.5 bg-slate-50 hover:bg-slate-100/80 flex items-center justify-between text-left cursor-pointer transition-colors"
@@ -1246,9 +1251,35 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         )}
       </div>
 
-      {/* AGGREGATED FACILITIES TABLE & PROGRESS BARS */}
-      <div className="mt-6 bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-2xs">
-        <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
+      {/* PAGE 2 IN PRINT: AGGREGATED FACILITIES TABLE & PROGRESS BARS + SIGNATURES */}
+      <div className="facility-print-page-2">
+        {/* PRINT ONLY: HEADER CHO TRANG 2 */}
+        <div className="hidden print:block mb-2 pb-1.5 border-b border-slate-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-900 text-xs uppercase tracking-wide">
+                BẢNG TỔNG HỢP XẾP HẠNG & TIẾN ĐỘ THỰC HIỆN 19 CƠ SỞ
+              </span>
+              <span className="text-[10px] text-slate-500 font-medium">
+                ({filters.thang !== 'all' ? `Tháng ${filters.thang}` : 'Toàn thời gian'})
+              </span>
+            </div>
+            <span className="text-[9.5px] font-bold text-slate-700">Trang 2/2</span>
+          </div>
+          <div className="flex items-center gap-2.5 text-[9px] text-slate-600 mt-1">
+            <span className="font-bold text-emerald-800">🥇 Xuất Sắc (≥ 90đ &amp; tiến độ ≥ 80%)</span>
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-teal-800">🥈 Khá (80 - 89đ)</span>
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-amber-800">🥉 Trung Bình (70 - 79đ)</span>
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-rose-800">⚠️ Cần Cải Thiện (&lt; 70đ)</span>
+          </div>
+        </div>
+
+        {/* AGGREGATED FACILITIES TABLE & PROGRESS BARS */}
+        <div className="mt-6 print:mt-0 bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-2xs print:border-none print:shadow-none print:rounded-none">
+          <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 print:hidden">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-[#1B5EA6]" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A3A5C]">
@@ -1493,12 +1524,21 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         )}
       </div>
 
+        {/* Print only footer for Page 2 (Signatures) */}
+        <div className="hidden print:block mt-3">
+          <PrintReportFooter />
+        </div>
+      </div>
+      {/* END OF PAGE 2 IN PRINT */}
+
       {isHygiene && (
-        <YesterdayHygieneReview
-          dateIso={yesterdayInfo.isoStr}
-          dateDisplay={yesterdayInfo.displayStr}
-          reports={rawHygieneReports}
-        />
+        <div className="print:hidden">
+          <YesterdayHygieneReview
+            dateIso={yesterdayInfo.isoStr}
+            dateDisplay={yesterdayInfo.displayStr}
+            reports={rawHygieneReports}
+          />
+        </div>
       )}
 
       {/* Facility Status Detail Modal */}
