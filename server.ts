@@ -242,7 +242,7 @@ app.get('/api/image-reviews', (req, res) => {
 });
 
 // Automated Daily Sync Engine & Store
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxmPSQdqrO2UCdWl6O_s6B9ALfqMboeyo3qBhu1EMqdUZ7FpW6opiVSkmbgGB8Uc2OQ/exec';
 let configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
 
 app.post('/api/image-reviews', async (req, res) => {
@@ -623,28 +623,40 @@ setInterval(async () => {
   try {
     const dates = getVietnamYesterdayDates();
     if (lastAutoSyncDate !== dates.iso) {
-      const now = new Date();
-      const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-      const vnNow = new Date(utc + 7 * 3600 * 1000);
-      const currentHour = vnNow.getHours();
-
-      const scriptUrl = configuredNewSheetScriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL;
-      // Auto-trigger during early morning (from 1:00 AM onwards)
-      if (scriptUrl && currentHour >= 1) {
-        console.log(`[Auto-Sync] Bắt đầu tự động đổ dữ liệu ngày ${dates.iso} sang Sheet Mới...`);
+      const scriptUrl = configuredNewSheetScriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+      if (scriptUrl) {
+        console.log(`[Auto-Sync Scheduler] Bắt đầu tự động đổ dữ liệu ngày ${dates.iso} sang Sheet Mới...`);
         const result = await runDailyHygieneSync(dates.iso, scriptUrl);
         if (result.success) {
           lastAutoSyncDate = dates.iso;
-          console.log(`[Auto-Sync] Hoàn tất tự động đổ ngày ${dates.iso}:`, result.message);
+          console.log(`[Auto-Sync Scheduler] Hoàn tất tự động đổ ngày ${dates.iso}:`, result.message);
         } else {
-          console.warn(`[Auto-Sync] Thử đổ ngày ${dates.iso} chưa thành công:`, result.error);
+          console.warn(`[Auto-Sync Scheduler] Thử đổ ngày ${dates.iso} chưa thành công:`, result.error);
         }
       }
     }
   } catch (err) {
-    console.error('[Auto-Sync] Lỗi trong scheduler:', err);
+    console.error('[Auto-Sync Scheduler] Lỗi trong scheduler:', err);
   }
 }, 15 * 60 * 1000);
+
+// Khởi chạy tự động đổ dữ liệu ngay khi server khởi động (chờ 3s)
+setTimeout(async () => {
+  try {
+    const dates = getVietnamYesterdayDates();
+    const scriptUrl = configuredNewSheetScriptUrl || process.env.NEW_SHEET_APPS_SCRIPT_URL || process.env.WARNING_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+    if (scriptUrl) {
+      console.log(`[Auto-Sync Boot] Tự động kiểm tra và đổ dữ liệu ngày hôm trước ${dates.iso} sang Sheet Mới...`);
+      const result = await runDailyHygieneSync(dates.iso, scriptUrl);
+      if (result.success) {
+        lastAutoSyncDate = dates.iso;
+        console.log(`[Auto-Sync Boot] Thành công đổ ngày ${dates.iso}:`, result.message);
+      }
+    }
+  } catch (err) {
+    console.warn('[Auto-Sync Boot] Lỗi chạy tự động:', err);
+  }
+}, 3000);
 
 // GET /api/auto-sync-status
 app.get('/api/auto-sync-status', (req, res) => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Building2,
   Check,
@@ -18,7 +18,6 @@ import {
   Image as ImageIcon,
   RefreshCw,
   RotateCcw,
-  Search,
   Settings,
   Sparkles,
   User,
@@ -50,8 +49,8 @@ interface YesterdayHygieneReviewProps {
 }
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
-const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v1';
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
+const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v2';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxmPSQdqrO2UCdWl6O_s6B9ALfqMboeyo3qBhu1EMqdUZ7FpW6opiVSkmbgGB8Uc2OQ/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
 
 import { APPS_SCRIPT_TEMPLATE } from "./hygieneAppsScriptTemplate";
@@ -88,7 +87,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedFacility, setSelectedFacility] = useState<string | null>(null);
   const [filter, setFilter] = useState<ImageFilter>('all');
-  const [searchQuery, setSearchQuery] = useState('');
   const [reviewerError, setReviewerError] = useState(false);
   const [imageReviews, setImageReviews] = useState<Record<string, ImageReviewRecord>>({});
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
@@ -141,6 +139,13 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     }>;
     scheduleInfo: string;
   } | null>(null);
+
+  const [autoSyncNotice, setAutoSyncNotice] = useState<{
+    status: 'idle' | 'syncing' | 'synced' | 'error';
+    message: string;
+    time?: string;
+  }>({ status: 'idle', message: '' });
+  const autoSyncedDateRef = useRef<string>('');
 
   const fetchAutoSyncStatus = async () => {
     try {
@@ -262,12 +267,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       pending: Math.max(0, totalImages - approved - rejected),
     };
   }, [facilityRows, imageReviews, totalImages]);
-  const visibleRows = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase('vi-VN');
-    return facilityRows.filter(row => (
-      !query || row.coSo.toLocaleLowerCase('vi-VN').includes(query)
-    ));
-  }, [facilityRows, searchQuery]);
+  const visibleRows = facilityRows;
 
   const selectedImages = useMemo(() => {
     if (!selectedRow) return [];
@@ -537,6 +537,97 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     });
   }, [reportsForDate, imageReviews]);
 
+  // TỰ ĐỘNG ĐỔ DỮ LIỆU VỀ SHEET KHI CÓ DỮ LIỆU NGÀY HÔM TRƯỚC (KHÔNG CẦN NHẤN NÚT ĐỒNG BỘ)
+  useEffect(() => {
+    if (!preparedDateRecords.length) return;
+    const targetScriptUrl = newSheetScriptUrl.trim() || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+    if (!targetScriptUrl) return;
+
+    // Đã tự động đổ cho ngày này trong phiên này rồi thì không chạy lại
+    if (autoSyncedDateRef.current === dateIso) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        setAutoSyncNotice({
+          status: 'syncing',
+          message: `Đang tự động đổ ${preparedDateRecords.length} dòng về Google Sheet...`,
+        });
+
+        let isSuccess = false;
+        let successMsg = '';
+
+        // 1. Thử gửi qua backend server
+        try {
+          const res = await fetch('/api/sync-day-to-new-sheet', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              date: dateIso,
+              scriptUrl: targetScriptUrl,
+              records: preparedDateRecords,
+              isAuto: true,
+            }),
+          });
+          const text = await res.text().catch(() => '');
+          if (text) {
+            try {
+              const data = JSON.parse(text);
+              if (res.ok && data?.success) {
+                isSuccess = true;
+                successMsg = data.message || `Đã tự động thay thế ${preparedDateRecords.length} dòng về Google Sheet thành công!`;
+              }
+            } catch {}
+          }
+        } catch (e) {
+          console.warn('Backend auto-sync không phản hồi, thử fallback trực tiếp:', e);
+        }
+
+        // 2. Fallback gửi trực tiếp Google Apps Script
+        if (!isSuccess) {
+          try {
+            const directResp = await fetch(targetScriptUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'sync_full_day_hygiene_reviews',
+                date: dateIso,
+                count: preparedDateRecords.length,
+                records: preparedDateRecords,
+                timestamp: new Date().toISOString(),
+              }),
+            });
+            const text = await directResp.text().catch(() => '');
+            if (text) {
+              try {
+                const directData = JSON.parse(text);
+                if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
+                  isSuccess = true;
+                  successMsg = directData?.message || `Đã tự động thay thế ${preparedDateRecords.length} dòng về Google Sheet thành công!`;
+                }
+              } catch {}
+            }
+          } catch (e) {
+            console.warn('Direct Apps Script auto-sync failed:', e);
+          }
+        }
+
+        if (isSuccess) {
+          autoSyncedDateRef.current = dateIso;
+          const timeStr = new Date().toLocaleTimeString('vi-VN');
+          setAutoSyncNotice({
+            status: 'synced',
+            message: `✓ Đã tự động đổ ${preparedDateRecords.length} dòng về Google Sheet (Chế độ thay thế - Không tạo hàng trùng)`,
+            time: timeStr,
+          });
+        }
+      } catch (err: any) {
+        console.warn('Lỗi tự động đổ dữ liệu ngầm:', err);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [dateIso, preparedDateRecords.length, newSheetScriptUrl]);
+
   const handleDownloadCsv = () => {
     if (!preparedDateRecords.length) {
       setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu vệ sinh nào trong ngày này để tải về.' });
@@ -783,17 +874,22 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
           )}
         </div>
 
-        <div className={`flex items-center gap-2 ${isExpanded ? 'w-full sm:w-auto' : ''}`}>
+        <div className="flex items-center gap-2">
           {isExpanded && (
-            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs sm:w-64 sm:flex-none">
-              <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-              <input
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-                placeholder="Tìm tên cơ sở..."
-                className="min-w-0 flex-1 bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
-              />
-            </label>
+            <button
+              type="button"
+              onClick={handleSyncAllToNewSheet}
+              disabled={isSyncingAll || !preparedDateRecords.length}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-xs transition hover:bg-emerald-100 disabled:opacity-50"
+              title="Thay thế và đồng bộ lại toàn bộ dữ liệu ngày hôm nay sang Sheet mới"
+            >
+              {isSyncingAll ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" />
+              ) : (
+                <CloudUpload className="h-3.5 w-3.5 text-emerald-700" />
+              )}
+              {isSyncingAll ? 'Đang đồng bộ...' : 'Đồng bộ lại Sheet'}
+            </button>
           )}
           <button
             type="button"
@@ -814,47 +910,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
       {isExpanded && (
         <>
-          {/* Action toolbar for Day Sync / Export to New Sheet */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                Toàn bộ dữ liệu ngày: <strong>{preparedDateRecords.length}</strong> dòng
-              </span>
-              <span className="text-xs text-slate-300">|</span>
-              <span className="text-xs text-slate-500">
-                Đã duyệt: <strong className="text-emerald-700">{reviewSummary.approved}</strong> · Không đạt: <strong className="text-rose-600">{reviewSummary.rejected}</strong> · Chờ duyệt: <strong className="text-amber-600">{reviewSummary.pending}</strong>
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:border-slate-400"
-                title="Xem mã Apps Script mới nhất (đã tối ưu cập nhật trực tiếp tại hàng và xóa sạch dòng thừa)"
-              >
-                <Code2 className="h-3.5 w-3.5 text-emerald-600" />
-                Mã Apps Script (Sửa lỗi dòng thừa)
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSyncAllToNewSheet}
-                disabled={isSyncingAll || !preparedDateRecords.length}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-                title="Cập nhật trực tiếp trên các hàng tương ứng đã có trong Sheet và tự động dọn sạch các dòng thừa trùng lặp"
-              >
-                {isSyncingAll ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CloudUpload className="h-3.5 w-3.5" />
-                )}
-                {isSyncingAll ? 'Đang cập nhật & dọn dòng thừa...' : 'Đồng bộ & Dọn sạch dòng thừa'}
-              </button>
-            </div>
-          </div>
-
           {syncAllStatus && (
             <div className={`flex items-center justify-between border-b px-4 py-2 text-xs font-medium ${
               syncAllStatus.type === 'success'
