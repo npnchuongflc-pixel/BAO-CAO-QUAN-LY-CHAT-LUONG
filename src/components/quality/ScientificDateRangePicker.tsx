@@ -23,17 +23,6 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
   const isCurrentMonth =
     !isCustomDate && (filters.month === 'current' || filters.month === currentMonthKey);
 
-  const availableMonths = useMemo(() => {
-    if (!rawData || rawData.length === 0) return [];
-    const set = new Set<string>();
-    rawData.forEach((item) => {
-      if (item.month && item.month !== 'Chưa rõ' && item.month !== '12/1899') {
-        set.add(item.month);
-      }
-    });
-    return Array.from(set).sort().reverse();
-  }, [rawData]);
-
   // Calculate quick numbers for the real calendar month.
   const currentMonthMetrics = useMemo(() => {
     if (!rawData || rawData.length === 0) return null;
@@ -143,34 +132,6 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
           )}
         </button>
       </div>
-
-      {/* Month dropdown selector */}
-      {availableMonths.length > 0 && (
-        <select
-          value={isCustomDate ? 'custom' : (filters.month || 'current')}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val !== 'custom') {
-              onFilterChange({
-                month: val,
-                startDate: undefined,
-                endDate: undefined,
-              });
-            }
-          }}
-          className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs shrink-0 cursor-pointer hover:border-slate-400"
-          title="Chọn tháng đánh giá"
-        >
-          <option value="current">Tháng hiện tại ({currentMonthKey})</option>
-          <option value="all">Toàn bộ thời gian</option>
-          {availableMonths.map((m) => (
-            <option key={m} value={m}>
-              Tháng {m}
-            </option>
-          ))}
-          {isCustomDate && <option value="custom">Tùy chọn ngày...</option>}
-        </select>
-      )}
 
       {/* Date Range Inputs: Từ ngày -> Đến ngày */}
       <div className="inline-flex items-center gap-1.5 bg-white border border-slate-300 px-2.5 py-1 rounded-lg shadow-2xs shrink-0">

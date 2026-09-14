@@ -592,9 +592,9 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* 5 SCORECARD KPI CARDS (Exact Replica from Looker Studio Screenshot) */}
+        {/* 4 SCORECARD KPI CARDS (Exact Replica from Looker Studio Screenshot) */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
           {/* Card 1: Tình huống nghiêm trọng (Solid Red Background) */}
           <div
             onClick={() => onFilterChange({ onlySevere: !filters.onlySevere })}
@@ -660,22 +660,6 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
             <div className="text-xs text-emerald-700 text-center font-bold">
               {summary.handledRate}% ca vi phạm
-            </div>
-          </div>
-
-          {/* Card 5: Số lượt nhắc nhở (Đếm giá trị "Đã gửi" ở cột AC chịu kiểm soát của bộ lọc ngày) */}
-          <div
-            className="bg-white p-3.5 sm:p-4 rounded-lg border border-[#dadce0] shadow-xs flex flex-col items-center justify-between min-h-[110px]"
-            title="Đếm giá trị 'Đã gửi' ở cột AC chịu kiểm soát của bộ lọc ngày"
-          >
-            <div className="text-xs sm:text-[13px] font-bold text-slate-700 tracking-tight uppercase text-center leading-tight">
-              Số lượt nhắc nhở
-            </div>
-            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-center my-auto">
-              {formatNumber(summary.remindedCount)}
-            </div>
-            <div className="text-xs text-blue-600 text-center font-semibold">
-              Đã gửi mail nhắc nhở
             </div>
           </div>
         </div>
