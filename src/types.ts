@@ -254,6 +254,7 @@ export interface TeachingQualitySummary {
   violationRate: number;
   severeCount: number;
   unwarnedCount: number; // Chưa nhắc nhở
+  remindedCount: number; // Số lượt nhắc nhở (Gửi email)
   handledCount: number; // Đã xử lý
   pendingCount: number; // Chưa xử lý
   handledRate: number;

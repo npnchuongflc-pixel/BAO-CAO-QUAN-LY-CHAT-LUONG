@@ -17,7 +17,8 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  BarChart2
+  BarChart2,
+  Mail
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -155,6 +156,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
     const severeCount = teacherAuditsInPeriod.filter((i) => i.isSevere).length;
     const handledCount = violationItems.filter((i) => i.status === 'Đã xử lý').length;
     const pendingCount = violationItems.filter((i) => i.status !== 'Đã xử lý').length;
+    const remindedCount = teacherAuditsInPeriod.filter((i) => i.emailSent === 'Đã gửi' || i.emailSent?.toLowerCase().includes('gửi')).length;
     const violationRate = totalAudits > 0 ? ((violationCount / totalAudits) * 100).toFixed(1) : '0';
 
     // Group categories
@@ -174,6 +176,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
       severeCount,
       handledCount,
       pendingCount,
+      remindedCount,
       violationRate,
       categoryBreakdown: Array.from(catMap.entries()).map(([name, count]) => ({ name, count })),
     };
@@ -270,7 +273,7 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
           </div>
 
           {/* ESSENTIAL STATS STRIP (SÁNG NHẸ, TINH GỌN) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3.5 pt-3 border-t border-slate-200/80 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3.5 pt-3 border-t border-slate-200/80 text-xs">
             <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 flex items-center justify-between">
               <span className="text-slate-500">Tổng giám sát:</span>
               <strong className="text-slate-900 font-bold">{teacherProfile.totalAudits} lượt</strong>
@@ -279,6 +282,14 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
             <div className="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 flex items-center justify-between">
               <span className="text-amber-800 font-medium">Lượt vi phạm:</span>
               <strong className="text-amber-900 font-extrabold text-sm">{teacherProfile.violationCount} lượt</strong>
+            </div>
+
+            <div className="bg-blue-50/70 p-2.5 rounded-xl border border-blue-200/80 flex items-center justify-between">
+              <span className="text-blue-800 font-medium flex items-center gap-1">
+                <Mail className="w-3.5 h-3.5 text-blue-600" />
+                Số lượt nhắc nhở:
+              </span>
+              <strong className="text-blue-900 font-extrabold text-sm">{teacherProfile.remindedCount} lượt</strong>
             </div>
 
             <div className="bg-white p-2.5 rounded-xl border border-slate-200/90 flex items-center justify-between">
@@ -569,6 +580,12 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
                       >
                         {item.status || 'Đang chờ'}
                       </span>
+                      {item.emailSent === 'Đã gửi' || item.emailSent?.toLowerCase().includes('gửi') ? (
+                        <div className="text-[10px] text-blue-700 font-semibold mt-1 flex items-center justify-center gap-0.5" title="Đã gửi email nhắc nhở cho giáo viên">
+                          <Mail className="w-2.5 h-2.5 text-blue-600" />
+                          <span>Đã gửi mail</span>
+                        </div>
+                      ) : null}
                     </td>
 
                     {/* Action / Evidence */}

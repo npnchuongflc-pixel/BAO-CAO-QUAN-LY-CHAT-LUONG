@@ -55,6 +55,7 @@ import {
   FacilityViolationComboItem,
   StatusDistributionItem
 } from '../../types';
+import { TeacherViolationSummaryTable } from './TeacherViolationSummaryTable';
 
 interface LookerCameraReportProps {
   summary: TeachingQualitySummary;
@@ -643,30 +644,39 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
 
-          {/* Card 4: Chưa nhắc nhở */}
-          <div className="bg-white p-3.5 sm:p-4 rounded-lg border border-[#dadce0] shadow-xs flex flex-col items-center justify-between min-h-[110px]">
-            <div className="text-xs sm:text-[13px] font-bold text-slate-700 tracking-tight uppercase text-center leading-tight">
-              Chưa nhắc nhở
-            </div>
-            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-center my-auto">
-              {summary.unwarnedCount}
-            </div>
-            <div className="text-xs text-slate-500 font-medium text-center">Đã nhắc 100%</div>
-          </div>
-
-          {/* Card 5: Chưa xử lý */}
+          {/* Card 4: Đã xử lý (thay thế ô 'Chưa xử lý') */}
           <div
-            onClick={() => onFilterChange({ status: filters.status === 'Chưa xử lý' ? 'all' : 'Chưa xử lý' })}
-            className="cursor-pointer bg-white p-3.5 sm:p-4 rounded-lg border border-[#dadce0] shadow-xs flex flex-col items-center justify-between min-h-[110px] hover:border-red-400"
-            title="Bấm để lọc ca chưa xử lý"
+            onClick={() => onFilterChange({ status: filters.status === 'Đã xử lý' ? 'all' : 'Đã xử lý' })}
+            className={`cursor-pointer bg-white p-3.5 sm:p-4 rounded-lg border shadow-xs flex flex-col items-center justify-between min-h-[110px] transition-colors ${
+              filters.status === 'Đã xử lý' ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-[#dadce0] hover:border-emerald-400'
+            }`}
+            title="Bấm để lọc ca đã xử lý"
           >
             <div className="text-xs sm:text-[13px] font-bold text-slate-700 tracking-tight uppercase text-center leading-tight">
-              Chưa xử lý
+              Đã xử lý
             </div>
             <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-center my-auto">
-              {summary.pendingCount}
+              {formatNumber(summary.handledCount)}
             </div>
-            <div className="text-xs text-amber-600 text-center font-bold">Cần hoàn tất</div>
+            <div className="text-xs text-emerald-700 text-center font-bold">
+              {summary.handledRate}% ca vi phạm
+            </div>
+          </div>
+
+          {/* Card 5: Số lượt nhắc nhở (Đếm giá trị "Đã gửi" ở cột AC chịu kiểm soát của bộ lọc ngày) */}
+          <div
+            className="bg-white p-3.5 sm:p-4 rounded-lg border border-[#dadce0] shadow-xs flex flex-col items-center justify-between min-h-[110px]"
+            title="Đếm giá trị 'Đã gửi' ở cột AC chịu kiểm soát của bộ lọc ngày"
+          >
+            <div className="text-xs sm:text-[13px] font-bold text-slate-700 tracking-tight uppercase text-center leading-tight">
+              Số lượt nhắc nhở
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight text-center my-auto">
+              {formatNumber(summary.remindedCount)}
+            </div>
+            <div className="text-xs text-blue-600 text-center font-semibold">
+              Đã gửi mail nhắc nhở
+            </div>
           </div>
         </div>
 
@@ -1588,6 +1598,15 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
+
+        {/* ========================================================================= */}
+        {/* ROW 5: BẢNG CẢNH BÁO GIÁO VIÊN (TỔNG HỢP TOÀN BỘ DỮ LIỆU TẤT CẢ GIÁO VIÊN) */}
+        {/* ========================================================================= */}
+        <TeacherViolationSummaryTable
+          items={rawData}
+          onSelectTeacher={onSelectTeacherModal}
+          dateRangeText="Tổng hợp toàn bộ dữ liệu (Không chịu kiểm soát của bộ lọc ngày)"
+        />
       </div>
 
       {/* ========================================================================= */}

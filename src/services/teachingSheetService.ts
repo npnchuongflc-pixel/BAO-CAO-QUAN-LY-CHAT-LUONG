@@ -120,6 +120,11 @@ export function parseTeachingTableRows(table: any): TeachingAuditItem[] {
     const resolutionDate = parseDate(c[20]?.v ?? c[20]?.f);
     const resolutionDateStr = parseString(c[20]?.f) || (resolutionDate ? resolutionDate.toLocaleDateString('vi-VN') : '');
 
+    const rawEmailCell = c[28]?.v !== undefined ? c[28]?.v : (c[28]?.f !== undefined ? c[28]?.f : c[28]);
+    const emailRaw = parseString(rawEmailCell).trim();
+    const isEmailSent = emailRaw.toLowerCase().includes('đã gửi') || emailRaw.toLowerCase().includes('gửi');
+    const emailSent = isEmailSent ? 'Đã gửi' : (emailRaw || 'Chưa gửi');
+
     items.push({
       id: `audit-${idx + 1}`,
       dayOfWeek: parseString(c[0]?.v ?? c[0]),
@@ -152,7 +157,7 @@ export function parseTeachingTableRows(table: any): TeachingAuditItem[] {
       subject,
       evaluatorNote: parseString(c[26]?.v ?? c[26]),
       detailedViolation: parseString(c[27]?.v ?? c[27]),
-      emailSent: parseString(c[28]?.v ?? c[28]) || 'Chưa gửi',
+      emailSent,
     });
   });
 
@@ -177,9 +182,12 @@ export function parseTeachingCsvRows(csvText: string): TeachingAuditItem[] {
 
   const headerIndex = csvRows.findIndex((row) => {
     const normalized = row.join(' ').toLocaleLowerCase('vi-VN');
-    return normalized.includes('giáo viên') && normalized.includes('cơ sở');
+    return (
+      (normalized.includes('gv') || normalized.includes('giáo viên') || normalized.includes('người thực hiện')) &&
+      (normalized.includes('cơ sở') || normalized.includes('đánh giá') || normalized.includes('camera'))
+    );
   });
-  const dataRows = headerIndex >= 0 ? csvRows.slice(headerIndex + 1) : csvRows;
+  const dataRows = headerIndex >= 0 ? csvRows.slice(headerIndex + 1) : csvRows.slice(1);
 
   const table = {
     rows: dataRows.map((row) => ({
@@ -294,18 +302,17 @@ export function filterTeachingData(
   return items.filter((item) => {
     // Custom Date Range filter (startDate & endDate in YYYY-MM-DD)
     if (filters.startDate || filters.endDate) {
-      if (item.date) {
-        const itemTime = item.date.getTime();
-        if (filters.startDate) {
-          const start = new Date(filters.startDate);
-          start.setHours(0, 0, 0, 0);
-          if (itemTime < start.getTime()) return false;
-        }
-        if (filters.endDate) {
-          const end = new Date(filters.endDate);
-          end.setHours(23, 59, 59, 999);
-          if (itemTime > end.getTime()) return false;
-        }
+      if (!item.date) return false;
+      const itemTime = item.date.getTime();
+      if (filters.startDate) {
+        const start = new Date(filters.startDate);
+        start.setHours(0, 0, 0, 0);
+        if (itemTime < start.getTime()) return false;
+      }
+      if (filters.endDate) {
+        const end = new Date(filters.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (itemTime > end.getTime()) return false;
       }
     } else {
       // Month filter (or 'current') only applies when custom date range is not specified
@@ -464,13 +471,20 @@ export function computeTeachingQualitySummary(items: TeachingAuditItem[]): Teach
   const monthSubjectViolMap = new Map<string, { month: string; chess: number; art: number; total: number }>();
 
   let unwarnedCount = 0;
+  let remindedCount = 0;
 
   items.forEach((item) => {
     const shifts = item.shiftCount;
     totalShifts += shifts;
 
+    // Đếm giá trị "Đã gửi" ở cột AC (chịu kiểm soát của bộ lọc ngày)
+    const isEmailSent = item.emailSent === 'Đã gửi' || item.emailSent?.toLowerCase().includes('gửi');
+    if (isEmailSent) {
+      remindedCount++;
+    }
+
     // Check unwarned
-    if (item.emailSent === 'Chưa gửi' && item.result === 'Vi phạm') {
+    if (!isEmailSent && item.result === 'Vi phạm') {
       unwarnedCount++;
     }
 
@@ -845,6 +859,7 @@ export function computeTeachingQualitySummary(items: TeachingAuditItem[]): Teach
     violationRate: Number(violationRate.toFixed(1)),
     severeCount,
     unwarnedCount,
+    remindedCount,
     handledCount,
     pendingCount,
     handledRate: Number(handledRate.toFixed(1)),
