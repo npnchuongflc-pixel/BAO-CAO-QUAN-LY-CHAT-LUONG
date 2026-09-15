@@ -6,7 +6,6 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Download,
   Eye,
   AlertTriangle,
   CheckCircle2,
@@ -17,8 +16,7 @@ import {
   ChevronRight,
   Sparkles,
   Building2,
-  BookOpen,
-  Mail
+  BookOpen
 } from 'lucide-react';
 import { TeachingAuditItem } from '../../types';
 
@@ -196,11 +194,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
     return allTeacherStats.filter((t) => t.violationCount > 0).length;
   }, [allTeacherStats]);
 
-  // Tổng số lượt nhắc nhở qua email trên toàn bộ giáo viên
-  const totalRemindedCount = useMemo(() => {
-    return allTeacherStats.reduce((sum, t) => sum + t.remindedCount, 0);
-  }, [allTeacherStats]);
-
   // 2. Filtered list:
   // CHỈ hiển thị giáo viên có vi phạm (violationCount > 0) theo đúng yêu cầu cảnh báo
   const filteredTeacherStats = useMemo(() => {
@@ -323,49 +316,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
     }
   };
 
-  // Export to CSV Function
-  const handleExportCsv = () => {
-    const headers = [
-      'STT',
-      'Họ và tên Giáo viên',
-      'Bộ môn',
-      'Số ca đánh giá',
-      'Số lượt vi phạm',
-      'Số lượt nhắc nhở (Gửi mail)',
-      'Tỉ lệ vi phạm (%)',
-      'Số lượt tái vi phạm',
-      'Tỉ lệ tái vi phạm / Tổng ca (%)',
-      'Tỉ lệ tái vi phạm / Tổng vi phạm (%)',
-      'Trạng thái',
-      'Lỗi vi phạm chính'
-    ];
-
-    const rows = sortedTeacherStats.map((t, idx) => [
-      idx + 1,
-      `"${t.teacherName}"`,
-      `"${t.subject}"`,
-      t.totalAudits,
-      t.violationCount,
-      t.remindedCount,
-      `${t.violationRate}%`,
-      t.reViolationCount,
-      `${t.reViolationRateOnAudits}%`,
-      `${t.reViolationRateOnViolations}%`,
-      t.isReViolator ? 'Tái vi phạm' : 'Vi phạm lần 1',
-      `"${t.topViolationCategory}"`
-    ]);
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Canh_Bao_Giao_Vien_Vi_Pham_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <section className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden mt-6">
       {/* HEADER: CẢNH BÁO GIÁO VIÊN - TINH GỌN, KHÔNG MÀU MÈ */}
@@ -381,10 +331,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               </h3>
               <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                 {violatorCount} giáo viên vi phạm
-              </span>
-              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex items-center gap-1" title="Tổng số lượt nhắc nhở qua email tương ứng với giá trị 'Đã gửi' ở cột Gửi mail">
-                <Mail className="w-3 h-3 text-blue-600" />
-                {totalRemindedCount} lượt nhắc nhở
               </span>
             </div>
             {dateRangeText && (
@@ -421,17 +367,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               </button>
             )}
           </div>
-
-          {/* Nút Xuất Excel nhã nhặn */}
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-colors cursor-pointer shadow-2xs"
-            title="Xuất file Excel CSV"
-          >
-            <Download className="w-3.5 h-3.5 text-slate-500" />
-            <span>Xuất Excel</span>
-          </button>
         </div>
       </div>
 
@@ -495,23 +430,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                   <span>Lượt vi phạm</span>
                   {(sortField === 'violationCountAndRate' || sortField === 'violationCount') ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-700" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-700" />
-                  ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                  )}
-                </div>
-              </th>
-
-              {/* Reminded Count (Số lượt nhắc nhở qua email) */}
-              <th
-                onClick={() => handleSort('remindedCount')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[125px]"
-                title="Số lượt nhắc nhở tương ứng với giá trị 'Đã gửi' ở cột Gửi mail"
-              >
-                <div className="flex items-center justify-center gap-1.5 text-blue-800">
-                  <Mail className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Số lượt nhắc nhở</span>
-                  {sortField === 'remindedCount' ? (
-                    sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
                   ) : (
                     <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
                   )}
@@ -617,21 +535,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                     )}
                   </td>
 
-                  {/* Reminded Count (Số lượt nhắc nhở qua email) */}
-                  <td className="py-3 px-3 text-center font-mono text-xs">
-                    {t.remindedCount > 0 ? (
-                      <span
-                        className="inline-flex items-center gap-1 font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200"
-                        title={`Đã gửi email nhắc nhở ${t.remindedCount} lượt`}
-                      >
-                        <Mail className="w-3 h-3 text-blue-600" />
-                        {t.remindedCount} lượt
-                      </span>
-                    ) : (
-                      <span className="font-mono text-slate-400 text-xs">0</span>
-                    )}
-                  </td>
-
                   {/* Violation Rate */}
                   <td className="py-3 px-3 text-center font-mono text-xs font-semibold text-slate-800">
                     {t.violationRate}%
@@ -697,7 +600,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
 
             {paginatedList.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-slate-400">
+                <td colSpan={10} className="py-12 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Users className="w-8 h-8 text-slate-300" />
                     <span className="text-xs font-medium">
