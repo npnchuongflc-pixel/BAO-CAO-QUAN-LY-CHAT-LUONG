@@ -44,6 +44,14 @@ export default function App() {
   const [activeReportTab, setActiveReportTab] = useState<ReportTabId>('teaching-quality');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [teachingShiftsCount, setTeachingShiftsCount] = useState<number | null>(() => {
+    try {
+      const cached = localStorage.getItem('teaching_total_shifts');
+      return cached ? Number(cached) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [filters, setFilters] = useState<FilterState>(() => {
     const currentMonth = getCurrentMonthRange();
@@ -522,6 +530,7 @@ export default function App() {
         syncTime={syncTime}
         onRefreshData={loadData}
         loading={loading}
+        teachingShiftsCount={teachingShiftsCount}
       />
 
       {/* Main Content Area */}
@@ -597,7 +606,7 @@ export default function App() {
 
           {/* TAB 2: TEACHING & CURRICULUM QUALITY TAB */}
           {activeReportTab === 'teaching-quality' && (
-            <TeachingQualityTab />
+            <TeachingQualityTab onUpdateTotalShifts={setTeachingShiftsCount} />
           )}
 
           {/* TAB 3: FACILITY & HYGIENE QUALITY MODULE (NATIVE) */}

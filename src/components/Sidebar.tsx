@@ -52,8 +52,8 @@ export const REPORT_GROUPS: ReportGroup[] = [
         shortLabel: 'CAMERA',
         description: 'Dữ liệu đánh giá chất lượng giảng dạy',
         icon: GraduationCap,
-        badge: '19,537 ca',
-        badgeType: 'info',
+        badge: 'Trực tiếp',
+        badgeType: 'live',
       },
       {
         id: 'integrated-quality-report',
@@ -78,6 +78,7 @@ interface SidebarProps {
   syncTime: Date | null;
   onRefreshData?: () => void;
   loading?: boolean;
+  teachingShiftsCount?: number | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -90,6 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   syncTime,
   onRefreshData,
   loading = false,
+  teachingShiftsCount,
 }) => {
   return (
     <>
@@ -170,6 +172,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
 
+                  const itemBadge =
+                    item.id === 'teaching-quality' && teachingShiftsCount != null
+                      ? `${teachingShiftsCount.toLocaleString('vi-VN')} ca`
+                      : item.badge;
+                  const itemBadgeType =
+                    item.id === 'teaching-quality' && teachingShiftsCount != null
+                      ? 'info'
+                      : (item.badgeType || 'info');
+
                   return (
                     <li key={item.id}>
                       <button
@@ -189,13 +200,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <div className="sidebar-item-content">
                             <div className="sidebar-item-main">
                               <span className="sidebar-item-label">{item.label}</span>
-                              {item.badge && (
+                              {itemBadge && (
                                 <span
-                                  className={`sidebar-badge badge-${
-                                    item.badgeType || 'info'
-                                  }`}
+                                  className={`sidebar-badge badge-${itemBadgeType}`}
                                 >
-                                  {item.badge}
+                                  {itemBadge}
                                 </span>
                               )}
                             </div>
@@ -203,8 +212,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </div>
                         )}
 
-                        {isCollapsed && item.badge && (
-                          <span className={`sidebar-dot-badge badge-${item.badgeType || 'info'}`} />
+                        {isCollapsed && itemBadge && (
+                          <span className={`sidebar-dot-badge badge-${itemBadgeType}`} />
                         )}
                       </button>
                     </li>

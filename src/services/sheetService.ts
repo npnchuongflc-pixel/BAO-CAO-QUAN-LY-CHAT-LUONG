@@ -22,28 +22,27 @@ export function parseDate(val: any): Date | null {
   const str = String(val).trim();
 
   // Pattern Date(YYYY,M,D,H,m,s) or Date(202,...)
-  let match = str.match(/^Date\((\d{1,4}),(\d{1,2}),(\d{1,2})(?:,(\d{1,2}),(\d{1,2}),(\d{1,2}))?\)$/);
+  let match = str.match(/^Date\((\d{1,4}),\s*(\d{1,2}),\s*(\d{1,2})(?:,\s*(\d{1,2}),\s*(\d{1,2}),\s*(\d{1,2}))?\)/i);
   if (match) {
     let year = +match[1];
     if (year === 202 || (year > 200 && year < 300)) year = 2026;
     return new Date(year, +match[2], +match[3], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
   }
 
-  // Pattern YYYY/MM/DD or YYYY-MM-DD
-  match = str.match(/^(\d{2,4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-  if (match) {
-    let year = +match[1];
-    if (year === 202 || (year > 200 && year < 300)) year = 2026;
-    return new Date(year, +match[2] - 1, +match[3], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
-  }
-
-  // Pattern DD/MM/YYYY or DD-MM-YYYY
+  // Pattern DD/MM/YYYY or DD-MM-YYYY (Prioritize Vietnam date format where year is at end)
   match = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
   if (match) {
     let year = +match[3];
     if (year === 202 || (year > 200 && year < 300)) year = 2026;
     else if (year < 100) year = 2000 + year;
     return new Date(year, +match[2] - 1, +match[1], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
+  }
+
+  // Pattern YYYY/MM/DD or YYYY-MM-DD (4-digit year at start)
+  match = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (match) {
+    let year = +match[1];
+    return new Date(year, +match[2] - 1, +match[3], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
   }
 
   return null;

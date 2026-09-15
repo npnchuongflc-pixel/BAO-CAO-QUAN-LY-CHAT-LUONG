@@ -56,7 +56,11 @@ const INITIAL_FILTERS: TeachingFilterState = {
 
 type ReportViewMode = 'looker-camera' | 'audit-log' | 'standards-6' | 'ranking';
 
-export const TeachingQualityTab: React.FC = () => {
+interface TeachingQualityTabProps {
+  onUpdateTotalShifts?: (count: number) => void;
+}
+
+export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({ onUpdateTotalShifts }) => {
   const [rawData, setRawData] = useState<TeachingAuditItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +82,13 @@ export const TeachingQualityTab: React.FC = () => {
     try {
       const items = await fetchTeachingData();
       setRawData(items);
+      const totalShifts = items.reduce((sum, item) => sum + (item.shiftCount || 0), 0);
+      try {
+        localStorage.setItem('teaching_total_shifts', String(totalShifts));
+      } catch {
+        // Ignore storage errors
+      }
+      onUpdateTotalShifts?.(totalShifts);
     } catch (err: any) {
       console.error('Error fetching teaching sheet data:', err);
       setError(err.message || 'Không thể kết nối đến Google Sheets Giám sát giảng dạy');
@@ -149,7 +160,7 @@ export const TeachingQualityTab: React.FC = () => {
               Đang Tải Dữ Liệu Kiểm Định Từ Google Sheets...
             </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-              Hệ thống đang nạp và xử lý hơn 19,537 ca dạy từ tab Giám sát chất lượng (gid=282336280). Vui lòng đợi trong giây lát.
+              Hệ thống đang nạp và xử lý dữ liệu ca dạy từ tab Giám sát chất lượng (gid=282336280). Vui lòng đợi trong giây lát.
             </p>
           </div>
         </div>

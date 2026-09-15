@@ -42,6 +42,12 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
     };
   }, [rawData, currentMonthKey]);
 
+  // Total shifts across all data
+  const totalShiftsAll = useMemo(() => {
+    if (!rawData || rawData.length === 0) return 0;
+    return rawData.reduce((sum, item) => sum + (item.shiftCount || 0), 0);
+  }, [rawData]);
+
   // Handle Quick Select: Current Month (Always default)
   const handleSelectCurrentMonth = () => {
     onFilterChange({
@@ -127,7 +133,7 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
                   : 'bg-slate-200 text-slate-700'
               }`}
             >
-              {rawData.length.toLocaleString('vi-VN')} ca
+              {totalShiftsAll.toLocaleString('vi-VN')} ca
             </span>
           )}
         </button>
