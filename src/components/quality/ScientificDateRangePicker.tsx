@@ -30,7 +30,7 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
     let viol = 0;
     rawData.forEach((item) => {
       if (item.month === currentMonthKey || item.month === 'current') {
-        const shifts = item.shiftCount || 0;
+        const shifts = typeof item.shiftCount === 'number' && !isNaN(item.shiftCount) && item.shiftCount > 0 ? item.shiftCount : 0;
         count += shifts;
         if (item.result === 'Vi phạm') viol += shifts;
       }
@@ -42,10 +42,13 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
     };
   }, [rawData, currentMonthKey]);
 
-  // Total shifts across all data
+  // Total shifts across all data (chỗ nào không có giá trị thì cộng 0 vào không cộng 1)
   const totalShiftsAll = useMemo(() => {
     if (!rawData || rawData.length === 0) return 0;
-    return rawData.reduce((sum, item) => sum + (item.shiftCount || 0), 0);
+    return rawData.reduce(
+      (sum, item) => sum + (typeof item.shiftCount === 'number' && !isNaN(item.shiftCount) && item.shiftCount > 0 ? item.shiftCount : 0),
+      0
+    );
   }, [rawData]);
 
   // Handle Quick Select: Current Month (Always default)

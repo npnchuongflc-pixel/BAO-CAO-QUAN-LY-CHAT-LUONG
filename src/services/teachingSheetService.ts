@@ -475,7 +475,8 @@ export function computeTeachingQualitySummary(items: TeachingAuditItem[]): Teach
   let remindedCount = 0;
 
   items.forEach((item) => {
-    const shifts = item.shiftCount;
+    // Chỗ nào không có giá trị thì cộng 0 vào, tuyệt đối không cộng 1
+    const shifts = typeof item.shiftCount === 'number' && !isNaN(item.shiftCount) && item.shiftCount > 0 ? item.shiftCount : 0;
     totalShifts += shifts;
 
     // Đếm giá trị "Đã gửi" ở cột AC (chịu kiểm soát của bộ lọc ngày)

@@ -83,21 +83,18 @@ app.get('/api/teaching-sheet-data', async (req, res) => {
 
     const sheetId = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
     const gid = '282336280';
-    // Use the complete CSV export instead of the visualization query endpoint.
-    // This keeps report totals independent from temporary filters applied in
-    // the Raw Data sheet by an editor.
-    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    // Use the official Google Visualization JSON endpoint for fast loading and 100% consistency with Looker Studio
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tqx=out:json`;
     const response = await fetch(targetUrl, { cache: 'no-store' });
     if (!response.ok) {
-      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
+      throw new Error(`Google Sheets GViz responded with HTTP ${response.status}`);
     }
 
-    const csv = await response.text();
-    if (!csv || csv.includes('<!DOCTYPE html>')) {
-      throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
-    }
+    const text = await response.text();
+    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    const parsed = JSON.parse(jsonStr);
 
-    cachedTeachingData = { csv };
+    cachedTeachingData = { table: parsed.table };
     lastTeachingCacheTime = now;
 
     res.json({ success: true, data: cachedTeachingData, cached: false });

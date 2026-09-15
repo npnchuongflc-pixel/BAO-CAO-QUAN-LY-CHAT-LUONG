@@ -82,7 +82,11 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({ onUpdate
     try {
       const items = await fetchTeachingData();
       setRawData(items);
-      const totalShifts = items.reduce((sum, item) => sum + (item.shiftCount || 0), 0);
+      // Chỗ nào không có giá trị thì cộng 0 vào không cộng 1
+      const totalShifts = items.reduce(
+        (sum, item) => sum + (typeof item.shiftCount === 'number' && !isNaN(item.shiftCount) && item.shiftCount > 0 ? item.shiftCount : 0),
+        0
+      );
       try {
         localStorage.setItem('teaching_total_shifts', String(totalShifts));
       } catch {

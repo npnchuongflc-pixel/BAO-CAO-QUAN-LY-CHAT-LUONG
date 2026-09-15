@@ -117,7 +117,8 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
 
       const t = teacherMap.get(tName)!;
       t.totalAudits += 1;
-      t.totalShifts += (item.shiftCount || 0);
+      const validShift = typeof item.shiftCount === 'number' && !isNaN(item.shiftCount) && item.shiftCount > 0 ? item.shiftCount : 0;
+      t.totalShifts += validShift;
       if (item.facility) t.facilities.add(item.facility);
       if (item.teacherRank && (!t.teacherRank || t.teacherRank === 'Bậc 01')) {
         t.teacherRank = item.teacherRank;
