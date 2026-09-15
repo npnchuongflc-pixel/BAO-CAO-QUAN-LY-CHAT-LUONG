@@ -30,7 +30,7 @@ export const ScientificDateRangePicker: React.FC<ScientificDateRangePickerProps>
     let viol = 0;
     rawData.forEach((item) => {
       if (item.month === currentMonthKey || item.month === 'current') {
-        const shifts = item.shiftCount || 1;
+        const shifts = item.shiftCount || 0;
         count += shifts;
         if (item.result === 'Vi phạm') viol += shifts;
       }

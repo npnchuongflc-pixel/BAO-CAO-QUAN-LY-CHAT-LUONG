@@ -221,7 +221,7 @@ export const TeachingTable: React.FC<TeachingTableProps> = ({
                       {item.subject}
                     </span>
                   </td>
-                  <td className="py-2.5 px-2 text-slate-700 font-semibold">{item.shiftCount} ca</td>
+                  <td className="py-2.5 px-2 text-slate-700 font-semibold">{item.shiftCount > 0 ? `${item.shiftCount} ca` : '-'}</td>
                   <td className="py-2.5 px-2 text-center">
                     <span
                       className={`px-2 py-0.5 rounded-full text-[10px] font-bold inline-block ${

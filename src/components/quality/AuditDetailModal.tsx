@@ -129,7 +129,7 @@ export const AuditDetailModal: React.FC<AuditDetailModalProps> = ({
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[11px] text-slate-500 block">Thời gian ca dạy</span>
               <strong className="text-sm text-slate-900">{item.dateStr} ({item.dayOfWeek})</strong>
-              <div className="text-[11px] text-slate-500 mt-0.5">{item.startTime} - {item.endTime} ({item.shiftCount} ca)</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">{item.startTime} - {item.endTime} {item.shiftCount > 0 ? `(${item.shiftCount} ca)` : ''}</div>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">

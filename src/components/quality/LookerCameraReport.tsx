@@ -212,7 +212,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
 
     rawData.forEach((item) => {
       if (item.month === currentMonthKey || item.month === 'current') {
-        const shifts = item.shiftCount || 1;
+        const shifts = item.shiftCount || 0;
         totalShifts += shifts;
         totalAudits += 1;
         if (item.result === 'Vi phạm') {
@@ -1584,12 +1584,12 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         </div>
 
         {/* ========================================================================= */}
-        {/* ROW 5: BẢNG CẢNH BÁO GIÁO VIÊN (TỔNG HỢP TOÀN BỘ DỮ LIỆU TẤT CẢ GIÁO VIÊN) */}
+        {/* ROW 5: BẢNG CẢNH BÁO GIÁO VIÊN (CHỊU KIỂM SOÁT BỘ LỌC NGÀY & THÔNG TIN) */}
         {/* ========================================================================= */}
         <TeacherViolationSummaryTable
-          items={rawData}
+          items={filteredData}
           onSelectTeacher={onSelectTeacherModal}
-          dateRangeText="Tổng hợp toàn bộ dữ liệu (Không chịu kiểm soát của bộ lọc ngày)"
+          dateRangeText={`Dữ liệu theo bộ lọc: ${currentDateLabel}`}
         />
       </div>
 

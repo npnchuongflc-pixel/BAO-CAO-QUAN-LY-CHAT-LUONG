@@ -117,7 +117,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
 
       const t = teacherMap.get(tName)!;
       t.totalAudits += 1;
-      t.totalShifts += item.shiftCount || 1;
+      t.totalShifts += (item.shiftCount || 0);
       if (item.facility) t.facilities.add(item.facility);
       if (item.teacherRank && (!t.teacherRank || t.teacherRank === 'Bậc 01')) {
         t.teacherRank = item.teacherRank;
@@ -405,13 +405,14 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                 </div>
               </th>
 
-              {/* Evaluated Shifts (Số ca đánh giá) */}
+              {/* Evaluated Shifts & Audits */}
               <th
                 onClick={() => handleSort('totalAudits')}
                 className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[110px]"
+                title="Nhấn để sắp xếp theo Số ca / lượt đánh giá"
               >
                 <div className="flex items-center justify-center gap-1.5">
-                  <span>Số ca đánh giá</span>
+                  <span>Số ca (Lượt)</span>
                   {sortField === 'totalAudits' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-slate-700" /> : <ArrowDown className="w-3.5 h-3.5 text-slate-700" />
                   ) : (
@@ -519,9 +520,10 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                     </span>
                   </td>
 
-                  {/* Total Audits */}
+                  {/* Total Shifts & Audits */}
                   <td className="py-3 px-3 text-center font-mono text-xs text-slate-700 font-medium">
-                    {t.totalAudits} ca
+                    <div>{t.totalShifts > 0 ? `${t.totalShifts} ca` : '-'}</div>
+                    <span className="text-[10px] text-slate-400 block font-normal font-sans">({t.totalAudits} lượt)</span>
                   </td>
 
                   {/* Violations Count */}

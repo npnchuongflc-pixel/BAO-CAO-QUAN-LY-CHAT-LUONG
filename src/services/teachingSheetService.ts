@@ -71,8 +71,9 @@ export function parseTeachingTableRows(table: any): TeachingAuditItem[] {
     if (!teacherName && !facilityRaw && !dateVal) return;
 
     const shiftRawVal = c[9]?.v !== undefined ? c[9]?.v : c[9]?.f;
-    const parsedShift = typeof shiftRawVal === 'number' ? shiftRawVal : parseFloat(String(shiftRawVal).replace(',', '.'));
-    const shiftCount = !isNaN(parsedShift) && parsedShift > 0 ? parsedShift : 1;
+    const strShift = String(shiftRawVal ?? '').trim();
+    const parsedShift = typeof shiftRawVal === 'number' ? shiftRawVal : (strShift ? parseFloat(strShift.replace(',', '.')) : NaN);
+    const shiftCount = !isNaN(parsedShift) && parsedShift > 0 ? parsedShift : 0;
 
     // Criteria columns: K=10, L=11, M=12, N=13, O=14, P=15
     const uniform = parseString(c[10]?.v ?? c[10]?.f ?? c[10]) || 'Tốt';
@@ -302,17 +303,17 @@ export function filterTeachingData(
   return items.filter((item) => {
     // Custom Date Range filter (startDate & endDate in YYYY-MM-DD)
     if (filters.startDate || filters.endDate) {
-      if (!item.date) return false;
-      const itemTime = item.date.getTime();
+      if (!item.date || isNaN(item.date.getTime())) return false;
+      const itemYmd = item.date.getFullYear() * 10000 + (item.date.getMonth() + 1) * 100 + item.date.getDate();
       if (filters.startDate) {
-        const start = new Date(filters.startDate);
-        start.setHours(0, 0, 0, 0);
-        if (itemTime < start.getTime()) return false;
+        const [sy, sm, sd] = filters.startDate.split('-').map(Number);
+        const startYmd = sy * 10000 + sm * 100 + sd;
+        if (itemYmd < startYmd) return false;
       }
       if (filters.endDate) {
-        const end = new Date(filters.endDate);
-        end.setHours(23, 59, 59, 999);
-        if (itemTime > end.getTime()) return false;
+        const [ey, em, ed] = filters.endDate.split('-').map(Number);
+        const endYmd = ey * 10000 + em * 100 + ed;
+        if (itemYmd > endYmd) return false;
       }
     } else {
       // Month filter (or 'current') only applies when custom date range is not specified
