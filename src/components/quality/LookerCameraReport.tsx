@@ -24,7 +24,8 @@ import {
   Clock,
   Timer,
   Zap,
-  CheckCheck
+  CheckCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { ScientificDateRangePicker } from './ScientificDateRangePicker';
 import {
@@ -740,7 +741,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         {/* ========================================================================= */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 camera-trend-charts-row">
           {/* Chart 1 (Left): LƯỢT ĐÁNH GIÁ THEO NGÀY */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden print:overflow-visible flex flex-col">
             <div className="bg-gradient-to-r from-blue-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="p-1 rounded-md bg-blue-100 text-blue-700">
@@ -772,9 +773,9 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                 </span>
               </div>
 
-              <div className="h-64 print:h-[195px] w-full camera-chart-container">
+              <div className="h-64 print:h-[205px] w-full camera-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={summary.dailyTrends || []} margin={{ top: 12, right: 12, left: -10, bottom: 15 }}>
+                  <ComposedChart data={summary.dailyTrends || []} margin={{ top: 12, right: 12, left: -10, bottom: 35 }}>
                     <defs>
                       <linearGradient id="gradientGood" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#2563eb" stopOpacity={0.18} />
@@ -784,14 +785,14 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis
                       dataKey="dayLabel"
-                      tick={{ fontSize: 9.5, fill: '#64748b' }}
+                      tick={{ fontSize: 8.5, fill: '#475569', fontWeight: 500 }}
                       tickLine={false}
-                      axisLine={{ stroke: '#e2e8f0' }}
-                      angle={-90}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      angle={-65}
                       textAnchor="end"
-                      height={48}
+                      height={36}
                       interval={0}
-                      dy={4}
+                      dy={2}
                     />
                     {/* Left Axis: Số ca */}
                     <YAxis
@@ -913,7 +914,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
           </div>
 
           {/* Chart 2 (Right): LƯỢT VI PHẠM THEO THÁNG & TỈ LỆ VI PHẠM */}
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden print:overflow-visible flex flex-col">
             <div className="bg-gradient-to-r from-amber-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="p-1 rounded-md bg-amber-100 text-amber-700">
@@ -945,18 +946,28 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                 </span>
               </div>
 
-              <div className="h-60 print:h-[195px] w-full camera-chart-container">
+              <div className="h-60 print:h-[205px] w-full camera-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={allMonthlySubjectViolations}
-                    margin={{ top: 22, right: 15, left: -15, bottom: 0 }}
+                    margin={{ top: 22, right: 15, left: -15, bottom: 25 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis
                       dataKey="month"
-                      tick={{ fontSize: 10, fill: '#64748b' }}
+                      tick={{ fontSize: 9.5, fill: '#475569', fontWeight: 600 }}
                       tickLine={false}
-                      axisLine={{ stroke: '#e2e8f0' }}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      height={24}
+                      dy={4}
+                      tickFormatter={(val: string) => {
+                        if (!val) return '';
+                        if (val.includes('/')) {
+                          const [m] = val.split('/');
+                          return `Th.${m}`;
+                        }
+                        return val.startsWith('Tháng') ? val : `Tháng ${val}`;
+                      }}
                     />
                     {/* Left Axis: Số lượt vi phạm */}
                     <YAxis
@@ -1126,12 +1137,12 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       nameKey="category"
                       cx="50%"
                       cy="50%"
-                      innerRadius={58}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      cornerRadius={6}
+                      innerRadius={46}
+                      outerRadius={72}
+                      paddingAngle={4}
+                      cornerRadius={5}
                       stroke="#ffffff"
-                      strokeWidth={3}
+                      strokeWidth={2.5}
                       labelLine={false}
                       label={({ cx, cy, midAngle, innerRadius, outerRadius, percentage }: any) => {
                         const RADIAN = Math.PI / 180;
@@ -1139,7 +1150,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                         const x = cx + radius * Math.cos(-midAngle * RADIAN);
                         const y = cy + radius * Math.sin(-midAngle * RADIAN);
                         const rounded = Math.round(percentage);
-                        if (rounded < 5) return null;
+                        if (rounded < 6) return null;
                         return (
                           <text
                             x={x}
@@ -1147,7 +1158,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                             fill="#ffffff"
                             textAnchor="middle"
                             dominantBaseline="central"
-                            className="text-xs font-black drop-shadow-sm select-none pointer-events-none"
+                            className="text-[10px] font-black drop-shadow-xs select-none pointer-events-none"
                           >
                             {`${rounded}%`}
                           </text>
@@ -1159,7 +1170,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                           key={`cell-${index}`}
                           fill={VIOLATION_COLORS[entry.category] || '#70757a'}
                           stroke="#ffffff"
-                          strokeWidth={3}
+                          strokeWidth={2}
                         />
                       ))}
                     </Pie>
@@ -1170,11 +1181,20 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                         name
                       ]}
                     />
+                    <text x="50%" y="44%" textAnchor="middle" dominantBaseline="middle" className="text-[9.5px] font-bold fill-slate-400 select-none">
+                      TỔNG
+                    </text>
+                    <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" className="text-xl font-black fill-slate-900 select-none">
+                      {summary.topViolations?.reduce((acc, v) => acc + (v.count || 0), 0) || summary.violationAudits || 0}
+                    </text>
+                    <text x="50%" y="63%" textAnchor="middle" dominantBaseline="middle" className="text-[9px] font-medium fill-slate-500 select-none">
+                      lượt vi phạm
+                    </text>
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Center text in Donut */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                {/* Center text in Donut (HTML fallback for screen hover) */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none print:hidden opacity-0">
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">TỔNG</span>
                   <span className="text-3xl font-black text-slate-900 leading-tight">
                     {summary.topViolations?.reduce((acc, v) => acc + (v.count || 0), 0) || summary.violationAudits || 0}
@@ -1224,14 +1244,14 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200 bg-slate-50/50">
-                      <th className="py-2.5 pl-2 text-center w-10">#</th>
-                      <th className="py-2.5 px-3 min-w-[150px]">Họ và tên GV</th>
-                      <th className="py-2.5 px-2 w-24 text-center">Bộ môn</th>
-                      <th className="py-2.5 px-2 text-center w-28">Lượt vi phạm</th>
-                      <th className="py-2.5 px-3 text-center w-28">Mức độ</th>
-                      <th className="py-2.5 px-2 text-center w-24">Tỉ lệ vi phạm</th>
-                      <th className="py-2.5 pr-2 text-center w-32 print:hidden">Thao tác</th>
+                    <tr className="text-[10px] uppercase font-bold text-slate-600 border-b border-slate-200 bg-slate-50/70">
+                      <th className="py-2.5 pl-2 text-center w-10 whitespace-nowrap">#</th>
+                      <th className="py-2.5 px-3 min-w-[150px] whitespace-nowrap">Họ và tên GV</th>
+                      <th className="py-2.5 px-2 w-24 text-center whitespace-nowrap">Bộ môn</th>
+                      <th className="py-2.5 px-2 text-center w-28 whitespace-nowrap">Lượt vi phạm</th>
+                      <th className="py-2.5 px-3 text-center w-32 whitespace-nowrap">Mức độ cảnh báo</th>
+                      <th className="py-2.5 px-2 text-center w-24 whitespace-nowrap">Tỉ lệ vi phạm</th>
+                      <th className="py-2.5 pr-2 text-center w-32 print:hidden whitespace-nowrap">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -1241,11 +1261,11 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                         onClick={() => onSelectTeacherModal(t.teacherName)}
                         className="hover:bg-blue-50/50 cursor-pointer transition-colors group"
                       >
-                        <td className="py-3 pl-2 text-center text-[11px] text-slate-400 font-medium">{t.rank}.</td>
-                        <td className="py-3 px-3 font-semibold text-slate-900 group-hover:text-blue-700 transition-colors" title={t.teacherName}>
+                        <td className="py-2.5 pl-2 text-center text-[11px] text-slate-400 font-semibold">{t.rank}.</td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-900 group-hover:text-blue-700 transition-colors whitespace-nowrap" title={t.teacherName}>
                           {t.teacherName}
                         </td>
-                        <td className="py-3 px-2 text-center">
+                        <td className="py-2.5 px-2 text-center whitespace-nowrap">
                           <span
                             className={`inline-block px-2.5 py-0.5 rounded-md text-[10px] font-bold border ${
                               t.subject === 'Cờ'
@@ -1256,24 +1276,41 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                             {t.subject === 'Cờ' ? 'Khối Cờ' : 'Khối Vẽ'}
                           </span>
                         </td>
-                        <td className="py-3 px-2 text-center font-bold text-amber-700">{t.violations} lượt</td>
-                        <td className="py-3 px-3 text-center">
-                          <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                              style={{ width: `${t.percentScore}%` }}
-                            />
+                        <td className="py-2.5 px-2 text-center font-bold text-amber-800 whitespace-nowrap">{t.violations} lượt</td>
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          <div className="flex flex-col items-center gap-1">
+                            {t.violations >= 3 ? (
+                              <span className="inline-block px-2 py-0.5 rounded text-[9.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                Nghiêm trọng ({t.percentScore}%)
+                              </span>
+                            ) : t.violations === 2 ? (
+                              <span className="inline-block px-2 py-0.5 rounded text-[9.5px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                Trung bình ({t.percentScore}%)
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded text-[9.5px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                Cần lưu ý ({t.percentScore}%)
+                              </span>
+                            )}
+                            <div className="w-full max-w-[84px] bg-slate-100 h-1.5 rounded-full overflow-hidden print:hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  t.violations >= 3 ? 'bg-rose-500' : t.violations === 2 ? 'bg-amber-500' : 'bg-blue-500'
+                                }`}
+                                style={{ width: `${Math.min(100, Math.max(15, t.percentScore))}%` }}
+                              />
+                            </div>
                           </div>
                         </td>
-                        <td className="py-3 px-2 text-center font-bold text-slate-700">{t.violationRate}%</td>
-                        <td className="py-3 pr-2 text-center print:hidden">
+                        <td className="py-2.5 px-2 text-center font-bold text-slate-800 whitespace-nowrap">{t.violationRate}%</td>
+                        <td className="py-2.5 pr-2 text-center print:hidden">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               onSelectTeacherModal(t.teacherName);
                             }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-lg border border-blue-200/80 transition-all shadow-2xs group-hover:bg-blue-600 group-hover:text-white"
+                            className="inline-flex items-center gap-1.5 px-3 py-1 text-[11px] font-semibold text-blue-700 bg-blue-50 hover:bg-blue-600 hover:text-white rounded-lg border border-blue-200/80 transition-all shadow-2xs group-hover:bg-blue-600 group-hover:text-white cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             <span>Xem chi tiết</span>
@@ -1308,7 +1345,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                     type="button"
                     disabled={teacherPage <= 1}
                     onClick={() => setTeacherPage((p) => Math.max(1, p - 1))}
-                    className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 font-medium shadow-2xs"
+                    className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 font-medium shadow-2xs cursor-pointer"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     <span>Trước</span>
@@ -1320,7 +1357,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                     type="button"
                     disabled={teacherPage >= totalTeacherPages}
                     onClick={() => setTeacherPage((p) => Math.min(totalTeacherPages, p + 1))}
-                    className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 font-medium shadow-2xs"
+                    className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 flex items-center gap-1 font-medium shadow-2xs cursor-pointer"
                   >
                     <span>Sau</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -1330,6 +1367,49 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
+
+        {/* 6 TEACHING STANDARDS BREAKDOWN SECTION (PHÂN TÍCH 6 TIÊU CHUẨN GIẢNG DẠY) */}
+        {summary.criteria && summary.criteria.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5 print:p-2.5">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded-md bg-emerald-100 text-emerald-700">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                </span>
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                  ĐÁNH GIÁ TUÂN THỦ THEO 6 TIÊU CHUẨN GIẢNG DẠY QUA CAMERA
+                </span>
+              </div>
+              <span className="text-[10.5px] text-slate-500 font-medium">
+                Tỉ lệ tuân thủ bình quân toàn hệ thống
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              {summary.criteria.map((std, idx) => (
+                <div key={std.key || idx} className="bg-slate-50/80 rounded-lg p-2.5 border border-slate-200/70 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10.5px] font-bold text-slate-700 block truncate" title={std.name}>
+                      {idx + 1}. {std.name}
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-sm font-black text-slate-900">{std.complianceRate}%</span>
+                      <span className={`text-[9.5px] font-semibold ${std.complianceRate >= 95 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                        Tuân thủ
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[9.5px] text-slate-500">
+                    <span>Vi phạm:</span>
+                    <strong className={`font-bold ${std.bad > 0 ? 'text-amber-800' : 'text-slate-600'}`}>
+                      {std.bad} lượt
+                    </strong>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
         {/* ========================================================================= */}
@@ -1394,7 +1474,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                     <span>Điểm nóng cần lưu ý</span>
                     <span className="text-[10.5px] font-normal text-slate-400">({topViolatingFacilities.length} cơ sở có tỉ lệ cao nhất)</span>
                   </span>
-                  <span className="text-[10px] text-blue-600 font-medium">(Nhấp chuột vào cơ sở để lọc)</span>
+                  <span className="text-[10px] text-blue-600 font-medium print:hidden">(Nhấp chuột vào cơ sở để lọc)</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1455,7 +1535,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             {/* Card Footer */}
             <div className="bg-slate-50/70 px-4 py-1.5 border-t border-slate-100 text-[10.5px] text-slate-400 flex items-center justify-between">
               <span>* Số liệu tổng hợp từ toàn bộ lượt kiểm tra chất lượng giảng dạy</span>
-              <span className="text-blue-600 font-medium cursor-pointer hover:underline" onClick={() => onFilterChange({ facility: 'all' })}>
+              <span className="text-blue-600 font-medium cursor-pointer hover:underline print:hidden" onClick={() => onFilterChange({ facility: 'all' })}>
                 Xem tất cả cơ sở
               </span>
             </div>
@@ -1483,8 +1563,8 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={54}
-                      outerRadius={84}
+                      innerRadius={46}
+                      outerRadius={70}
                       paddingAngle={4}
                       cornerRadius={4}
                       stroke="#ffffff"
@@ -1501,10 +1581,16 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                         name
                       ]}
                     />
+                    <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" className="text-xl font-black fill-slate-900 select-none">
+                      {Math.round(summary.statusDistribution[0]?.percentage || 98)}%
+                    </text>
+                    <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="text-[10px] font-medium fill-slate-500 select-none">
+                      Không vi phạm
+                    </text>
                   </PieChart>
                 </ResponsiveContainer>
-                {/* Center text in Donut */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                {/* Center text in Donut (HTML fallback for screen hover) */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none print:hidden opacity-0">
                   <span className="text-2xl font-black text-slate-900">
                     {Math.round(summary.statusDistribution[0]?.percentage || 98)}%
                   </span>

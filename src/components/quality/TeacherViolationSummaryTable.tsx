@@ -318,24 +318,24 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
   };
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden mt-6">
+    <section className="bg-white rounded-xl border border-slate-200/90 shadow-2xs overflow-hidden mt-6 print:mt-0 print:rounded-lg print:border-slate-300">
       {/* HEADER: CẢNH BÁO GIÁO VIÊN - TINH GỌN, KHÔNG MÀU MÈ */}
-      <div className="px-4 py-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-4 py-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 print:px-3 print:py-1.5">
         <div className="flex items-center gap-2.5">
-          <span className="p-1.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200/60">
-            <AlertTriangle className="w-4 h-4" />
+          <span className="p-1.5 rounded-md bg-amber-50 text-amber-600 border border-amber-200/60 print:p-1">
+            <AlertTriangle className="w-4 h-4 print:w-3.5 print:h-3.5" />
           </span>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-900 font-display">
+              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wide text-slate-900 font-display print:text-xs">
                 Cảnh báo giáo viên
               </h3>
-              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 print:text-[10px] print:py-0">
                 {violatorCount} giáo viên vi phạm
               </span>
             </div>
             {dateRangeText && (
-              <p className="text-[11px] text-slate-500 mt-0.5">{dateRangeText}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 print:text-[9.5px] print:mt-0">{dateRangeText}</p>
             )}
           </div>
         </div>
@@ -375,20 +375,20 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider select-none">
-              <th className="py-3 pl-4 pr-2 text-center w-12">STT</th>
+            <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider select-none print:text-[9.5px]">
+              <th className="py-2.5 pl-3 pr-2 text-center w-10 whitespace-nowrap">STT</th>
               
               {/* Teacher Name */}
               <th
                 onClick={() => handleSort('teacherName')}
-                className="py-3 px-3 cursor-pointer hover:bg-slate-100 transition-colors min-w-[180px]"
+                className="py-2.5 px-3 cursor-pointer hover:bg-slate-100 transition-colors min-w-[170px] whitespace-nowrap"
               >
                 <div className="flex items-center gap-1.5">
                   <span>Họ và tên Giáo viên</span>
                   {sortField === 'teacherName' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
@@ -396,7 +396,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Subject */}
               <th
                 onClick={() => handleSort('subject')}
-                className="py-3 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors w-24"
+                className="py-2.5 px-2 text-center cursor-pointer hover:bg-slate-100 transition-colors w-20 whitespace-nowrap"
               >
                 <div className="flex items-center justify-center gap-1">
                   <span>Bộ môn</span>
@@ -409,7 +409,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Evaluated Shifts & Audits */}
               <th
                 onClick={() => handleSort('totalAudits')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[110px]"
+                className="py-2.5 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
                 title="Nhấn để sắp xếp theo Số ca / lượt đánh giá"
               >
                 <div className="flex items-center justify-center gap-1.5">
@@ -417,7 +417,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                   {sortField === 'totalAudits' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-slate-700" /> : <ArrowDown className="w-3.5 h-3.5 text-slate-700" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
@@ -425,7 +425,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Violation Count (Lượt vi phạm) */}
               <th
                 onClick={() => handleSort('violationCount')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[120px]"
+                className="py-2.5 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
                 title="Nhấn để sắp xếp theo Số lỗi vi phạm"
               >
                 <div className="flex items-center justify-center gap-1.5 text-amber-900">
@@ -433,7 +433,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                   {(sortField === 'violationCountAndRate' || sortField === 'violationCount') ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-amber-700" /> : <ArrowDown className="w-3.5 h-3.5 text-amber-700" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
@@ -441,7 +441,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Violation Rate (Tỉ lệ vi phạm) */}
               <th
                 onClick={() => handleSort('violationRate')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[110px]"
+                className="py-2.5 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
                 title="Nhấn để sắp xếp theo Tỉ lệ vi phạm"
               >
                 <div className="flex items-center justify-center gap-1.5">
@@ -449,7 +449,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                   {sortField === 'violationRate' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-slate-700" /> : <ArrowDown className="w-3.5 h-3.5 text-slate-700" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
@@ -457,14 +457,14 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Repeat Violation Count (Số lần tái vi phạm) */}
               <th
                 onClick={() => handleSort('reViolationCount')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[110px]"
+                className="py-2.5 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
                 <div className="flex items-center justify-center gap-1.5 text-rose-800">
                   <span>Lượt tái phạm</span>
                   {sortField === 'reViolationCount' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-rose-600" /> : <ArrowDown className="w-3.5 h-3.5 text-rose-600" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
@@ -472,21 +472,21 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
               {/* Repeat Violation Rate (Tỉ lệ tái vi phạm) */}
               <th
                 onClick={() => handleSort('reViolationRateOnAudits')}
-                className="py-3 px-3 text-center cursor-pointer hover:bg-slate-100 transition-colors min-w-[125px]"
+                className="py-2.5 px-2.5 text-center cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap"
               >
                 <div className="flex items-center justify-center gap-1.5 text-rose-800">
                   <span>Tỉ lệ tái vi phạm</span>
                   {sortField === 'reViolationRateOnAudits' ? (
                     sortOrder === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-rose-600" /> : <ArrowDown className="w-3.5 h-3.5 text-rose-600" />
                   ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                    <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 print:hidden" />
                   )}
                 </div>
               </th>
 
               {/* Status Tag & Action */}
-              <th className="py-3 px-3 text-center w-28">Trạng thái</th>
-              <th className="py-3 pr-4 text-center w-24 print:hidden">Thao tác</th>
+              <th className="py-2.5 px-2.5 text-center w-28 whitespace-nowrap">Trạng thái</th>
+              <th className="py-2.5 pr-4 text-center w-20 print:hidden whitespace-nowrap">Thao tác</th>
             </tr>
           </thead>
 
@@ -498,92 +498,92 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                 <tr
                   key={t.teacherName}
                   onClick={() => onSelectTeacher(t.teacherName)}
-                  className={`hover:bg-slate-50 cursor-pointer transition-colors group ${
+                  className={`hover:bg-slate-50 cursor-pointer transition-colors group print:hover:bg-transparent ${
                     t.isReViolator ? 'bg-rose-50/20' : ''
                   }`}
                 >
                   {/* Row Number */}
-                  <td className="py-3 pl-4 pr-2 text-center font-mono text-[11px] text-slate-400 font-medium">
+                  <td className="py-2.5 pl-3 pr-2 text-center font-mono text-[11px] text-slate-500 font-semibold print:py-1 print:text-[8.5pt]">
                     {rowNum}
                   </td>
 
                   {/* Teacher Name */}
-                  <td className="py-3 px-3">
-                    <span className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors text-xs">
+                  <td className="py-2.5 px-3 print:py-1">
+                    <span className="font-semibold text-slate-900 group-hover:text-blue-700 transition-colors text-xs whitespace-nowrap print:text-[8.5pt]">
                       {t.teacherName}
                     </span>
                   </td>
 
                   {/* Subject */}
-                  <td className="py-3 px-2.5 text-center">
-                    <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-medium text-slate-600 bg-slate-100 border border-slate-200">
+                  <td className="py-2.5 px-2 text-center print:py-1">
+                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-700 bg-slate-100 border border-slate-200 whitespace-nowrap print:text-[8pt]">
                       {t.subject === 'Cờ' ? 'Khối Cờ' : t.subject === 'Vẽ' ? 'Khối Vẽ' : t.subject}
                     </span>
                   </td>
 
                   {/* Total Shifts & Audits */}
-                  <td className="py-3 px-3 text-center font-mono text-xs text-slate-700 font-medium">
-                    <div>{t.totalShifts > 0 ? `${t.totalShifts} ca` : '-'}</div>
-                    <span className="text-[10px] text-slate-400 block font-normal font-sans">({t.totalAudits} lượt)</span>
+                  <td className="py-2.5 px-2.5 text-center font-mono text-xs text-slate-700 print:py-1 whitespace-nowrap print:text-[8.5pt]">
+                    <span className="font-semibold">{t.totalShifts > 0 ? `${t.totalShifts} ca` : '-'}</span>{' '}
+                    <span className="text-[10px] text-slate-500">({t.totalAudits} lượt)</span>
                   </td>
 
                   {/* Violations Count */}
-                  <td className="py-3 px-3 text-center">
+                  <td className="py-2.5 px-2.5 text-center print:py-1 whitespace-nowrap">
                     {t.violationCount > 0 ? (
-                      <span className="inline-block font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 font-mono text-xs">
+                      <span className="inline-block font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/80 font-mono text-xs print:text-[8.5pt]">
                         {t.violationCount} lượt
                       </span>
                     ) : (
-                      <span className="font-mono text-slate-400 text-xs">0</span>
+                      <span className="font-mono text-slate-500 text-xs font-medium print:text-[8.5pt]">0</span>
                     )}
                   </td>
 
                   {/* Violation Rate */}
-                  <td className="py-3 px-3 text-center font-mono text-xs font-semibold text-slate-800">
+                  <td className="py-2.5 px-2.5 text-center font-mono text-xs font-bold text-slate-900 print:py-1 whitespace-nowrap print:text-[8.5pt]">
                     {t.violationRate}%
                   </td>
 
                   {/* Repeat Violation Count (Số lần tái phạm) */}
-                  <td className="py-3 px-3 text-center font-mono text-xs">
+                  <td className="py-2.5 px-2.5 text-center font-mono text-xs print:py-1 whitespace-nowrap print:text-[8.5pt]">
                     {t.reViolationCount > 0 ? (
                       <span className="font-bold text-rose-700">
                         {t.reViolationCount} lần
                       </span>
                     ) : (
-                      <span className="text-slate-400">0</span>
+                      <span className="text-slate-500 font-medium">0</span>
                     )}
                   </td>
 
                   {/* Repeat Violation Rate (Tỉ lệ tái vi phạm) */}
-                  <td className="py-3 px-3 text-center font-mono text-xs">
+                  <td className="py-2.5 px-2.5 text-center font-mono text-xs print:py-1 whitespace-nowrap print:text-[8.5pt]">
                     {t.isReViolator ? (
                       <span className="font-bold text-rose-700">
                         {t.reViolationRateOnAudits}%
                       </span>
                     ) : (
-                      <span className="text-slate-400">0.0%</span>
+                      <span className="text-slate-500 font-medium">0.0%</span>
                     )}
                   </td>
 
                   {/* Status Badge */}
-                  <td className="py-3 px-3 text-center">
+                  <td className="py-2.5 px-2.5 text-center print:py-1 whitespace-nowrap">
                     {t.statusBadge === 'danger' ? (
-                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap print:text-[8pt]">
                         Tái vi phạm
                       </span>
                     ) : t.statusBadge === 'warn' ? (
-                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap print:text-[8pt]">
                         Vi phạm 1 lần
                       </span>
                     ) : (
-                      <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium text-slate-500 bg-slate-50 border border-slate-200">
+                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-medium text-slate-600 bg-slate-50 border border-slate-200 whitespace-nowrap print:text-[8pt]">
                         100% Chuẩn
                       </span>
                     )}
                   </td>
 
                   {/* Action */}
-                  <td className="py-3 pr-4 text-center print:hidden">
+                  <td className="py-2.5 pr-4 text-center print:hidden">
                     <button
                       type="button"
                       onClick={(e) => {
