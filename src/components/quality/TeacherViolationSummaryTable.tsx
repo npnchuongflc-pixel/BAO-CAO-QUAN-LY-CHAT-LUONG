@@ -340,7 +340,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 print:hidden">
           {/* Ô tìm kiếm giáo viên */}
           <div className="relative w-56 sm:w-64">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -486,7 +486,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
 
               {/* Status Tag & Action */}
               <th className="py-3 px-3 text-center w-28">Trạng thái</th>
-              <th className="py-3 pr-4 text-center w-24">Thao tác</th>
+              <th className="py-3 pr-4 text-center w-24 print:hidden">Thao tác</th>
             </tr>
           </thead>
 
@@ -583,7 +583,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                   </td>
 
                   {/* Action */}
-                  <td className="py-3 pr-4 text-center">
+                  <td className="py-3 pr-4 text-center print:hidden">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -628,8 +628,13 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
         </table>
       </div>
 
+      {/* PRINT-ONLY SUMMARY CAPTION */}
+      <div className="hidden print:block text-[9px] text-slate-500 py-1.5 px-3 bg-slate-50 border-t border-slate-200">
+        Hiển thị {Math.min(paginatedList.length, effectivePageSize)} giáo viên vi phạm theo bộ lọc hiện tại (Sắp xếp theo Lượt vi phạm và Tỉ lệ vi phạm giảm dần).
+      </div>
+
       {/* TABLE FOOTER / PAGINATION */}
-      <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+      <div className="p-4 bg-slate-50 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 print:hidden">
         <div className="flex items-center gap-3">
           <span>
             Hiển thị{' '}

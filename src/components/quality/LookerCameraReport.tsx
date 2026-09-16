@@ -56,6 +56,8 @@ import {
   StatusDistributionItem
 } from '../../types';
 import { TeacherViolationSummaryTable } from './TeacherViolationSummaryTable';
+import { PrintReportHeader } from '../PrintReportHeader';
+import { PrintReportFooter } from '../PrintReportFooter';
 
 interface LookerCameraReportProps {
   summary: TeachingQualitySummary;
@@ -438,9 +440,9 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   }, [filters.month, filters.startDate, filters.endDate, currentMonthKey, rawData]);
 
   return (
-    <div className="looker-studio-container bg-[#f0f2f5] p-3 sm:p-5 rounded-xl border border-[#dadce0] font-sans text-slate-900 shadow-sm space-y-4">
+    <div className="looker-studio-container bg-[#f0f2f5] p-3 sm:p-5 rounded-xl border border-[#dadce0] font-sans text-slate-900 shadow-sm space-y-4 print:p-0 print:border-none print:shadow-none print:bg-transparent print:space-y-0">
       {/* Compact report tools */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-300">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-3 border-b border-slate-300 print:hidden">
         {(filters.facility !== 'all' || filters.searchTeacher) && (
           <div className="flex flex-wrap items-center gap-2">
             {filters.facility !== 'all' && (
@@ -497,33 +499,45 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
       </div>
 
       {/* Main Looker Studio White Canvas */}
-      <div className="bg-white p-4 sm:p-6 rounded-lg border border-[#dadce0] shadow-xs space-y-4">
+      <div className="bg-white p-4 sm:p-6 rounded-lg border border-[#dadce0] shadow-xs space-y-4 print:p-0 print:border-none print:shadow-none print:bg-transparent print:space-y-0">
         {/* ========================================================================= */}
-        {/* HEADER & FILTER CONTROLS (Pixel-matched with Looker Studio Screenshot) */}
+        {/* PAGE 1: OVERVIEW KPIS & TREND TIMELINES                                   */}
         {/* ========================================================================= */}
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            {/* Title */}
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
-                ĐÁNH GIÁ CAMERA
-              </h1>
-              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                Khoảng thời gian đang xem: <strong className="text-slate-800">{currentDateLabel}</strong>
-              </p>
+        <div className="camera-print-page-1 space-y-4 print:space-y-3">
+          {/* PRINT REPORT HEADER (PAGE 1) */}
+          <PrintReportHeader
+            title="BÁO CÁO GIÁM SÁT CHẤT LƯỢNG GIẢNG DẠY QUA CAMERA"
+            subtitle="HỆ THỐNG QUẢN LÝ CHẤT LƯỢNG NỘI BỘ • TỔNG HỢP & XU HƯỚNG THEO THỜI GIAN"
+            pageNumber="Trang 1/4"
+            dateRange={currentDateLabel}
+            facilityText={filters.facility === 'all' ? 'Tất cả 48 cơ sở' : filters.facility}
+            extraMeta={`Môn: ${filters.subject === 'all' ? 'Toàn bộ' : filters.subject === 'Cờ' ? 'Khối Cờ' : 'Khối Vẽ'}${filters.searchTeacher ? ` • GV: ${filters.searchTeacher}` : ''}`}
+          />
+
+          {/* HEADER & FILTER CONTROLS (Screen only) */}
+          <div className="space-y-3 print:hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Title */}
+              <div>
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
+                  ĐÁNH GIÁ CAMERA
+                </h1>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  Khoảng thời gian đang xem: <strong className="text-slate-800">{currentDateLabel}</strong>
+                </p>
+              </div>
+
+              {/* Scientific Date Range Selector */}
+              <ScientificDateRangePicker
+                filters={filters}
+                onFilterChange={onFilterChange}
+                rawData={rawData}
+                currentMonthKey={currentMonthKey}
+              />
             </div>
 
-            {/* Scientific Date Range Selector */}
-            <ScientificDateRangePicker
-              filters={filters}
-              onFilterChange={onFilterChange}
-              rawData={rawData}
-              currentMonthKey={currentMonthKey}
-            />
-          </div>
-
-          {/* 4 Looker Dropdown Filter Chips */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+            {/* 4 Looker Dropdown Filter Chips */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
             {/* Filter 1: Cơ sở đánh giá */}
             <div className="relative">
               <select
@@ -594,7 +608,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         {/* ========================================================================= */}
         {/* 4 SCORECARD KPI CARDS (Exact Replica from Looker Studio Screenshot) */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 camera-kpi-grid">
           {/* Card 1: Tình huống nghiêm trọng (Solid Red Background) */}
           <div
             onClick={() => onFilterChange({ onlySevere: !filters.onlySevere })}
@@ -724,7 +738,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         {/* ========================================================================= */}
         {/* ROW 1 OF CHARTS: LƯỢT ĐÁNH GIÁ THEO NGÀY & LƯỢT VI PHẠM THEO THÁNG */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 camera-trend-charts-row">
           {/* Chart 1 (Left): LƯỢT ĐÁNH GIÁ THEO NGÀY */}
           <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
             <div className="bg-gradient-to-r from-blue-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
@@ -758,7 +772,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                 </span>
               </div>
 
-              <div className="h-64 w-full">
+              <div className="h-64 print:h-[195px] w-full camera-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={summary.dailyTrends || []} margin={{ top: 12, right: 12, left: -10, bottom: 15 }}>
                     <defs>
@@ -931,7 +945,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                 </span>
               </div>
 
-              <div className="h-60 w-full">
+              <div className="h-60 print:h-[195px] w-full camera-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
                     data={allMonthlySubjectViolations}
@@ -1071,26 +1085,39 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
         {/* ========================================================================= */}
-        {/* ROW 2 OF CHARTS: PHÂN LOẠI LỖI VI PHẠM (4 Cols) | DANH SÁCH GIÁO VIÊN VI PHẠM (8 Cols) */}
+        {/* PAGE 2: VIOLATION CLASSIFICATION & TOP TEACHER WATCHLIST                  */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Card 1 (Left - 4 Cols): PHÂN LOẠI LỖI VI PHẠM */}
-          <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
-            <div className="bg-gradient-to-r from-rose-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded-md bg-rose-100 text-rose-700">
-                  <PieChartIcon className="w-3.5 h-3.5" />
-                </span>
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                  PHÂN LOẠI LỖI VI PHẠM
-                </span>
+        <div className="camera-print-page-2 space-y-4 print:space-y-3">
+          {/* PRINT REPORT HEADER (PAGE 2) */}
+          <PrintReportHeader
+            title="BÁO CÁO GIÁM SÁT CHẤT LƯỢNG GIẢNG DẠY QUA CAMERA"
+            subtitle="PHÂN TÍCH CHUYÊN SÂU: CƠ CẤU LỖI VI PHẠM & DANH SÁCH GIÁO VIÊN CẦN LƯU Ý"
+            pageNumber="Trang 2/4"
+            dateRange={currentDateLabel}
+            facilityText={filters.facility === 'all' ? 'Tất cả 48 cơ sở' : filters.facility}
+            extraMeta={`Môn: ${filters.subject === 'all' ? 'Toàn bộ' : filters.subject === 'Cờ' ? 'Khối Cờ' : 'Khối Vẽ'}`}
+          />
+
+          {/* ROW 2 OF CHARTS: PHÂN LOẠI LỖI VI PHẠM (4 Cols) | DANH SÁCH GIÁO VIÊN VI PHẠM (8 Cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 camera-row-2-grid">
+            {/* Card 1 (Left - 4 Cols): PHÂN LOẠI LỖI VI PHẠM */}
+            <div className="lg:col-span-4 bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+              <div className="bg-gradient-to-r from-rose-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-md bg-rose-100 text-rose-700">
+                    <PieChartIcon className="w-3.5 h-3.5" />
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    PHÂN LOẠI LỖI VI PHẠM
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="p-4 flex-1 flex flex-col justify-between">
-              {/* Donut chart enlarged */}
-              <div className="h-64 w-full relative">
+              <div className="p-4 flex-1 flex flex-col justify-between">
+                {/* Donut chart enlarged */}
+                <div className="h-64 print:h-[180px] w-full relative camera-donut-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -1204,7 +1231,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       <th className="py-2.5 px-2 text-center w-28">Lượt vi phạm</th>
                       <th className="py-2.5 px-3 text-center w-28">Mức độ</th>
                       <th className="py-2.5 px-2 text-center w-24">Tỉ lệ vi phạm</th>
-                      <th className="py-2.5 pr-2 text-center w-32">Thao tác</th>
+                      <th className="py-2.5 pr-2 text-center w-32 print:hidden">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -1239,7 +1266,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                           </div>
                         </td>
                         <td className="py-3 px-2 text-center font-bold text-slate-700">{t.violationRate}%</td>
-                        <td className="py-3 pr-2 text-center">
+                        <td className="py-3 pr-2 text-center print:hidden">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1266,7 +1293,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               </div>
 
               {/* Table Pagination */}
-              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500 mt-2">
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500 mt-2 print:hidden">
                 <span>
                   Đang hiển thị{' '}
                   {summary.teacherViolationsList.length > 0
@@ -1303,11 +1330,24 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
         {/* ========================================================================= */}
-        {/* ROW 3: CƠ SỞ VI PHẠM (8 Cols) | TỈ LỆ XỬ LÝ VI PHẠM (4 Cols) */}
+        {/* PAGE 3: FACILITY HOTSPOTS & RESOLUTION SLA PERFORMANCE                    */}
         {/* ========================================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div className="camera-print-page-3 space-y-4 print:space-y-3">
+          {/* PRINT REPORT HEADER (PAGE 3) */}
+          <PrintReportHeader
+            title="BÁO CÁO GIÁM SÁT CHẤT LƯỢNG GIẢNG DẠY QUA CAMERA"
+            subtitle="ĐIỂM NÓNG CƠ SỞ, TỈ LỆ XỬ LÝ & TIẾN ĐỘ GIẢI QUYẾT CHUẨN SLA"
+            pageNumber="Trang 3/4"
+            dateRange={currentDateLabel}
+            facilityText={filters.facility === 'all' ? 'Tất cả 48 cơ sở' : filters.facility}
+            extraMeta={`Môn: ${filters.subject === 'all' ? 'Toàn bộ' : filters.subject === 'Cờ' ? 'Khối Cờ' : 'Khối Vẽ'}`}
+          />
+
+          {/* ROW 3: CƠ SỞ VI PHẠM (8 Cols) | TỈ LỆ XỬ LÝ VI PHẠM (4 Cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 camera-row-3-grid">
           {/* Card 1 (Left - 8 Cols): CƠ SỞ VI PHẠM - BỐ CỤC TỔNG HỢP & TINH GỌN */}
           <div className="lg:col-span-8 bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col justify-between">
             {/* Card Header */}
@@ -1434,7 +1474,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               </div>
             </div>
             <div className="p-4 flex-1 flex flex-col justify-between">
-              <div className="h-52 w-full relative">
+              <div className="h-52 print:h-[165px] w-full relative camera-resolution-donut">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -1494,7 +1534,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
         {/* ========================================================================= */}
         {/* ROW 4: BỘ 4 CHỈ SỐ SLA TỔNG QUAN (THỜI GIAN XỬ LÝ VI PHẠM) */}
         {/* ========================================================================= */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden camera-sla-section">
           {/* Section Header */}
           <div className="bg-gradient-to-r from-amber-50/90 via-slate-50 to-white px-4 py-2.5 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -1516,7 +1556,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
           </div>
 
           {/* 4 KPI Cards */}
-          <div className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-3 camera-sla-grid">
             {/* Card 1: Thời gian xử lý TB */}
             <div className="bg-blue-50/70 rounded-xl p-3.5 border border-blue-200/70 flex flex-col justify-between hover:bg-blue-50/90 transition-colors shadow-2xs">
               <div className="flex items-center justify-between text-blue-700">
@@ -1582,15 +1622,32 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
         {/* ========================================================================= */}
-        {/* ROW 5: BẢNG CẢNH BÁO GIÁO VIÊN (CHỊU KIỂM SOÁT BỘ LỌC NGÀY & THÔNG TIN) */}
+        {/* PAGE 4: BẢNG CẢNH BÁO GIÁO VIÊN & BIÊN BẢN KÝ DUYỆT                     */}
         {/* ========================================================================= */}
-        <TeacherViolationSummaryTable
-          items={filteredData}
-          onSelectTeacher={onSelectTeacherModal}
-          dateRangeText={`Dữ liệu theo bộ lọc: ${currentDateLabel}`}
-        />
+        <div className="camera-print-page-4 space-y-4 print:space-y-3">
+          {/* PRINT REPORT HEADER (PAGE 4) */}
+          <PrintReportHeader
+            title="BÁO CÁO GIÁM SÁT CHẤT LƯỢNG GIẢNG DẠY QUA CAMERA"
+            subtitle="DANH SÁCH CHI TIẾT GIÁO VIÊN VI PHẠM & BIÊN BẢN XÁC NHẬN"
+            pageNumber="Trang 4/4"
+            dateRange={currentDateLabel}
+            facilityText={filters.facility === 'all' ? 'Tất cả 48 cơ sở' : filters.facility}
+            extraMeta={`Môn: ${filters.subject === 'all' ? 'Toàn bộ' : filters.subject === 'Cờ' ? 'Khối Cờ' : 'Khối Vẽ'}${filters.searchTeacher ? ` • GV: ${filters.searchTeacher}` : ''}`}
+          />
+
+          {/* ROW 5: BẢNG CẢNH BÁO GIÁO VIÊN (CHỊU KIỂM SOÁT BỘ LỌC NGÀY & THÔNG TIN) */}
+          <TeacherViolationSummaryTable
+            items={filteredData}
+            onSelectTeacher={onSelectTeacherModal}
+            dateRangeText={`Dữ liệu theo bộ lọc: ${currentDateLabel}`}
+          />
+
+          {/* PRINT REPORT SIGNATURE BLOCKS */}
+          <PrintReportFooter />
+        </div>
       </div>
 
       {/* ========================================================================= */}

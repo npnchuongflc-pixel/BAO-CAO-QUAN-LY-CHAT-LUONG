@@ -2829,6 +2829,7 @@ main {
   button:not(.print-keep),
   input[type="text"],
   input[type="search"],
+  select,
   .custom-scrollbar::-webkit-scrollbar,
   .tooltip,
   .recharts-tooltip-wrapper,
@@ -3089,5 +3090,163 @@ main {
     overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+
+  /* ========================================================================= */
+  /* LOOKER CAMERA QUALITY REPORT - EXACT 4-PAGE A4 LANDSCAPE PRINT RULES      */
+  /* ========================================================================= */
+  .looker-studio-container {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .camera-print-page-1,
+  .camera-print-page-2,
+  .camera-print-page-3,
+  .camera-print-page-4 {
+    display: block !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Page 1: Executive Overview & Trends */
+  .camera-print-page-1 {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .camera-print-page-1 .camera-kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .camera-print-page-1 .camera-kpi-grid > div {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+  }
+
+  .camera-print-page-1 .camera-trend-charts-row {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .camera-chart-container {
+    height: 195px !important;
+    min-height: 195px !important;
+    max-height: 195px !important;
+    overflow: visible !important;
+  }
+
+  /* Page 2: Violation Classification & Teacher Watchlist */
+  .camera-print-page-2 {
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .camera-print-page-2 .camera-row-2-grid {
+    display: grid !important;
+    grid-template-columns: 4.5fr 7.5fr !important;
+    gap: 10px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .camera-donut-chart-container {
+    height: 180px !important;
+    min-height: 180px !important;
+    max-height: 180px !important;
+    overflow: visible !important;
+  }
+
+  /* Page 3: Facility Hotspots & SLA Performance */
+  .camera-print-page-3 {
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .camera-print-page-3 .camera-row-3-grid {
+    display: grid !important;
+    grid-template-columns: 7fr 5fr !important;
+    gap: 10px !important;
+    margin-bottom: 8px !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .camera-resolution-donut {
+    height: 165px !important;
+    min-height: 165px !important;
+    max-height: 165px !important;
+    overflow: visible !important;
+  }
+
+  .camera-sla-section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-top: 6px !important;
+  }
+
+  .camera-sla-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .camera-sla-grid > div {
+    padding: 8px 10px !important;
+  }
+
+  /* Page 4: Full Teacher Warning Table & Signatures */
+  .camera-print-page-4 {
+    page-break-before: always !important;
+    break-before: page !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .camera-print-page-4 table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 7.8pt !important;
+    line-height: 1.25 !important;
+  }
+
+  .camera-print-page-4 th,
+  .camera-print-page-4 td {
+    padding: 3px 5px !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+
+  .camera-print-page-4 th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: 700 !important;
+  }
+
+  /* Global Recharts fix for clean SVG printing */
+  .recharts-responsive-container {
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .recharts-wrapper {
+    overflow: visible !important;
   }
 }
