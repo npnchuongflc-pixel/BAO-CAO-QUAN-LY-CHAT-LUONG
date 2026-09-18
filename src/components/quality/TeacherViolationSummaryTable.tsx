@@ -484,8 +484,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                 </div>
               </th>
 
-              {/* Status Tag & Action */}
-              <th className="py-2.5 px-2.5 text-center w-28 whitespace-nowrap">Trạng thái</th>
+              {/* Action */}
               <th className="py-2.5 pr-4 text-center w-20 print:hidden whitespace-nowrap">Thao tác</th>
             </tr>
           </thead>
@@ -565,23 +564,6 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
                     )}
                   </td>
 
-                  {/* Status Badge */}
-                  <td className="py-2.5 px-2.5 text-center print:py-1 whitespace-nowrap">
-                    {t.statusBadge === 'danger' ? (
-                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap print:text-[8pt]">
-                        Tái vi phạm
-                      </span>
-                    ) : t.statusBadge === 'warn' ? (
-                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap print:text-[8pt]">
-                        Vi phạm 1 lần
-                      </span>
-                    ) : (
-                      <span className="inline-block px-2 py-0.5 rounded text-[10.5px] font-medium text-slate-600 bg-slate-50 border border-slate-200 whitespace-nowrap print:text-[8pt]">
-                        100% Chuẩn
-                      </span>
-                    )}
-                  </td>
-
                   {/* Action */}
                   <td className="py-2.5 pr-4 text-center print:hidden">
                     <button
@@ -603,7 +585,7 @@ export const TeacherViolationSummaryTable: React.FC<TeacherViolationSummaryTable
 
             {paginatedList.length === 0 && (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-slate-400">
+                <td colSpan={9} className="py-12 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Users className="w-8 h-8 text-slate-300" />
                     <span className="text-xs font-medium">

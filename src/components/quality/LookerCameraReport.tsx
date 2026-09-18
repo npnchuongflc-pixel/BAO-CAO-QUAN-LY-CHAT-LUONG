@@ -24,8 +24,7 @@ import {
   Clock,
   Timer,
   Zap,
-  CheckCheck,
-  ShieldCheck
+  CheckCheck
 } from 'lucide-react';
 import { ScientificDateRangePicker } from './ScientificDateRangePicker';
 import {
@@ -1128,7 +1127,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               </div>
               <div className="p-4 flex-1 flex flex-col justify-between">
                 {/* Donut chart enlarged */}
-                <div className="h-64 print:h-[180px] w-full relative camera-donut-chart-container">
+                <div className="h-72 sm:h-80 print:h-[225px] w-full relative camera-donut-chart-container">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -1137,20 +1136,20 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       nameKey="category"
                       cx="50%"
                       cy="50%"
-                      innerRadius={46}
-                      outerRadius={72}
+                      innerRadius={50}
+                      outerRadius={105}
                       paddingAngle={4}
-                      cornerRadius={5}
+                      cornerRadius={6}
                       stroke="#ffffff"
-                      strokeWidth={2.5}
+                      strokeWidth={3}
                       labelLine={false}
                       label={({ cx, cy, midAngle, innerRadius, outerRadius, percentage }: any) => {
                         const RADIAN = Math.PI / 180;
-                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.52;
                         const x = cx + radius * Math.cos(-midAngle * RADIAN);
                         const y = cy + radius * Math.sin(-midAngle * RADIAN);
                         const rounded = Math.round(percentage);
-                        if (rounded < 6) return null;
+                        if (rounded < 5) return null;
                         return (
                           <text
                             x={x}
@@ -1158,7 +1157,12 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                             fill="#ffffff"
                             textAnchor="middle"
                             dominantBaseline="central"
-                            className="text-[10px] font-black drop-shadow-xs select-none pointer-events-none"
+                            style={{
+                              fontSize: '15px',
+                              fontWeight: 900,
+                              filter: 'drop-shadow(0px 1px 2.5px rgba(0,0,0,0.55))'
+                            }}
+                            className="select-none pointer-events-none"
                           >
                             {`${rounded}%`}
                           </text>
@@ -1170,52 +1174,50 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                           key={`cell-${index}`}
                           fill={VIOLATION_COLORS[entry.category] || '#70757a'}
                           stroke="#ffffff"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                         />
                       ))}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '13px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
                       formatter={(value: any, name: any, item: any) => [
                         `${value} lượt (${Math.round(item.payload.percentage)}%)`,
                         name
                       ]}
                     />
-                    <text x="50%" y="44%" textAnchor="middle" dominantBaseline="middle" className="text-[9.5px] font-bold fill-slate-400 select-none">
-                      TỔNG
-                    </text>
-                    <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" className="text-xl font-black fill-slate-900 select-none">
+                    <text
+                      x="50%"
+                      y="50%"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      style={{
+                        fontSize: '32px',
+                        fontWeight: 900,
+                        fill: '#0f172a'
+                      }}
+                      className="select-none pointer-events-none font-black"
+                    >
                       {summary.topViolations?.reduce((acc, v) => acc + (v.count || 0), 0) || summary.violationAudits || 0}
-                    </text>
-                    <text x="50%" y="63%" textAnchor="middle" dominantBaseline="middle" className="text-[9px] font-medium fill-slate-500 select-none">
-                      lượt vi phạm
                     </text>
                   </PieChart>
                 </ResponsiveContainer>
-
-                {/* Center text in Donut (HTML fallback for screen hover) */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none print:hidden opacity-0">
-                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">TỔNG</span>
-                  <span className="text-3xl font-black text-slate-900 leading-tight">
-                    {summary.topViolations?.reduce((acc, v) => acc + (v.count || 0), 0) || summary.violationAudits || 0}
-                  </span>
-                  <span className="text-[11px] font-medium text-slate-500">lượt vi phạm</span>
-                </div>
               </div>
 
-              {/* Legend List with rounded percentages */}
-              <div className="space-y-2 text-xs text-slate-700 pt-3 border-t border-slate-100">
+              {/* Legend List with rounded percentages & larger readable text */}
+              <div className="space-y-2.5 text-[13px] text-slate-800 pt-3 border-t border-slate-100">
                 {summary.topViolations.slice(0, 5).map((v) => (
-                  <div key={v.category} className="flex items-center justify-between gap-2 hover:bg-slate-50 px-1.5 py-1 rounded transition-colors">
-                    <span className="flex items-center gap-2 truncate">
+                  <div key={v.category} className="flex items-center justify-between gap-2 hover:bg-slate-50 px-2 py-1.5 rounded-lg transition-colors">
+                    <span className="flex items-center gap-2.5 truncate">
                       <span
-                        className="w-3 h-3 rounded-full shrink-0 ring-1 ring-black/10"
+                        className="w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10 shadow-2xs"
                         style={{ backgroundColor: VIOLATION_COLORS[v.category] || '#70757a' }}
                       />
-                      <span className="truncate font-medium">{v.category}</span>
+                      <span className="truncate font-semibold text-slate-800 text-xs sm:text-[13px]">{v.category}</span>
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-slate-700 text-xs font-semibold">{v.count} lượt</span>
+                      <span className="text-slate-900 text-xs sm:text-[13px] font-bold">
+                        {v.count} lượt <span className="text-slate-500 font-semibold">({Math.round(v.percentage)}%)</span>
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -1367,49 +1369,6 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             </div>
           </div>
         </div>
-
-        {/* 6 TEACHING STANDARDS BREAKDOWN SECTION (PHÂN TÍCH 6 TIÊU CHUẨN GIẢNG DẠY) */}
-        {summary.criteria && summary.criteria.length > 0 && (
-          <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs p-3.5 print:p-2.5">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded-md bg-emerald-100 text-emerald-700">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                </span>
-                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                  ĐÁNH GIÁ TUÂN THỦ THEO 6 TIÊU CHUẨN GIẢNG DẠY QUA CAMERA
-                </span>
-              </div>
-              <span className="text-[10.5px] text-slate-500 font-medium">
-                Tỉ lệ tuân thủ bình quân toàn hệ thống
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
-              {summary.criteria.map((std, idx) => (
-                <div key={std.key || idx} className="bg-slate-50/80 rounded-lg p-2.5 border border-slate-200/70 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-700 block truncate" title={std.name}>
-                      {idx + 1}. {std.name}
-                    </span>
-                    <div className="mt-1 flex items-baseline justify-between">
-                      <span className="text-sm font-black text-slate-900">{std.complianceRate}%</span>
-                      <span className={`text-[9.5px] font-semibold ${std.complianceRate >= 95 ? 'text-emerald-700' : 'text-amber-700'}`}>
-                        Tuân thủ
-                      </span>
-                    </div>
-                  </div>
-                  <div className="mt-2 pt-1.5 border-t border-slate-200/60 flex items-center justify-between text-[9.5px] text-slate-500">
-                    <span>Vi phạm:</span>
-                    <strong className={`font-bold ${std.bad > 0 ? 'text-amber-800' : 'text-slate-600'}`}>
-                      {std.bad} lượt
-                    </strong>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
         {/* ========================================================================= */}
@@ -1554,7 +1513,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
               </div>
             </div>
             <div className="p-4 flex-1 flex flex-col justify-between">
-              <div className="h-52 print:h-[165px] w-full relative camera-resolution-donut">
+              <div className="h-60 print:h-[185px] w-full relative camera-resolution-donut">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -1563,10 +1522,10 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={46}
-                      outerRadius={70}
+                      innerRadius={50}
+                      outerRadius={88}
                       paddingAngle={4}
-                      cornerRadius={4}
+                      cornerRadius={5}
                       stroke="#ffffff"
                       strokeWidth={2.5}
                     >
@@ -1575,40 +1534,33 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
                       ))}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+                      contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
                       formatter={(value: any, name: any, item: any) => [
                         `${value} lượt (${Math.round(item.payload.percentage)}%)`,
                         name
                       ]}
                     />
-                    <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" className="text-xl font-black fill-slate-900 select-none">
+                    <text x="50%" y="45%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-black fill-slate-900 select-none">
                       {Math.round(summary.statusDistribution[0]?.percentage || 98)}%
                     </text>
-                    <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="text-[10px] font-medium fill-slate-500 select-none">
+                    <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="text-[11px] font-semibold fill-slate-500 select-none">
                       Không vi phạm
                     </text>
                   </PieChart>
                 </ResponsiveContainer>
-                {/* Center text in Donut (HTML fallback for screen hover) */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none print:hidden opacity-0">
-                  <span className="text-2xl font-black text-slate-900">
-                    {Math.round(summary.statusDistribution[0]?.percentage || 98)}%
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-medium">Không vi phạm</span>
-                </div>
               </div>
 
               {/* Legend List */}
-              <div className="space-y-2 text-xs text-slate-700 pt-3 border-t border-slate-100">
+              <div className="space-y-2 text-xs sm:text-[13px] text-slate-800 pt-3 border-t border-slate-100">
                 {summary.statusDistribution.map((s) => (
                   <div key={s.name} className="flex items-center justify-between gap-1.5 hover:bg-slate-50 px-2 py-1.5 rounded transition-colors">
                     <span className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/10" style={{ backgroundColor: s.color }} />
-                      <span className="font-medium">{s.name}</span>
+                      <span className="w-3 h-3 rounded-full shrink-0 ring-1 ring-black/10" style={{ backgroundColor: s.color }} />
+                      <span className="font-semibold text-slate-800 text-xs sm:text-[13px]">{s.name}</span>
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[11px] font-normal">{s.count} lượt</span>
-                      <span className="font-bold text-slate-900">{Math.round(s.percentage)}%</span>
+                      <span className="text-slate-500 text-xs font-medium">{s.count} lượt</span>
+                      <span className="font-bold text-slate-900 text-xs sm:text-[13px]">{Math.round(s.percentage)}%</span>
                     </div>
                   </div>
                 ))}

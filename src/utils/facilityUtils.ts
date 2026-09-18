@@ -45,7 +45,7 @@ export const FACILITY_DAY_TARGETS: Record<string, FacilityDayTarget> = {
   'Cơ sở Gò Vấp': { weekday: 11, weekend: 16 },
   'Cơ sở An Phú': { weekday: 8, weekend: 11 },
   'Cơ sở Thạnh Mỹ Lợi': { weekday: 7, weekend: 7 },
-  'Cơ sở Vinhomes': { weekday: 5, weekend: 5 },
+  'Cơ sở Vinhomes': { weekday: 10, weekend: 14 },
   'Cơ sở Gia Hòa': { weekday: 7, weekend: 7 },
   'Cơ sở Tân Bình': { weekday: 8, weekend: 11 },
   'Cơ sở Tân Phú': { weekday: 8, weekend: 8 },
@@ -106,14 +106,15 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     ],
   },
   'Cơ sở Vinhomes': {
-    total: 5,
-    weekday: 5,
-    weekend: 5,
+    total: 10,
+    weekday: 10,
+    weekend: 14,
     items: [
-      { label: 'Phòng cờ', count: 1 },
-      { label: 'Máy lạnh cờ', count: 1 },
-      { label: 'Phòng vẽ', count: 1 },
-      { label: 'WC cờ', count: 1 },
+      { label: 'Phòng cờ', count: 2 },
+      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'WC cờ', count: 2 },
+      { label: 'Phòng vẽ', count: 2 },
+      { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
@@ -403,9 +404,9 @@ export function getFacilityTargetDetail(facilityName: string): FacilityTargetDet
 
 export function getTotalDailyTargetAllFacilities(dateInput?: string | Date): number {
   if (dateInput && isWeekendDay(dateInput)) {
-    return 175;
+    return 184;
   }
-  return 156;
+  return 161;
 }
 
 export function getFacilityDailyTarget(facilityName?: string, dateInput?: string | Date): number {

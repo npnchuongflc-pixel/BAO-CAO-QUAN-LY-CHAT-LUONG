@@ -1417,7 +1417,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             <div className="font-bold text-[#1A3A5C] border-b border-slate-100 pb-1.5 mb-2 flex items-center justify-between gap-3 relative z-10">
                               <span>{item.coSo}</span>
                               <span className="text-[10px] bg-[#1B5EA6]/10 text-[#1B5EA6] px-1.5 py-0.5 rounded border border-[#1B5EA6]/20 font-mono font-bold">
-                                Quy định: {targetDetail.total} hình
+                                {targetDetail.weekday && targetDetail.weekend && targetDetail.weekday !== targetDetail.weekend
+                                  ? `Quy định: T2-T6: ${targetDetail.weekday}h • T7-CN: ${targetDetail.weekend}h`
+                                  : `Quy định: ${targetDetail.total} hình`}
                               </span>
                             </div>
                             <div className="space-y-1 relative z-10">
