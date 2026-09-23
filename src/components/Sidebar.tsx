@@ -7,7 +7,8 @@ import {
   ExternalLink,
   RefreshCw,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Video
 } from 'lucide-react';
 import { SOURCE_URL } from '../services/sheetService';
 import chessLogo from '../assets/brands/co-vua-sai-gon.png';

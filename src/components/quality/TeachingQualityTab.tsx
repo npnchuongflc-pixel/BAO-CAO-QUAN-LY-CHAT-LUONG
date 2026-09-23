@@ -38,6 +38,7 @@ import { AuditDetailModal } from './AuditDetailModal';
 import { EvidenceModal } from './EvidenceModal';
 import { TeachingAiModal } from './TeachingAiModal';
 import { TeacherViolationDetailModal } from './TeacherViolationDetailModal';
+import { CameraStatusReportModule } from '../../camera/CameraStatusReportModule';
 import { getCurrentMonthKey } from '../../utils/dateUtils';
 
 const INITIAL_FILTERS: TeachingFilterState = {
@@ -54,13 +55,15 @@ const INITIAL_FILTERS: TeachingFilterState = {
   onlyViolations: false,
 };
 
-type ReportViewMode = 'looker-camera' | 'audit-log' | 'standards-6' | 'ranking';
+type ReportViewMode = 'looker-camera' | 'camera-status' | 'audit-log' | 'standards-6' | 'ranking';
 
 interface TeachingQualityTabProps {
   onUpdateTotalShifts?: (count: number) => void;
 }
 
-export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({ onUpdateTotalShifts }) => {
+export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
+  onUpdateTotalShifts,
+}) => {
   const [rawData, setRawData] = useState<TeachingAuditItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +205,13 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({ onUpdate
           onSelectTeacherModal={handleSelectTeacherModal}
           onOpenAiModal={() => setIsAiModalOpen(true)}
           currentMonthKey={currentMonthKey}
+          onSwitchToCameraStatus={() => setViewMode('camera-status')}
         />
+      )}
+
+      {/* VIEW: CAMERA HARDWARE & TECHNICAL STATUS (FROM REPORT-CAMERA REPO) */}
+      {viewMode === 'camera-status' && (
+        <CameraStatusReportModule onBack={() => setViewMode('looker-camera')} />
       )}
 
       {/* VIEW 2: DETAILED AUDIT LOG & DRIVE EVIDENCE TABLE */}

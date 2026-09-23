@@ -24,7 +24,9 @@ import {
   Clock,
   Timer,
   Zap,
-  CheckCheck
+  CheckCheck,
+  ExternalLink,
+  Video
 } from 'lucide-react';
 import { ScientificDateRangePicker } from './ScientificDateRangePicker';
 import {
@@ -70,6 +72,7 @@ interface LookerCameraReportProps {
   onSelectTeacherModal: (teacherName: string) => void;
   onOpenAiModal: () => void;
   currentMonthKey: string;
+  onSwitchToCameraStatus?: () => void;
 }
 
 export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
@@ -83,6 +86,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   onSelectTeacherModal,
   onOpenAiModal,
   currentMonthKey,
+  onSwitchToCameraStatus,
 }) => {
   // Local state for table pagination
   const [teacherPage, setTeacherPage] = useState<number>(1);
@@ -458,7 +462,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto lg:min-w-[520px] lg:ml-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 w-full lg:w-auto lg:min-w-[680px] lg:ml-auto">
           {/* Toggle Extra Metrics */}
           <button
             type="button"
@@ -483,6 +487,17 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span>Cố Vấn AI</span>
+          </button>
+
+          {/* Integrated Camera Report Button */}
+          <button
+            type="button"
+            onClick={onSwitchToCameraStatus}
+            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600 hover:border-emerald-700 transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-100 cursor-pointer"
+            title="Chuyển sang Báo cáo Hiện Trạng & Sự Cố Camera cơ sở (đóng gói từ Report-Camera)"
+          >
+            <Video className="w-4 h-4" />
+            <span>Báo Cáo Camera</span>
           </button>
 
           {/* Reset Filters */}
