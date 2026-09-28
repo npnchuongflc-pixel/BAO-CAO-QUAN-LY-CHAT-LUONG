@@ -55,7 +55,15 @@ export const Header: React.FC<HeaderProps> = ({
           className={`brand-logo-cluster ${onSelectTab ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
           aria-label="Cờ Vua Sài Gòn và Sài Gòn Art"
           onClick={() => onSelectTab && onSelectTab('cover')}
-          title="Về Trang bìa hệ thống"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelectTab && onSelectTab('cover');
+            }
+          }}
+          title="Nhấn vào logo để về Trang bìa hệ thống"
         >
           <div className="brand-logo-card brand-logo-card-chess">
             <img src={chessLogo} alt="Logo Cờ Vua Sài Gòn" />
@@ -66,9 +74,17 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
         <div 
-          className={`brand-copy ${onSelectTab ? 'cursor-pointer' : ''}`}
+          className={`brand-copy ${onSelectTab ? 'cursor-pointer hover:opacity-95 transition' : ''}`}
           onClick={() => onSelectTab && onSelectTab('cover')}
-          title="Về Trang bìa hệ thống"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelectTab && onSelectTab('cover');
+            }
+          }}
+          title="Nhấn vào để về Trang bìa hệ thống"
         >
           <div className="brand-title-row">
             <strong>PHÒNG QUẢN LÝ CHẤT LƯỢNG</strong>

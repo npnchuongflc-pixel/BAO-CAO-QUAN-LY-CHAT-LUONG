@@ -8,8 +8,7 @@ import {
   RefreshCw,
   X,
   ShieldCheck,
-  Video,
-  Home
+  Video
 } from 'lucide-react';
 import { SOURCE_URL } from '../services/sheetService';
 import chessLogo from '../assets/brands/co-vua-sai-gon.png';
@@ -37,18 +36,6 @@ export interface ReportGroup {
 }
 
 export const REPORT_GROUPS: ReportGroup[] = [
-  {
-    category: 'TỔNG QUAN',
-    items: [
-      {
-        id: 'cover',
-        label: 'TRANG BÌA HỆ THỐNG',
-        shortLabel: 'TRANG BÌA',
-        description: 'Tổng quan các tiêu chí đánh giá',
-        icon: Home,
-      },
-    ],
-  },
   {
     category: 'QUẢN LÝ CHẤT LƯỢNG',
     items: [
@@ -127,7 +114,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         {/* Sidebar Header Brand */}
         <div className="sidebar-header">
-          <div className="sidebar-brand">
+          <div
+            className="sidebar-brand cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => {
+              onSelectTab('cover');
+              onCloseMobile();
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSelectTab('cover');
+                onCloseMobile();
+              }
+            }}
+            title="Nhấn vào logo để về Trang bìa hệ thống"
+          >
             <div className="sidebar-brand-duo">
               <div className="sidebar-brand-logo-frame">
                 <img
