@@ -502,7 +502,7 @@ export const FacilityQualityModule: React.FC = () => {
 
         {/* Print Only Header for A4 PDF exports (Page 1) */}
         <PrintReportHeader
-          title={mode === 'hygiene' ? 'BÁO CÁO GIÁM SÁT VỆ SINH CƠ SỞ VẬT CHẤT' : 'BÁO CÁO GIÁM SÁT CHẤT LƯỢNG & SỰ CỐ CƠ SỞ'}
+          title="BẢNG TỔNG HỢP XẾP HẠNG & TIẾN ĐỘ THỰC HIỆN 19 CƠ SỞ"
           subtitle={`Hệ thống quản trị cơ sở • Phạm vi: ${filters.coSo === 'all' ? 'Tất cả 19 cơ sở' : filters.coSo}`}
           pageNumber="Trang 1/2"
           dateRange={
@@ -526,13 +526,9 @@ export const FacilityQualityModule: React.FC = () => {
           totalFilteredCount={totalFilteredRecords}
         />
 
-        {/* TOP SECTION: SUMMARY AGGREGATION DASHBOARD */}
+        {/* TOP SECTION: SUMMARY AGGREGATION DASHBOARD (BẢNG TỔNG HỢP DUY NHẤT) */}
         <SummaryDashboard
           mode={mode}
-          onModeChange={(newMode) => {
-            setMode(newMode);
-            setFilters(f => ({ ...f, trangThai: 'all' }));
-          }}
           hygieneCount={hygieneReports.length}
           qualityCount={qualityReports.length}
           summaries={facilitySummaries}

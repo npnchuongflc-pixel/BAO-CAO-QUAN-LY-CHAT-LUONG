@@ -23,6 +23,7 @@ import { Footer } from './components/Footer';
 import { Sidebar, ReportTabId, REPORT_GROUPS } from './components/Sidebar';
 import { TeachingQualityTab } from './components/quality/TeachingQualityTab';
 import { FacilityQualityModule } from './components/facility/FacilityQualityModule';
+import { CoverPage } from './components/CoverPage';
 
 function getCurrentMonthRange(referenceDate = new Date()) {
   const year = referenceDate.getFullYear();
@@ -40,8 +41,8 @@ export default function App() {
   const [error, setError] = useState<string>('');
   const [syncTime, setSyncTime] = useState<Date | null>(null);
 
-  // Active Report State for Vertical Toolbar
-  const [activeReportTab, setActiveReportTab] = useState<ReportTabId>('teaching-quality');
+  // Active Report State for Vertical Toolbar (Mặc định hiển thị TRANG BÌA khi truy cập)
+  const [activeReportTab, setActiveReportTab] = useState<ReportTabId>('cover');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [teachingShiftsCount, setTeachingShiftsCount] = useState<number | null>(() => {
@@ -539,10 +540,16 @@ export default function App() {
           activeTab={activeReportTab}
           onOpenSidebar={() => setIsMobileSidebarOpen(true)}
           onRefresh={loadData}
+          onSelectTab={(tabId) => setActiveReportTab(tabId)}
           loading={loading}
         />
 
         <main>
+          {/* TAB 0: SYSTEM COVER PAGE (TRANG BÌA HỆ THỐNG - HIỂN THỊ MẶC ĐỊNH KHI TRUY CẬP) */}
+          {activeReportTab === 'cover' && (
+            <CoverPage onNavigate={(tabId) => setActiveReportTab(tabId)} />
+          )}
+
           {/* TAB 1: SURVEY & CSAT REPORT (Google Sheet Live Data) */}
           {activeReportTab === 'survey' && (
             <section className="zalo-dashboard" aria-label="Báo cáo ZALO OA">

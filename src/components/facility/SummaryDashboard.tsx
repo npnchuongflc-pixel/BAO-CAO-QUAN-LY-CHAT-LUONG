@@ -3,6 +3,7 @@ import { FacilitySummary, ReportMode, FilterState, HygieneReport, FacilityQualit
 import { FacilityStatusModal } from './FacilityStatusModal';
 import { 
   OFFICIAL_FACILITIES,
+  normalizeFacilityName,
   getFacilityRoomConfig, 
   getDaysInMonthFromFilter,
   getFacilityTargetDetail,
@@ -109,26 +110,169 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const isHygiene = mode === 'hygiene';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showRankingRules, setShowRankingRules] = useState(false);
-  const [rankingSortMode, setRankingSortMode] = useState<'frequency' | 'score'>('frequency');
 
-  // Sorted summaries according to BXH ranking mode (Frequency vs Score)
+  // 1. Phân tích tính liên tục: Thống kê số ngày có kiểm tra của từng cơ sở trong kỳ đánh giá
+  const continuityData = useMemo(() => {
+    const datesByFacility = new Map<string, Set<string>>();
+    OFFICIAL_FACILITIES.forEach(f => datesByFacility.set(f, new Set<string>()));
+
+    const reports = isHygiene ? rawHygieneReports : rawQualityReports;
+    let minIso = '';
+    let maxIso = '';
+
+    reports.forEach(r => {
+      const fac = normalizeFacilityName(r.coSo);
+      if (!datesByFacility.has(fac)) {
+        datesByFacility.set(fac, new Set<string>());
+      }
+      const iso = normalizeDateToIso(r.ngay);
+      if (!iso) return;
+
+      // Lọc theo khoảng ngày nếu có
+      if (filters.tuNgay && filters.denNgay) {
+        if (iso < filters.tuNgay || iso > filters.denNgay) return;
+      }
+
+      datesByFacility.get(fac)!.add(iso);
+
+      if (!minIso || iso < minIso) minIso = iso;
+      if (!maxIso || iso > maxIso) maxIso = iso;
+    });
+
+    // Tính số ngày đánh giá thực tế trong kỳ (tính từ ngày bắt đầu đến ngày có dữ liệu mới nhất hoặc ngày kết thúc)
+    let expectedDays = 30;
+    if (filters.tuNgay && filters.denNgay) {
+      const start = new Date(filters.tuNgay);
+      // Ngày giới hạn thực tế là ngày dữ liệu mới nhất (nếu chưa hết tháng) hoặc ngày kết thúc lọc
+      const endLimitStr = maxIso && maxIso < filters.denNgay ? maxIso : filters.denNgay;
+      const end = new Date(endLimitStr);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+        expectedDays = Math.max(1, diff);
+      }
+    } else if (filters.thang && filters.thang !== 'all') {
+      expectedDays = getDaysInMonthFromFilter(filters.thang);
+    }
+
+    return { datesByFacility, expectedDays, minIso, maxIso };
+  }, [isHygiene, rawHygieneReports, rawQualityReports, filters.tuNgay, filters.denNgay, filters.thang]);
+
+  // 2. Tính toán tổng điểm xếp hạng trên thang điểm 100 theo 3 tiêu chí:
+  // - Điểm đánh giá TB (Trọng số 30% = Tối đa 30 điểm)
+  // - Tiến độ tháng (Trọng số 30% = Tối đa 30 điểm)
+  // - Tính liên tục (Trọng số 40% = Tối đa 40 điểm)
+  // Công thức: Tổng Điểm = (Điểm TB × 30%) + (Tiến độ tháng % × 30%) + (Tính liên tục % × 40%)
+  const facilityScoreMap = useMemo(() => {
+    const map = new Map<string, {
+      totalScore: number;
+      qualityScore: number;
+      progressScore: number;
+      continuityScore: number;
+      rawAvgScore: number;
+      rawProgressRate: number;
+      rawContinuityRate: number;
+      activeDays: number;
+      expectedDays: number;
+      monthlyTarget: number;
+      tier: 'xuat_sac' | 'kha' | 'trung_binh' | 'can_cai_thien';
+      tierLabel: string;
+      tierColor: string;
+      tierBg: string;
+    }>();
+
+    const daysInMonth = getDaysInMonthFromFilter(filters.thang);
+
+    summaries.forEach(item => {
+      const targetDetail = getFacilityTargetDetail(item.coSo);
+      const roomCfg = getFacilityRoomConfig(item.coSo);
+      const dailyTarget = targetDetail ? targetDetail.total : (roomCfg.co + roomCfg.ve + roomCfg.nvs + roomCfg.leTan);
+      const monthlyTarget = isHygiene ? dailyTarget * daysInMonth : dailyTarget;
+      
+      // Tiêu chí 1: Điểm Đánh Giá Trung Bình (Trọng số 30% -> Tối đa 30 điểm)
+      const rawAvgScore = item.soLanThucHien > 0 ? (item.diemTrungBinh || 0) : 0;
+      const qualityScore = (Math.min(100, Math.max(0, rawAvgScore)) / 100) * 30;
+
+      // Tiêu chí 2: Tiến Độ Tháng (Trọng số 30% -> Tối đa 30 điểm)
+      const rawProgressRate = monthlyTarget > 0 ? (item.soLanThucHien / monthlyTarget) * 100 : 0;
+      const cappedProgressRate = Math.min(100, Math.max(0, rawProgressRate));
+      const progressScore = (cappedProgressRate / 100) * 30;
+
+      // Tiêu chí 3: Tính Liên Tục (Trọng số 40% -> Tối đa 40 điểm)
+      const activeDatesSet = continuityData.datesByFacility.get(item.coSo) || new Set<string>();
+      const activeDays = activeDatesSet.size;
+      const expectedDays = Math.max(1, continuityData.expectedDays || 1);
+      const rawContinuityRate = Math.min(100, Math.max(0, (activeDays / expectedDays) * 100));
+      const continuityScore = (rawContinuityRate / 100) * 40;
+
+      // Tổng Điểm Xếp Hạng (Thang điểm 100: 30đ + 30đ + 40đ)
+      const totalScore = item.soLanThucHien > 0 
+        ? Math.min(100, Math.max(0, qualityScore + progressScore + continuityScore))
+        : 0;
+
+      // Phân hạng danh hiệu
+      let tier: 'xuat_sac' | 'kha' | 'trung_binh' | 'can_cai_thien' = 'can_cai_thien';
+      let tierLabel = 'Cần Cải Thiện';
+      let tierColor = 'text-rose-700';
+      let tierBg = 'bg-rose-50 border-rose-200 text-rose-700';
+
+      if (item.soLanThucHien === 0) {
+        tier = 'can_cai_thien';
+        tierLabel = 'Chưa kiểm tra';
+        tierColor = 'text-slate-500';
+        tierBg = 'bg-slate-100 border-slate-200 text-slate-500';
+      } else if (totalScore >= 90) {
+        tier = 'xuat_sac';
+        tierLabel = 'Xuất Sắc';
+        tierColor = 'text-emerald-700';
+        tierBg = 'bg-emerald-50 border-emerald-300 text-emerald-800';
+      } else if (totalScore >= 80) {
+        tier = 'kha';
+        tierLabel = 'Khá';
+        tierColor = 'text-blue-700';
+        tierBg = 'bg-blue-50 border-blue-300 text-blue-800';
+      } else if (totalScore >= 70) {
+        tier = 'trung_binh';
+        tierLabel = 'Trung Bình';
+        tierColor = 'text-amber-700';
+        tierBg = 'bg-amber-50 border-amber-300 text-amber-800';
+      }
+
+      map.set(item.coSo, {
+        totalScore,
+        qualityScore,
+        progressScore,
+        continuityScore,
+        rawAvgScore,
+        rawProgressRate,
+        rawContinuityRate,
+        activeDays,
+        expectedDays,
+        monthlyTarget,
+        tier,
+        tierLabel,
+        tierColor,
+        tierBg
+      });
+    });
+
+    return map;
+  }, [summaries, isHygiene, filters.thang, continuityData]);
+
+  // Sorted summaries according to BXH Tổng Điểm 100đ (Điểm TB 30% + Tiến độ 30% + Tính liên tục 40%)
   const sortedSummaries = useMemo(() => {
     const list = [...summaries];
-    if (rankingSortMode === 'score') {
-      return list.sort((a, b) => {
-        const scoreA = a.diemTrungBinh || 0;
-        const scoreB = b.diemTrungBinh || 0;
-        if (scoreB !== scoreA) return scoreB - scoreA;
-        return b.soLanThucHien - a.soLanThucHien;
-      });
-    } else {
-      // Frequency (default)
-      return list.sort((a, b) => {
-        if (b.soLanThucHien !== a.soLanThucHien) return b.soLanThucHien - a.soLanThucHien;
-        return (b.diemTrungBinh || 0) - (a.diemTrungBinh || 0);
-      });
-    }
-  }, [summaries, rankingSortMode]);
+    return list.sort((a, b) => {
+      const dataA = facilityScoreMap.get(a.coSo);
+      const dataB = facilityScoreMap.get(b.coSo);
+      const scoreA = dataA ? dataA.totalScore : 0;
+      const scoreB = dataB ? dataB.totalScore : 0;
+      if (Math.abs(scoreB - scoreA) > 0.05) return scoreB - scoreA;
+      // Tiêu chí phụ khi hòa điểm: Điểm TB -> Số lượt thực hiện
+      const avgDiff = (b.diemTrungBinh || 0) - (a.diemTrungBinh || 0);
+      if (Math.abs(avgDiff) > 0.05) return avgDiff;
+      return b.soLanThucHien - a.soLanThucHien;
+    });
+  }, [summaries, facilityScoreMap]);
 
   // 1. Calculate Active Facilities and Score Tiers for Pie Chart (Only facilities that performed checks)
   const activeSummaries = useMemo(() => {
@@ -1184,67 +1328,138 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           <div className="flex items-center gap-2.5">
             <Award className="w-4 h-4 text-amber-600" />
             <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Quy Tắc Xếp Hạng & Điểm Đánh Giá Cơ Sở
+              Quy Tắc Xếp Hạng & Cách Tính Tổng Điểm Cơ Sở (Thang 100đ)
             </span>
             <span className="p-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center justify-center hover:bg-emerald-200 transition-colors" title="Xem quy tắc xếp hạng">
               <Eye className="w-3.5 h-3.5" />
             </span>
           </div>
           <div className="flex items-center gap-1 text-slate-500 hover:text-slate-800 text-xs font-semibold">
-            <span>{showRankingRules ? 'Thu gọn' : 'Xem quy tắc'}</span>
+            <span>{showRankingRules ? 'Thu gọn' : 'Xem chi tiết cách tính'}</span>
             {showRankingRules ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
         {showRankingRules && (
           <div className="p-4 bg-white border-t border-slate-200/80 text-xs text-slate-600 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-200">
-                <div className="font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                  🥇 Xuất Sắc (≥ 90 điểm)
+            {/* Banner Công Thức Tổng Quát */}
+            <div className="p-3 bg-gradient-to-r from-sky-50 via-indigo-50 to-emerald-50 rounded-xl border border-sky-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#1B5EA6] block">
+                  Công thức tính Tổng Điểm Xếp Hạng (Thang điểm 100):
+                </span>
+                <span className="text-xs sm:text-sm font-bold text-slate-900 font-mono mt-0.5 block">
+                  Tổng Điểm = [Điểm TB × 30%] + [Tiến Độ Tháng % × 30%] + [Tính Liên Tục % × 40%]
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-md bg-white border border-sky-200 text-sky-800 font-bold text-[11px]">
+                  ⭐ Điểm Đánh Giá: 30%
+                </span>
+                <span className="text-slate-400 font-bold">+</span>
+                <span className="px-2.5 py-1 rounded-md bg-white border border-indigo-200 text-indigo-800 font-bold text-[11px]">
+                  📊 Tiến Độ Tháng: 30%
+                </span>
+                <span className="text-slate-400 font-bold">+</span>
+                <span className="px-2.5 py-1 rounded-md bg-white border border-emerald-200 text-emerald-800 font-bold text-[11px]">
+                  🔄 Tính Liên Tục: 40%
+                </span>
+              </div>
+            </div>
+
+            {/* 3 Tiêu Chí Đánh Giá */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="bg-sky-50/60 p-3 rounded-lg border border-sky-200">
+                <div className="font-bold text-sky-900 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-sky-600" />
+                    1. Điểm Đánh Giá TB (30%)
+                  </span>
+                  <span className="text-[10px] bg-sky-200/70 text-sky-800 font-bold px-1.5 py-0.5 rounded">
+                    Tối đa 30đ
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  Cơ sở có chất lượng vệ sinh/hình ảnh chỉn chu, điểm trung bình ≥ 90đ và tiến độ đạt tối thiểu 80% chỉ tiêu tháng.
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Đánh giá trực tiếp mức độ sạch sẽ, chuẩn chỉ vệ sinh và thẩm mỹ không gian cơ sở.
+                  <span className="block mt-1 text-[10.5px] font-mono text-sky-800 font-semibold">
+                    Điểm = (Điểm TB / 100) × 30đ
+                  </span>
                 </p>
               </div>
 
-              <div className="bg-teal-50/50 p-3 rounded-lg border border-teal-200">
-                <div className="font-bold text-teal-800 mb-1 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-teal-600" />
-                  🥈 Khá (80 - 89 điểm)
+              <div className="bg-indigo-50/60 p-3 rounded-lg border border-indigo-200">
+                <div className="font-bold text-indigo-900 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                    2. Tiến Độ Tháng (30%)
+                  </span>
+                  <span className="text-[10px] bg-indigo-200/70 text-indigo-800 font-bold px-1.5 py-0.5 rounded">
+                    Tối đa 30đ
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  Thực hiện đúng quy trình, chất lượng đạt yêu cầu tiêu chuẩn, điểm trung bình từ 80 đến 89 điểm.
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Tỷ lệ hoàn thành so với chỉ tiêu số lượt khu vực trong tháng (Đã làm / Chỉ tiêu).
+                  <span className="block mt-1 text-[10.5px] font-mono text-indigo-800 font-semibold">
+                    Điểm = Min(100%, Tiến độ %) × 30đ
+                  </span>
                 </p>
               </div>
 
-              <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-200">
-                <div className="font-bold text-amber-800 mb-1 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  🥉 Trung Bình (70 - 79 điểm)
+              <div className="bg-emerald-50/60 p-3 rounded-lg border border-emerald-200">
+                <div className="font-bold text-emerald-900 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                    3. Tính Liên Tục (40%)
+                  </span>
+                  <span className="text-[10px] bg-emerald-200/70 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                    Tối đa 40đ
+                  </span>
                 </div>
-                <p className="text-[11px] text-slate-600">
-                  Có xuất hiện một số lưu ý nhỏ về vệ sinh hoặc thiết bị, cần tiếp tục duy trì và khắc phục bổ sung.
-                </p>
-              </div>
-
-              <div className="bg-rose-50/60 p-3 rounded-lg border border-rose-200">
-                <div className="font-bold text-rose-800 mb-1 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-600" />
-                  ⚠️ Cần Cải Thiện (&lt; 70 điểm)
-                </div>
-                <p className="text-[11px] text-slate-600">
-                  Cơ sở có điểm đánh giá dưới 70đ, hoặc tiến độ thực hiện kiểm tra quá chậm (&lt; 25% chỉ tiêu) hoặc chưa kiểm tra.
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Đo lường kỷ luật duy trì kiểm tra đều đặn hàng ngày, tránh dồn ngày hoặc bỏ cách tuần.
+                  <span className="block mt-1 text-[10.5px] font-mono text-emerald-800 font-semibold">
+                    Điểm = (Số ngày kiểm tra / Tổng ngày kỳ) × 40đ
+                  </span>
                 </p>
               </div>
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex items-start gap-2">
-              <HelpCircle className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <strong className="text-slate-800">Công thức tính chỉ tiêu tháng:</strong> Mục tiêu tháng = (Tổng số khu vực quy định/ngày của cơ sở) × (Số ngày trong tháng lọc). 
-                Chỉ số được tự động tính toán dựa trên số phòng vẽ, khu sinh hoạt, nhà vệ sinh và quầy lễ tân riêng biệt của từng cơ sở.
+            {/* 4 Mức Xếp Hạng */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              <div className="bg-emerald-50/50 p-2.5 rounded-lg border border-emerald-200">
+                <div className="font-bold text-emerald-800 text-[11px] flex items-center gap-1">
+                  🥇 Xuất Sắc (≥ 90 điểm)
+                </div>
+                <p className="text-[10.5px] text-slate-600 mt-0.5">
+                  Điểm TB cao, tiến độ đạt chỉ tiêu và duy trì kiểm tra liên tục đều đặn mỗi ngày.
+                </p>
+              </div>
+
+              <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-200">
+                <div className="font-bold text-blue-800 text-[11px] flex items-center gap-1">
+                  🥈 Khá (80 - 89.9 điểm)
+                </div>
+                <p className="text-[10.5px] text-slate-600 mt-0.5">
+                  Đạt kết quả tốt, đảm bảo tiến độ và quy trình kiểm tra ổn định.
+                </p>
+              </div>
+
+              <div className="bg-amber-50/50 p-2.5 rounded-lg border border-amber-200">
+                <div className="font-bold text-amber-800 text-[11px] flex items-center gap-1">
+                  🥉 Trung Bình (70 - 79.9 điểm)
+                </div>
+                <p className="text-[10.5px] text-slate-600 mt-0.5">
+                  Đạt mức cơ bản, cần cải thiện điểm số hoặc tăng cường kiểm tra đều các ngày.
+                </p>
+              </div>
+
+              <div className="bg-rose-50/60 p-2.5 rounded-lg border border-rose-200">
+                <div className="font-bold text-rose-800 text-[11px] flex items-center gap-1">
+                  ⚠️ Cần Cải Thiện (&lt; 70 điểm)
+                </div>
+                <p className="text-[10.5px] text-slate-600 mt-0.5">
+                  Điểm số thấp, thiếu lượt kiểm tra hoặc bị gián đoạn nhiều ngày.
+                </p>
               </div>
             </div>
           </div>
@@ -1267,11 +1482,13 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             <span className="text-[9.5px] font-bold text-slate-700">Trang 2/2</span>
           </div>
           <div className="flex items-center gap-2.5 text-[9px] text-slate-600 mt-1">
-            <span className="font-bold text-emerald-800">🥇 Xuất Sắc (≥ 90đ &amp; tiến độ ≥ 80%)</span>
+            <span className="font-bold text-slate-800">Tổng Điểm 100đ: Điểm TB (30%) + Tiến độ (30%) + Tính liên tục (40%)</span>
             <span className="text-slate-300">•</span>
-            <span className="font-semibold text-teal-800">🥈 Khá (80 - 89đ)</span>
+            <span className="font-bold text-emerald-800">🥇 Xuất Sắc (≥ 90đ)</span>
             <span className="text-slate-300">•</span>
-            <span className="font-semibold text-amber-800">🥉 Trung Bình (70 - 79đ)</span>
+            <span className="font-semibold text-blue-800">🥈 Khá (80 - 89.9đ)</span>
+            <span className="text-slate-300">•</span>
+            <span className="font-semibold text-amber-800">🥉 Trung Bình (70 - 79.9đ)</span>
             <span className="text-slate-300">•</span>
             <span className="font-semibold text-rose-800">⚠️ Cần Cải Thiện (&lt; 70đ)</span>
           </div>
@@ -1282,35 +1499,20 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 print:hidden">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-[#1B5EA6]" />
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A3A5C]">
-              Bảng Xếp Hạng (BXH) & Danh Sách Các Cơ Sở
-            </h3>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A3A5C]">
+                Bảng Xếp Hạng (BXH) & Danh Sách Các Cơ Sở
+              </h3>
+              <p className="text-[11px] text-slate-500 font-normal">
+                Xếp hạng tổng điểm 100đ theo 3 tiêu chí: Điểm TB (30%) • Tiến độ tháng (30%) • Tính liên tục (40%)
+              </p>
+            </div>
           </div>
 
-          {/* RANKING TOGGLE BUTTONS */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 print:hidden">
-            <button
-              onClick={() => setRankingSortMode('frequency')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                rankingSortMode === 'frequency'
-                  ? 'bg-[#1B5EA6] text-white shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" />
-              <span>BXH Theo Tần Suất</span>
-            </button>
-            <button
-              onClick={() => setRankingSortMode('score')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
-                rankingSortMode === 'score'
-                  ? 'bg-[#F9C846] text-[#1A3A5C] shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Award className="w-3.5 h-3.5" />
-              <span>BXH Theo Điểm Số</span>
-            </button>
+          {/* RANKING BADGE - CHỈ GIỮ LẠI BXH TỔNG ĐIỂM (100đ) */}
+          <div className="flex items-center gap-1.5 bg-[#1B5EA6] text-white px-3.5 py-1.5 rounded-lg shadow-xs font-bold text-xs print:hidden">
+            <Award className="w-3.5 h-3.5 text-amber-300" />
+            <span>BXH Tổng Điểm (100đ)</span>
           </div>
         </div>
 
@@ -1325,16 +1527,22 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                 <tr>
                   <th className="py-3 px-3 text-center w-14">Hạng</th>
                   <th className="py-3 px-4">Tên Cơ Sở</th>
+                  <th className="py-3 px-4 text-center min-w-[130px] bg-sky-50/70 text-[#1A3A5C]">
+                    Tổng Điểm (100đ)
+                  </th>
+                  <th className="py-3 px-4 min-w-[170px]">
+                    {isHygiene ? 'Tiến Độ Tháng (30%)' : 'Tiến Độ Quý (%)'}
+                  </th>
+                  <th className="py-3 px-4 text-center">
+                    {isHygiene ? 'Điểm Đánh Giá TB (30%)' : 'Số Sự Cố / Xử Lý'}
+                  </th>
+                  <th className="py-3 px-4 text-center min-w-[135px]">
+                    Tính Liên Tục (40%)
+                  </th>
                   <th className="py-3 px-4 text-center">
                     {isHygiene ? 'Số Khu Vực / Ngày' : 'Định Mức Kiểm Tra'}
                   </th>
                   <th className="py-3 px-4 text-center">Đã Thực Hiện</th>
-                  <th className="py-3 px-4 min-w-[170px]">
-                    {isHygiene ? 'Tiến Độ Tháng (%)' : 'Tiến Độ Quý (%)'}
-                  </th>
-                  <th className="py-3 px-4 text-center">
-                    {isHygiene ? 'Điểm Số TB' : 'Số Sự Cố / Xử Lý'}
-                  </th>
                   <th className="py-3 px-4">Lần Kiểm Tra Cuối</th>
                   <th className="py-3 px-4 text-center print:hidden">Báo Cáo Chi Tiết</th>
                 </tr>
@@ -1357,6 +1565,23 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
 
                   const progressPercent = isHygiene ? progressPercentHygiene : progressPercentQuality;
                   const totalTarget = isHygiene ? monthlyTarget : quarterlyTarget;
+
+                  // Composite scoring breakdown
+                  const scoreData = facilityScoreMap.get(item.coSo) || {
+                    totalScore: 0,
+                    qualityScore: 0,
+                    progressScore: 0,
+                    continuityScore: 0,
+                    rawAvgScore: 0,
+                    rawProgressRate: 0,
+                    rawContinuityRate: 0,
+                    activeDays: 0,
+                    expectedDays: 1,
+                    tier: 'can_cai_thien' as const,
+                    tierLabel: 'Chưa kiểm tra',
+                    tierColor: 'text-slate-500',
+                    tierBg: 'bg-slate-100 border-slate-200 text-slate-500'
+                  };
 
                   // Rank Badge
                   let rankBadge = <span className="text-slate-400 font-mono text-xs">{index + 1}</span>;
@@ -1393,6 +1618,142 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* TỔNG ĐIỂM XẾP HẠNG (THANG 100) */}
+                      <td className="py-3 px-4 text-center bg-sky-50/30 relative group">
+                        {item.soLanThucHien === 0 ? (
+                          <span className="text-slate-400 font-mono">-</span>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="flex items-baseline gap-0.5">
+                              <span className="text-sm sm:text-base font-black font-display text-slate-900">
+                                {scoreData.totalScore.toFixed(1)}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-semibold">/100</span>
+                            </div>
+
+                            <span className={`inline-block px-2 py-0.2 rounded-full text-[9.5px] font-bold border mt-0.5 ${scoreData.tierBg}`}>
+                              {scoreData.tierLabel}
+                            </span>
+
+                            {/* Mini Progress Bar */}
+                            <div className="w-16 bg-slate-200 h-1.5 rounded-full mt-1 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${
+                                  scoreData.totalScore >= 90
+                                    ? 'bg-emerald-500'
+                                    : scoreData.totalScore >= 80
+                                    ? 'bg-blue-500'
+                                    : scoreData.totalScore >= 70
+                                    ? 'bg-amber-500'
+                                    : 'bg-rose-500'
+                                }`}
+                                style={{ width: `${Math.min(100, scoreData.totalScore)}%` }}
+                              />
+                            </div>
+
+                            {/* Tooltip Breakdown on Hover */}
+                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:flex flex-col bg-slate-900 text-white p-3 rounded-xl shadow-2xl text-[11px] whitespace-nowrap z-50 pointer-events-none min-w-[230px] text-left">
+                              <div className="font-bold text-sky-300 border-b border-slate-700 pb-1 mb-1.5 flex items-center justify-between">
+                                <span>{item.coSo}</span>
+                                <span className="text-white font-mono font-black">{scoreData.totalScore.toFixed(1)}/100đ</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mb-1.5 font-medium">
+                                Điểm = TB (30%) + Tiến độ (30%) + Liên tục (40%)
+                              </div>
+                              <div className="space-y-1 text-slate-300">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span>⭐ Điểm TB (30%):</span>
+                                  <span className="font-bold text-sky-300 font-mono">
+                                    +{scoreData.qualityScore.toFixed(1)}/30đ <span className="text-[10px] text-slate-400">({scoreData.rawAvgScore.toFixed(1)}đ)</span>
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span>📊 Tiến độ (30%):</span>
+                                  <span className="font-bold text-indigo-300 font-mono">
+                                    +{scoreData.progressScore.toFixed(1)}/30đ <span className="text-[10px] text-slate-400">({scoreData.rawProgressRate.toFixed(1)}%)</span>
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span>🔄 Liên tục (40%):</span>
+                                  <span className="font-bold text-emerald-300 font-mono">
+                                    +{scoreData.continuityScore.toFixed(1)}/40đ <span className="text-[10px] text-slate-400">({scoreData.activeDays}/{scoreData.expectedDays} ngày)</span>
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Tiến độ tháng / quý Progress Bar */}
+                      <td className="py-3 px-4 min-w-[170px]">
+                        <div className="flex items-center justify-between text-[11px] mb-1 font-semibold">
+                          <span className={progressPercent >= 100 ? 'text-[#4CAF8A] font-bold' : progressPercent >= 50 ? 'text-[#3EA8E0] font-bold' : 'text-[#F2775A] font-bold'}>
+                            {progressPercent.toFixed(isHygiene ? 1 : 0)}%
+                          </span>
+                          <span className="text-slate-500 text-[10px]">
+                            {item.soLanThucHien}/{totalTarget} lượt
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              progressPercent >= 100
+                                ? 'bg-[#4CAF8A]' 
+                                : progressPercent >= 50 
+                                ? 'bg-[#3EA8E0]' 
+                                : progressPercent >= 20
+                                ? 'bg-[#F9C846]'
+                                : 'bg-[#F2775A]'
+                            }`}
+                            style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
+                          />
+                        </div>
+                      </td>
+
+                      {/* Score or Issue Count */}
+                      <td className="py-3 px-4 text-center">
+                        {item.soLanThucHien === 0 ? (
+                          <span className="text-slate-400">-</span>
+                        ) : isHygiene ? (
+                          <span className="font-bold text-slate-900 text-sm font-display">
+                            {(item.diemTrungBinh || 0).toFixed(0)} <span className="text-[10px] text-slate-500">/100</span>
+                          </span>
+                        ) : (
+                          <div>
+                            <span className={`font-bold text-xs block ${item.soSuCo && item.soSuCo > 0 ? 'text-[#F2775A]' : 'text-[#4CAF8A]'}`}>
+                              {item.soSuCo || 0} sự cố
+                            </span>
+                            <span className="text-[10px] text-[#3EA8E0] block font-semibold">
+                              {item.tyLeDaXuLy || 100}% đã xử lý
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Tính liên tục (Số ngày có kiểm tra) */}
+                      <td className="py-3 px-4 text-center">
+                        {item.soLanThucHien === 0 ? (
+                          <span className="text-slate-400 font-mono">-</span>
+                        ) : (
+                          <div className="inline-flex flex-col items-center">
+                            <span className="font-bold text-slate-800 text-xs font-mono">
+                              {scoreData.activeDays}/{scoreData.expectedDays} ngày
+                            </span>
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border mt-0.5 ${
+                              scoreData.rawContinuityRate >= 90
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : scoreData.rawContinuityRate >= 70
+                                ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              <CalendarClock className="w-2.5 h-2.5" />
+                              {scoreData.rawContinuityRate.toFixed(0)}%
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Số khu vực / ngày hoặc Định mức kiểm tra quý */}
@@ -1446,52 +1807,6 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                         }`}>
                           {item.soLanThucHien} lượt
                         </span>
-                      </td>
-
-                      {/* Tiến độ tháng / quý Progress Bar */}
-                      <td className="py-3 px-4 min-w-[170px]">
-                        <div className="flex items-center justify-between text-[11px] mb-1 font-semibold">
-                          <span className={progressPercent >= 100 ? 'text-[#4CAF8A] font-bold' : progressPercent >= 50 ? 'text-[#3EA8E0] font-bold' : 'text-[#F2775A] font-bold'}>
-                            {progressPercent.toFixed(isHygiene ? 1 : 0)}%
-                          </span>
-                          <span className="text-slate-500 text-[10px]">
-                            {item.soLanThucHien}/{totalTarget} lượt
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              progressPercent >= 100
-                                ? 'bg-[#4CAF8A]' 
-                                : progressPercent >= 50 
-                                ? 'bg-[#3EA8E0]' 
-                                : progressPercent >= 20
-                                ? 'bg-[#F9C846]'
-                                : 'bg-[#F2775A]'
-                            }`}
-                            style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
-                          />
-                        </div>
-                      </td>
-
-                      {/* Score or Issue Count */}
-                      <td className="py-3 px-4 text-center">
-                        {item.soLanThucHien === 0 ? (
-                          <span className="text-slate-400">-</span>
-                        ) : isHygiene ? (
-                          <span className="font-bold text-slate-900 text-sm font-display">
-                            {(item.diemTrungBinh || 0).toFixed(0)} <span className="text-[10px] text-slate-500">/100</span>
-                          </span>
-                        ) : (
-                          <div>
-                            <span className={`font-bold text-xs block ${item.soSuCo && item.soSuCo > 0 ? 'text-[#F2775A]' : 'text-[#4CAF8A]'}`}>
-                              {item.soSuCo || 0} sự cố
-                            </span>
-                            <span className="text-[10px] text-[#3EA8E0] block font-semibold">
-                              {item.tyLeDaXuLy || 100}% đã xử lý
-                            </span>
-                          </div>
-                        )}
                       </td>
 
                       {/* Lần kiểm tra cuối */}

@@ -8,13 +8,15 @@ import {
   RefreshCw,
   X,
   ShieldCheck,
-  Video
+  Video,
+  Home
 } from 'lucide-react';
 import { SOURCE_URL } from '../services/sheetService';
 import chessLogo from '../assets/brands/co-vua-sai-gon.png';
 import artLogo from '../assets/brands/saigon-art.png';
 
 export type ReportTabId =
+  | 'cover'
   | 'survey'
   | 'teaching-quality'
   | 'integrated-quality-report';
@@ -36,15 +38,27 @@ export interface ReportGroup {
 
 export const REPORT_GROUPS: ReportGroup[] = [
   {
+    category: 'TỔNG QUAN',
+    items: [
+      {
+        id: 'cover',
+        label: 'TRANG BÌA HỆ THỐNG',
+        shortLabel: 'TRANG BÌA',
+        description: 'Tổng quan các tiêu chí đánh giá',
+        icon: Home,
+      },
+    ],
+  },
+  {
     category: 'QUẢN LÝ CHẤT LƯỢNG',
     items: [
       {
-        id: 'survey',
-        label: 'ZALO OA',
-        shortLabel: 'ZALO OA',
-        description: 'Dữ liệu phản hồi phụ huynh',
-        icon: ClipboardCheck,
-        badge: 'Trực tiếp',
+        id: 'integrated-quality-report',
+        label: 'GIÁM SÁT VỆ SINH',
+        shortLabel: 'VỆ SINH',
+        description: 'Dữ liệu hình ảnh vệ sinh các khu vực',
+        icon: ShieldCheck,
+        badge: '19 cơ sở',
         badgeType: 'live',
       },
       {
@@ -57,12 +71,12 @@ export const REPORT_GROUPS: ReportGroup[] = [
         badgeType: 'live',
       },
       {
-        id: 'integrated-quality-report',
-        label: 'GIÁM SÁT VỆ SINH',
-        shortLabel: 'VỆ SINH',
-        description: 'Dữ liệu hình ảnh vệ sinh các khu vực',
-        icon: ShieldCheck,
-        badge: '19 cơ sở',
+        id: 'survey',
+        label: 'ZALO OA',
+        shortLabel: 'ZALO OA',
+        description: 'Dữ liệu phản hồi phụ huynh',
+        icon: ClipboardCheck,
+        badge: 'Trực tiếp',
         badgeType: 'live',
       },
     ],

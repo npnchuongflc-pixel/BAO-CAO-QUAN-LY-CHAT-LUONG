@@ -10,20 +10,24 @@ interface HeaderProps {
   activeTab?: ReportTabId;
   onOpenSidebar?: () => void;
   onRefresh?: () => void;
+  onSelectTab?: (tabId: ReportTabId) => void;
   loading?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  activeTab = 'survey',
+  activeTab = 'cover',
   onOpenSidebar,
   onRefresh,
+  onSelectTab,
   loading = false,
 }) => {
   const currentItem = REPORT_GROUPS.flatMap((g) => g.items).find((item) => item.id === activeTab);
 
   const handlePrint = () => {
     let reportName = 'Bao_Cao_Quan_Ly_Chat_Luong';
-    if (activeTab === 'integrated-quality-report') {
+    if (activeTab === 'cover') {
+      reportName = 'Trang_Bia_Phong_Quan_Ly_Chat_Luong';
+    } else if (activeTab === 'integrated-quality-report') {
       reportName = 'Bao_Cao_Chat_Luong_Co_So_Vat_Chat_Ve_Sinh';
     } else if (activeTab === 'teaching-quality') {
       reportName = 'Bao_Cao_Chat_Luong_Giang_Day';
@@ -47,7 +51,12 @@ export const Header: React.FC<HeaderProps> = ({
             <Menu className="w-5 h-5 text-slate-700" />
           </button>
         )}
-        <div className="brand-logo-cluster" aria-label="Cờ Vua Sài Gòn và Sài Gòn Art">
+        <div
+          className={`brand-logo-cluster ${onSelectTab ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
+          aria-label="Cờ Vua Sài Gòn và Sài Gòn Art"
+          onClick={() => onSelectTab && onSelectTab('cover')}
+          title="Về Trang bìa hệ thống"
+        >
           <div className="brand-logo-card brand-logo-card-chess">
             <img src={chessLogo} alt="Logo Cờ Vua Sài Gòn" />
           </div>
@@ -56,7 +65,11 @@ export const Header: React.FC<HeaderProps> = ({
             <img src={artLogo} alt="Logo Sài Gòn Art" />
           </div>
         </div>
-        <div className="brand-copy">
+        <div 
+          className={`brand-copy ${onSelectTab ? 'cursor-pointer' : ''}`}
+          onClick={() => onSelectTab && onSelectTab('cover')}
+          title="Về Trang bìa hệ thống"
+        >
           <div className="brand-title-row">
             <strong>PHÒNG QUẢN LÝ CHẤT LƯỢNG</strong>
             {currentItem && (
