@@ -55,7 +55,7 @@ const INITIAL_FILTERS: TeachingFilterState = {
   onlyViolations: false,
 };
 
-type ReportViewMode = 'looker-camera' | 'camera-status' | 'audit-log' | 'standards-6' | 'ranking';
+type ReportViewMode = 'looker-camera' | 'camera-status' | 'camera-storage' | 'audit-log' | 'standards-6' | 'ranking';
 
 interface TeachingQualityTabProps {
   onUpdateTotalShifts?: (count: number) => void;
@@ -206,12 +206,16 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
           onOpenAiModal={() => setIsAiModalOpen(true)}
           currentMonthKey={currentMonthKey}
           onSwitchToCameraStatus={() => setViewMode('camera-status')}
+          onSwitchToCameraStorage={() => setViewMode('camera-storage')}
         />
       )}
 
-      {/* VIEW: CAMERA HARDWARE & TECHNICAL STATUS (FROM REPORT-CAMERA REPO) */}
-      {viewMode === 'camera-status' && (
-        <CameraStatusReportModule onBack={() => setViewMode('looker-camera')} />
+      {/* VIEW: CAMERA HARDWARE, INCIDENTS & STORAGE REPORT */}
+      {(viewMode === 'camera-status' || viewMode === 'camera-storage') && (
+        <CameraStatusReportModule
+          onBack={() => setViewMode('looker-camera')}
+          initialScrollToStorage={viewMode === 'camera-storage'}
+        />
       )}
 
       {/* VIEW 2: DETAILED AUDIT LOG & DRIVE EVIDENCE TABLE */}

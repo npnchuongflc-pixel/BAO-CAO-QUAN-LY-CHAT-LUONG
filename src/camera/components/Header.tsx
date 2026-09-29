@@ -44,7 +44,7 @@ export const Header: React.FC<HeaderProps> = ({
                 Hiện Trạng &amp; Sự Cố Camera
               </h1>
               <p className="text-[11px] text-slate-500 hidden sm:block">
-                Hệ thống theo dõi kỹ thuật và khắc phục sự cố camera cơ sở
+                Hệ thống theo dõi kỹ thuật, khắc phục sự cố &amp; kiểm tra thẻ nhớ camera cơ sở
               </p>
             </div>
           </div>
@@ -60,4 +60,6 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+
+
 

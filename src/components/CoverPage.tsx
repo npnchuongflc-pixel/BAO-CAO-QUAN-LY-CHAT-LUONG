@@ -291,7 +291,7 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1 pl-6">
-                    Theo dõi tình trạng kết nối, góc quan sát và trạng thái camera toàn hệ thống
+                    Theo dõi kết nối, sự cố, thời gian lưu trữ thẻ nhớ và cảnh báo kiểm tra định kỳ 2 tuần
                   </p>
                 </div>
               </div>

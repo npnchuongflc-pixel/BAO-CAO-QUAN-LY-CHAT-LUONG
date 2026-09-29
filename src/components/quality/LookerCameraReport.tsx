@@ -26,7 +26,8 @@ import {
   Zap,
   CheckCheck,
   ExternalLink,
-  Video
+  Video,
+  HardDrive
 } from 'lucide-react';
 import { ScientificDateRangePicker } from './ScientificDateRangePicker';
 import {
@@ -73,6 +74,7 @@ interface LookerCameraReportProps {
   onOpenAiModal: () => void;
   currentMonthKey: string;
   onSwitchToCameraStatus?: () => void;
+  onSwitchToCameraStorage?: () => void;
 }
 
 export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
@@ -87,6 +89,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   onOpenAiModal,
   currentMonthKey,
   onSwitchToCameraStatus,
+  onSwitchToCameraStorage,
 }) => {
   // Local state for table pagination
   const [teacherPage, setTeacherPage] = useState<number>(1);
@@ -497,7 +500,19 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             title="Chuyển sang Báo cáo Hiện Trạng & Sự Cố Camera cơ sở (đóng gói từ Report-Camera)"
           >
             <Video className="w-4 h-4" />
-            <span>Báo Cáo Camera</span>
+            <span>Hiện Trạng Camera</span>
+          </button>
+
+          {/* New Memory Card Storage Report Button */}
+          <button
+            type="button"
+            onClick={onSwitchToCameraStorage || onSwitchToCameraStatus}
+            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border border-blue-600 transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-100 cursor-pointer"
+            title="Xem Báo Cáo Thẻ Nhớ Camera & Cảnh Báo Chu Kỳ 2 Tuần (Dữ liệu gốc Cột T:Y)"
+          >
+            <HardDrive className="w-4 h-4" />
+            <span>Kiểm Tra Thẻ Nhớ (Cột T:Y)</span>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
           </button>
 
           {/* Reset Filters */}

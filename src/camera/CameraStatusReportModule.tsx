@@ -19,6 +19,7 @@ import { CameraTable } from './components/CameraTable';
 import { DefectiveCamerasReportTable } from './components/DefectiveCamerasReportTable';
 import { CameraDetailModal } from './components/CameraDetailModal';
 import { LocationPreviewModal, LocationPreviewData } from './components/LocationPreviewModal';
+import { CameraStorageReport } from './components/CameraStorageReport';
 import { Footer } from './components/Footer';
 
 const INITIAL_FILTERS: FilterOptions = {
@@ -34,9 +35,10 @@ const INITIAL_FILTERS: FilterOptions = {
 
 export interface CameraStatusReportModuleProps {
   onBack?: () => void;
+  initialScrollToStorage?: boolean;
 }
 
-export function CameraStatusReportModule({ onBack }: CameraStatusReportModuleProps) {
+export function CameraStatusReportModule({ onBack, initialScrollToStorage }: CameraStatusReportModuleProps) {
   const [filters, setFilters] = useState<FilterOptions>(INITIAL_FILTERS);
   const [inspectionDate, setInspectionDate] = useState<string>('2026-09-22');
   const [selectedCamera, setSelectedCamera] = useState<CameraAggregate | null>(null);
@@ -110,6 +112,19 @@ export function CameraStatusReportModule({ onBack }: CameraStatusReportModulePro
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [syncWithSheet]);
+
+  // Scroll to storage report section if requested
+  useEffect(() => {
+    if (initialScrollToStorage) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('camera-storage-report-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [initialScrollToStorage]);
 
   // Computed dashboard data based on filters, inspectionDate, and liveRecords
   const dashboardData = useMemo(() => {
@@ -247,7 +262,7 @@ export function CameraStatusReportModule({ onBack }: CameraStatusReportModulePro
           onViewLocation={setActiveLocationPreview}
         />
 
-        {/* Báo Cáo Thống Kê Hiện Trạng Camera Đang Hư (Ở phía dưới cùng) */}
+        {/* Báo Cáo Thống Kê Hiện Trạng Camera Đang Hư */}
         <DefectiveCamerasReportTable
           defectiveList={defectiveCamerasReport}
           cameraAggregates={cameraList}
@@ -259,6 +274,13 @@ export function CameraStatusReportModule({ onBack }: CameraStatusReportModulePro
           onExportCSV={handleExportDefectiveCSV}
           onViewLocation={setActiveLocationPreview}
         />
+
+        {/* BÁO CÁO THỜI GIAN LƯU TRỮ THẺ NHỚ & CẢNH BÁO KIỂM TRA ĐỊNH KỲ 2 TUẦN (CỘT T:Y) */}
+        <div id="camera-storage-report-section" className="pt-8 border-t-2 border-slate-200/90 mt-10">
+          <CameraStorageReport
+            onViewLocation={setActiveLocationPreview}
+          />
+        </div>
       </main>
 
       {/* Camera Inspection Log & Action Modal */}
