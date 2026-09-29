@@ -5,7 +5,6 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCw,
-  Maximize2,
   Copy,
   Check,
   MapPin,
@@ -17,13 +16,17 @@ import {
 import {
   getDriveDirectImageUrl,
   getDrivePreviewIframeUrl,
-  extractDriveFileId
+  extractDriveFileId,
+  getCameraLocationLink
 } from '../data/cameraLocations';
 
 export interface LocationPreviewData {
-  camera: string;
+  camera?: string;
   site?: string;
-  url: string;
+  url?: string;
+  deviceName?: string;
+  link?: string;
+  title?: string;
 }
 
 interface LocationPreviewModalProps {
@@ -42,17 +45,59 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
   const [loadError, setLoadError] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Normalize camera, site and URL defensively from whatever fields are provided
+  const cameraName = data
+    ? data.camera || data.deviceName || (data.title ? data.title.replace('Vị trí camera ', '').split(' - ')[0] : 'Camera')
+    : 'Camera';
+
+  const siteName = data
+    ? data.site || (data.title && data.title.includes(' - ') ? data.title.split(' - ')[1] : '')
+    : '';
+
+  const rawUrl = data
+    ? (data.url || data.link || getCameraLocationLink(cameraName) || '')
+    : '';
+
+  const fileId = extractDriveFileId(rawUrl);
+  const directImageUrl = fileId ? getDriveDirectImageUrl(rawUrl) : null;
+  const iframePreviewUrl = fileId
+    ? getDrivePreviewIframeUrl(rawUrl)
+    : (rawUrl.startsWith('http') ? rawUrl : null);
+
   // Reset controls when camera changes
   useEffect(() => {
     if (data) {
       setZoom(1);
       setRotation(0);
-      setViewMode('image');
-      setIsLoading(true);
-      setLoadError(false);
       setCopied(false);
+
+      if (!rawUrl) {
+        setIsLoading(false);
+        setLoadError(true);
+        setViewMode('image');
+      } else if (!fileId) {
+        // Not a standard Drive file ID, try iframe mode directly
+        setIsLoading(true);
+        setLoadError(false);
+        setViewMode('iframe');
+      } else {
+        // Has valid Drive file ID, start with direct image mode
+        setIsLoading(true);
+        setLoadError(false);
+        setViewMode('image');
+      }
     }
-  }, [data]);
+  }, [data, rawUrl, fileId]);
+
+  // Safety timeout: Never keep the loading spinner running for more than 3.5 seconds
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
 
   // Handle ESC key press
   useEffect(() => {
@@ -67,10 +112,6 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
 
   if (!data) return null;
 
-  const directImageUrl = getDriveDirectImageUrl(data.url);
-  const iframePreviewUrl = getDrivePreviewIframeUrl(data.url);
-  const fileId = extractDriveFileId(data.url);
-
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 3));
   const handleZoomOut = () => setZoom((prev) => Math.max(prev - 0.25, 0.5));
   const handleResetZoom = () => {
@@ -80,9 +121,11 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
   const handleRotate = () => setRotation((prev) => (prev + 90) % 360);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(data.url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (rawUrl) {
+      navigator.clipboard.writeText(rawUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -103,17 +146,17 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-[#0f172a] text-base tracking-tight">
-                  Vị trí {data.camera}
+                  Vị trí {cameraName}
                 </span>
-                {data.site && (
+                {siteName && (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
                     <MapPin className="w-3 h-3 text-[#19a78e]" />
-                    {data.site}
+                    {siteName}
                   </span>
                 )}
               </div>
               <p className="text-[12px] text-[#64748b] truncate mt-0.5">
-                Sơ đồ & hình ảnh thực tế mô tả vị trí lắp đặt
+                Sơ đồ &amp; hình ảnh thực tế mô tả vị trí lắp đặt
               </p>
             </div>
           </div>
@@ -125,8 +168,11 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
               <div className="inline-flex items-center p-0.5 bg-slate-200/80 rounded-lg text-xs mr-1">
                 <button
                   type="button"
-                  onClick={() => setViewMode('image')}
-                  className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                  onClick={() => {
+                    setViewMode('image');
+                    setIsLoading(true);
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                     viewMode === 'image'
                       ? 'bg-white text-blue-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -137,8 +183,11 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('iframe')}
-                  className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                  onClick={() => {
+                    setViewMode('iframe');
+                    setIsLoading(true);
+                  }}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
                     viewMode === 'iframe'
                       ? 'bg-white text-blue-700 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
@@ -151,42 +200,46 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
             )}
 
             {/* Open Google Drive in new tab */}
-            <a
-              href={data.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Mở ảnh gốc trong tab Google Drive mới"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-              <span className="hidden sm:inline">Mở Drive</span>
-            </a>
+            {rawUrl && (
+              <a
+                href={rawUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Mở ảnh gốc trong tab Google Drive mới"
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                <span className="hidden sm:inline">Mở Drive</span>
+              </a>
+            )}
 
             {/* Copy link */}
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              title="Sao chép link vị trí"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="hidden sm:inline text-emerald-700 font-bold">Đã chép</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5 text-slate-500" />
-                  <span className="hidden sm:inline">Chép link</span>
-                </>
-              )}
-            </button>
+            {rawUrl && (
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                title="Sao chép link vị trí"
+                className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="hidden sm:inline text-emerald-700 font-bold">Đã chép</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-500" />
+                    <span className="hidden sm:inline">Chép link</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Close Button */}
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-colors ml-1"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-colors ml-1 cursor-pointer"
               title="Đóng (Phím Esc)"
             >
               <X className="w-5 h-5" />
@@ -197,14 +250,14 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
         {/* Modal Main Content */}
         <div className="relative flex-1 bg-slate-950 overflow-hidden flex items-center justify-center select-none">
           {/* Zoom & Rotate floating controls for Image view mode */}
-          {viewMode === 'image' && !loadError && (
+          {viewMode === 'image' && directImageUrl && !loadError && (
             <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-slate-900/85 backdrop-blur-md px-2.5 py-1.5 rounded-xl border border-slate-700 shadow-lg text-white text-xs">
               <button
                 type="button"
                 onClick={handleZoomIn}
                 disabled={zoom >= 3}
                 title="Phóng to (+25%)"
-                className="p-1.5 hover:bg-slate-800 disabled:opacity-40 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-slate-800 disabled:opacity-40 rounded-lg transition-colors cursor-pointer"
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
@@ -213,7 +266,7 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
                 onClick={handleZoomOut}
                 disabled={zoom <= 0.5}
                 title="Thu nhỏ (-25%)"
-                className="p-1.5 hover:bg-slate-800 disabled:opacity-40 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-slate-800 disabled:opacity-40 rounded-lg transition-colors cursor-pointer"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
@@ -224,7 +277,7 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
                 type="button"
                 onClick={handleResetZoom}
                 title="Trở về tỉ lệ chuẩn"
-                className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors text-[11px] font-semibold px-2"
+                className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors text-[11px] font-semibold px-2 cursor-pointer"
               >
                 Chuẩn
               </button>
@@ -233,7 +286,7 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
                 type="button"
                 onClick={handleRotate}
                 title="Xoay ảnh 90 độ"
-                className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-[11px]"
+                className="p-1.5 hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-[11px] cursor-pointer"
               >
                 <RotateCw className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Xoay</span>
@@ -241,28 +294,31 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
             </div>
           )}
 
-          {/* Loading Indicator */}
-          {isLoading && !loadError && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/70 text-white">
+          {/* Loading Indicator: Only shown when actually waiting for direct image or iframe */}
+          {isLoading && (directImageUrl || iframePreviewUrl) && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/75 text-white">
               <RefreshCw className="w-8 h-8 text-blue-400 animate-spin mb-3" />
               <p className="text-sm font-medium text-slate-300">
-                Đang tải hình ảnh vị trí {data.camera}...
+                Đang tải hình ảnh vị trí {cameraName}...
               </p>
             </div>
           )}
 
-          {/* View Mode: High-res Direct Image */}
+          {/* View Mode 1: High-res Direct Image */}
           {viewMode === 'image' && directImageUrl && !loadError ? (
             <div className="w-full h-full overflow-auto flex items-center justify-center p-4">
               <img
                 src={directImageUrl}
-                alt={`Vị trí camera ${data.camera} - ${data.site || ''}`}
+                alt={`Vị trí camera ${cameraName} - ${siteName}`}
                 referrerPolicy="no-referrer"
-                onLoad={() => setIsLoading(false)}
+                onLoad={() => {
+                  setIsLoading(false);
+                  setLoadError(false);
+                }}
                 onError={() => {
+                  console.warn(`Direct image failed for ${cameraName}, switching to Drive iframe preview`);
                   setIsLoading(false);
                   setLoadError(true);
-                  // Automatically switch to Drive preview iframe if direct image fails
                   setViewMode('iframe');
                 }}
                 style={{
@@ -273,53 +329,46 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
                 className="max-h-full max-w-full object-contain rounded-lg shadow-xl cursor-grab active:cursor-grabbing"
               />
             </div>
-          ) : viewMode === 'iframe' || loadError ? (
-            /* View Mode: Google Drive Preview Iframe */
+          ) : (viewMode === 'iframe' || loadError) && iframePreviewUrl ? (
+            /* View Mode 2: Google Drive Preview Iframe */
             <div className="w-full h-full flex flex-col bg-white">
-              {iframePreviewUrl ? (
-                <iframe
-                  src={iframePreviewUrl}
-                  title={`Google Drive Preview - ${data.camera}`}
-                  className="w-full h-full border-0"
-                  allow="autoplay; encrypted-media; fullscreen"
-                  onLoad={() => setIsLoading(false)}
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-slate-700 bg-slate-50">
-                  <AlertCircle className="w-12 h-12 text-amber-500 mb-3" />
-                  <h4 className="font-bold text-base text-slate-900 mb-1">
-                    Không thể hiển thị ảnh xem trực tiếp
-                  </h4>
-                  <p className="text-xs text-slate-500 max-w-md mb-4">
-                    Đường link vị trí này không hỗ trợ hiển thị trực tiếp hoặc yêu cầu quyền truy cập Google Drive.
-                  </p>
-                  <a
-                    href={data.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors shadow-sm"
-                  >
-                    <span>Mở liên kết trong Google Drive</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
+              <iframe
+                src={iframePreviewUrl}
+                title={`Google Drive Preview - ${cameraName}`}
+                className="w-full h-full border-0"
+                allow="autoplay; encrypted-media; fullscreen"
+                onLoad={() => setIsLoading(false)}
+              />
             </div>
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-white">
+            /* Empty / No URL State: Never spins, shows clear helpful message */
+            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center text-white bg-slate-900">
               <ImageIcon className="w-12 h-12 text-slate-500 mb-3" />
-              <p className="text-sm font-medium text-slate-300 mb-4">
-                Chưa có ảnh nhúng trực tiếp cho camera này
+              <h4 className="text-base font-bold text-slate-200 mb-1">
+                Chưa có ảnh vị trí trực tiếp cho camera {cameraName}
+              </h4>
+              <p className="text-xs text-slate-400 max-w-md mb-4">
+                Chưa có link ảnh Drive được liên kết với mã camera này trong bảng dữ liệu hoặc liên kết không công khai.
               </p>
-              <a
-                href={data.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors"
-              >
-                <span>Mở trong Google Drive</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              {rawUrl ? (
+                <a
+                  href={rawUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white font-semibold text-xs hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <span>Mở liên kết trong Google Drive</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold text-xs hover:bg-slate-700 transition-colors"
+                >
+                  Đóng cửa sổ
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -329,29 +378,33 @@ export const LocationPreviewModal: React.FC<LocationPreviewModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
             <span>
-              Ảnh vị trí camera <strong className="text-slate-900">{data.camera}</strong> ({data.site || 'Hệ thống'}). Dùng thanh công cụ góc trên để phóng to, xoay hoặc xem khung Drive.
+              Ảnh vị trí camera <strong className="text-slate-900">{cameraName}</strong> ({siteName || 'Hệ thống'}). Dùng thanh công cụ góc trên để phóng to, xoay hoặc xem khung Drive.
             </span>
           </div>
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-lg border border-slate-200 text-slate-700 font-semibold hover:bg-slate-100 transition-colors"
+              className="px-4 py-1.5 rounded-lg border border-slate-200 text-slate-700 font-semibold hover:bg-slate-100 transition-colors cursor-pointer"
             >
               Đóng
             </button>
-            <a
-              href={data.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1 shadow-2xs"
-            >
-              <span>Xem trên Drive</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {rawUrl && (
+              <a
+                href={rawUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1 shadow-2xs"
+              >
+                <span>Xem trên Drive</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+export default LocationPreviewModal;

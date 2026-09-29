@@ -27,7 +27,7 @@ import {
 
 interface CameraStorageReportProps {
   onBack?: () => void;
-  onViewLocation?: (preview: { title: string; link: string; deviceName: string }) => void;
+  onViewLocation?: (preview: { camera: string; site?: string; url: string }) => void;
 }
 
 export const CameraStorageReport: React.FC<CameraStorageReportProps> = ({
@@ -612,14 +612,15 @@ export const CameraStorageReport: React.FC<CameraStorageReportProps> = ({
                           <button
                             type="button"
                             onClick={() => {
+                              const targetUrl = item.locationLink || '';
                               if (onViewLocation) {
                                 onViewLocation({
-                                  title: `Vị trí camera ${item.deviceName} - ${item.facilityName}`,
-                                  link: item.locationLink!,
-                                  deviceName: item.deviceName
+                                  camera: item.deviceName,
+                                  site: item.facilityName,
+                                  url: targetUrl
                                 });
-                              } else {
-                                window.open(item.locationLink, '_blank', 'noopener,noreferrer');
+                              } else if (targetUrl) {
+                                window.open(targetUrl, '_blank', 'noopener,noreferrer');
                               }
                             }}
                             className="p-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 transition inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"

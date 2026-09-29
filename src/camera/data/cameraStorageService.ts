@@ -6,6 +6,7 @@ import {
   AuditCycleStatus 
 } from '../types/storage';
 import { GOOGLE_SHEET_CSV_URL } from './googleSheetSync';
+import { MASTER_CAMERA_LOCATIONS } from './cameraLocations';
 
 const CACHE_STORAGE_KEY = 'cvsg_camera_storage_data_v1';
 const CACHE_STORAGE_TIME = 'cvsg_camera_storage_time_v1';
@@ -83,8 +84,10 @@ export function parseStorageCSV(csvText: string, referenceDate: Date = new Date(
     const prefix = deviceName.slice(0, 3).toUpperCase();
     const facilityInfo = FACILITY_MAP[prefix] || { name: prefix || 'Khác', manager: 'Chưa phân công' };
 
-    // Format location link
-    const locationLink = locationLinkRaw.startsWith('http') ? locationLinkRaw : undefined;
+    // Format location link (use raw link if URL or fallback to MASTER_CAMERA_LOCATIONS)
+    const locationLink = locationLinkRaw.startsWith('http') 
+      ? locationLinkRaw 
+      : (MASTER_CAMERA_LOCATIONS[deviceName] || undefined);
 
     // Parse Check Date (dd/mm/yyyy)
     let checkDateIso: string | null = null;
