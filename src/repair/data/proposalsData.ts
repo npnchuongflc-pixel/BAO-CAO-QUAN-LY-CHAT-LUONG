@@ -41,7 +41,7 @@ export const INITIAL_PROPOSALS: ProposalItem[] = [
     nguoiKhacPhuc: "Phạm Văn Trưởng",
     trangThaiSuaChua: "Chưa sửa chữa",
     chiPhiThucTe: null,
-    soLanHongLapLai: 3
+    soLanHongLapLai: 1
   },
   {
     id: "DX-003",

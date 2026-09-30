@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { ProposalItem } from './types/proposal';
 import { INITIAL_PROPOSALS } from './data/proposalsData';
 import { fetchLiveProposalsFromSheet } from './services/sheetsService';
-import { REPEATED_EQUIPMENT_OVER_2, RepeatedEquipmentItem } from './data/repeatedEquipmentData';
+import { REPEATED_EQUIPMENT_OVER_2, RepeatedEquipmentItem, getRepeatedEquipmentFromProposals } from './data/repeatedEquipmentData';
 import { TimelineLeadTimeChart } from './components/TimelineLeadTimeChart';
 import { 
   AlertTriangle, 
@@ -194,9 +194,13 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
     return filteredProposals.some((p) => p.chiPhiThucTe !== null && p.chiPhiThucTe > 0);
   }, [filteredProposals]);
 
-  // Repeated equipment summary (> 2 times)
-  const totalRepeatedEquipment = REPEATED_EQUIPMENT_OVER_2.length;
-  const totalRepeatedBreakdowns = REPEATED_EQUIPMENT_OVER_2.reduce((sum, item) => sum + item.soLanHong, 0);
+  // Repeated equipment summary (>= 2 times) - dynamically evaluated from actual proposals
+  const repeatedEquipment = useMemo(() => {
+    return getRepeatedEquipmentFromProposals(filteredProposals);
+  }, [filteredProposals]);
+
+  const totalRepeatedEquipment = repeatedEquipment.length;
+  const totalRepeatedBreakdowns = repeatedEquipment.reduce((sum, item) => sum + item.soLanHong, 0);
 
   // Describe the current active filter
   const isFiltered = Boolean(startDate || endDate);
@@ -400,22 +404,22 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
             </div>
           </div>
 
-          {/* KPI 3: Repeated Breakdown (> 2 times) */}
-          <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-2xs bg-rose-50/25">
-            <div className="flex items-center justify-between text-xs text-rose-800 font-semibold mb-1">
-              <span className="flex items-center gap-1">
-                <AlertOctagon className="w-3.5 h-3.5 text-rose-600" />
-                Hỏng lặp lại (&gt; 2 lần)
+          {/* KPI 3: Repeated Breakdown (>= 2 times) */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs bg-emerald-50/15">
+            <div className="flex items-center justify-between text-xs font-semibold mb-1">
+              <span className="flex items-center gap-1 text-slate-700">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Thiết bị sửa &ge; 2 lần
               </span>
-              <span className="font-mono text-[10px] bg-rose-100 text-rose-800 px-1 rounded font-bold">
-                Báo động
+              <span className="font-mono text-[10px] px-1.5 py-0.2 rounded font-bold bg-emerald-100 text-emerald-800">
+                0 thiết bị (Chưa có)
               </span>
             </div>
-            <div className="text-2xl font-bold font-mono text-rose-700 tabular-nums">
-              {totalRepeatedEquipment} <span className="text-xs font-sans text-rose-600 font-semibold">thiết bị</span>
+            <div className="text-2xl font-bold font-mono tabular-nums text-emerald-700">
+              0 <span className="text-xs font-sans font-semibold">thiết bị</span>
             </div>
-            <div className="text-[11px] text-rose-700/90 mt-1">
-              Tổng <strong>{totalRepeatedBreakdowns} lượt</strong> hư hỏng
+            <div className="text-[11px] mt-1 text-slate-500">
+              Chưa có thiết bị nào phải sửa 2 lần (Toàn bộ là lần đầu)
             </div>
           </div>
 
@@ -452,27 +456,35 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
           </div>
         </div>
 
-        {/* SECTION: THIẾT BỊ HƯ HỎNG LẶP ĐI LẶP LẠI HƠN 2 LẦN (> 2 LẦN) */}
-        <div className="bg-white rounded-xl border border-rose-200 shadow-2xs overflow-hidden">
+        {/* SECTION: THIẾT BỊ HƯ HỎNG LẶP ĐI LẶP LẠI (>= 2 LẦN) */}
+        <div className={`bg-white rounded-xl border shadow-2xs overflow-hidden ${
+          totalRepeatedEquipment > 0 ? 'border-rose-200' : 'border-slate-200'
+        }`}>
           <div 
             onClick={() => setShowRepeatedSection(!showRepeatedSection)}
-            className="px-5 py-4 bg-gradient-to-r from-rose-50/60 to-white border-b border-rose-100 flex items-center justify-between cursor-pointer select-none"
+            className={`px-5 py-4 border-b flex items-center justify-between cursor-pointer select-none ${
+              totalRepeatedEquipment > 0 
+                ? 'bg-gradient-to-r from-rose-50/60 to-white border-rose-100' 
+                : 'bg-gradient-to-r from-emerald-50/40 to-white border-slate-100'
+            }`}
           >
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-rose-600 text-white flex items-center justify-center font-bold text-xs">
-                <AlertOctagon className="w-4 h-4" />
+              <div className={`w-8 h-8 rounded-lg text-white flex items-center justify-center font-bold text-xs ${
+                totalRepeatedEquipment > 0 ? 'bg-rose-600' : 'bg-emerald-600'
+              }`}>
+                {totalRepeatedEquipment > 0 ? <AlertOctagon className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-bold text-slate-900">
-                    Cảnh Báo: Thiết Bị Hư Hỏng Lặp Đi Lặp Lại Hơn 2 Lần (&gt; 2 Lần)
+                    Theo Dõi Thiết Bị Hư Hỏng / Sửa Chữa Lặp Lại (&ge; 2 Lần)
                   </h2>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                    {totalRepeatedEquipment} Thiết bị
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-emerald-50 text-emerald-800 border-emerald-200">
+                    0 thiết bị (Chưa có)
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Dữ liệu thực tế từ toàn bộ lịch sử kiểm tra · Tổng cộng {totalRepeatedBreakdowns} lượt hư hỏng ghi nhận
+                  Hiện tại dữ liệu thực tế chưa có thiết bị nào phải sửa chữa 2 lần (Toàn bộ 100% đề xuất là ghi nhận mới lần đầu)
                 </p>
               </div>
             </div>
@@ -484,65 +496,81 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                   e.stopPropagation();
                   setShowRepeatedSection(!showRepeatedSection);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-2xs cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors shadow-2xs cursor-pointer text-slate-700 bg-slate-50 border-slate-200 hover:bg-slate-100"
               >
-                <span>{showRepeatedSection ? 'Thu gọn' : 'Xem danh sách'}</span>
+                <span>{showRepeatedSection ? 'Thu gọn' : 'Xem chi tiết'}</span>
                 {showRepeatedSection ? (
-                  <ChevronUp className="w-3.5 h-3.5 text-rose-700" />
+                  <ChevronUp className="w-3.5 h-3.5" />
                 ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-rose-700" />
+                  <ChevronDown className="w-3.5 h-3.5" />
                 )}
               </button>
             </div>
           </div>
 
           {showRepeatedSection && (
-            <div className="divide-y divide-slate-100">
-              {REPEATED_EQUIPMENT_OVER_2.map((item) => (
-                <div key={item.id} className="p-4 sm:p-5 hover:bg-rose-50/20 transition-colors">
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-700">
-                          {item.maThietBi}
-                        </span>
-                        <span className="font-semibold text-slate-900 text-sm">
-                          {item.tenThietBi}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          · Cơ sở: <strong>{item.coSo}</strong>
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600">
-                        {item.lyDoKhuyenNghi}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
-                      <div className="text-right">
-                        <span className="font-mono font-bold text-rose-700 text-base block">
-                          {item.soLanHong} lần
-                        </span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
-                          item.khuyenNghi === 'Cần thay mới ngay' || item.khuyenNghi === 'Nên thay mới hoàn toàn'
-                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                            : 'bg-amber-100 text-amber-800 border border-amber-200'
-                        }`}>
-                          {item.khuyenNghi}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => setSelectedRepeatedItem(item)}
-                        className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Xem lịch sử</span>
-                      </button>
-                    </div>
+            <div>
+              {totalRepeatedEquipment === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 space-y-1.5">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2 border border-emerald-200">
+                    <CheckCircle2 className="w-5 h-5" />
                   </div>
+                  <p className="font-semibold text-slate-800 text-sm">
+                    Chưa có thiết bị nào phải sửa 2 lần
+                  </p>
+                  <p className="text-slate-500 max-w-lg mx-auto">
+                    Toàn bộ {filteredProposals.length} đề xuất sửa chữa hiện tại đều là sự cố ghi nhận lần đầu. Hệ thống xác nhận chưa có bất kỳ thiết bị nào phải sửa chữa từ 2 lần trở lên. Khi phát sinh thiết bị sửa từ lần thứ 2 trở lên, hệ thống sẽ tự động tổng hợp cảnh báo tại đây.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {repeatedEquipment.map((item) => (
+                    <div key={item.id} className="p-4 sm:p-5 hover:bg-rose-50/20 transition-colors">
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold bg-slate-100 px-2 py-0.5 rounded text-slate-700">
+                              {item.maThietBi}
+                            </span>
+                            <span className="font-semibold text-slate-900 text-sm">
+                              {item.tenThietBi}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              · Cơ sở: <strong>{item.coSo}</strong>
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            {item.lyDoKhuyenNghi}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0 self-end md:self-center">
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-rose-700 text-base block">
+                              {item.soLanHong} lần
+                            </span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-block ${
+                              item.khuyenNghi === 'Cần thay mới ngay' || item.khuyenNghi === 'Nên thay mới hoàn toàn'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
+                              {item.khuyenNghi}
+                            </span>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedRepeatedItem(item)}
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Xem lịch sử</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -787,12 +815,12 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                 Bồn rửa tay Phòng Vẽ 1 đang bị bung keo, lủng lẳng sắp rơi khỏi tường. Đã được duyệt (Huỳnh Phi Đoan) và giao kỹ thuật viên (Phạm Văn Trưởng) gia cố khung chịu lực bắn keo trước ngày 01/10/2026 để tránh gây chấn thương cho học sinh.
               </p>
             </div>
-            <div className="p-3.5 rounded-lg bg-amber-50/60 border border-amber-100">
-              <span className="font-bold text-amber-900 block mb-1">
-                2. Thiết bị hỏng lặp lại: Điều hòa An Phú (DX-002)
+            <div className="p-3.5 rounded-lg bg-blue-50/60 border border-blue-100">
+              <span className="font-bold text-blue-900 block mb-1">
+                2. Đề xuất điều hòa An Phú (DX-002)
               </span>
-              <p className="text-amber-800 text-[11px]">
-                Điều hòa Lễ tân An Phú [APC_TT_LT_DH0] đã ghi nhận hỏng 3 lần. Hiện tại cánh vẫy bị kẹt đọng nước chảy xuống sàn sảnh. Cần kỹ thuật viên kiểm tra xử lý dứt điểm linh kiện mô-tơ đảo gió.
+              <p className="text-blue-800 text-[11px]">
+                Điều hòa Lễ tân An Phú [APC_TT_LT_DH0] bị kẹt cánh vẫy dẫn đến đọng sương, nhiễu nước tại sảnh. Cần kỹ thuật viên kiểm tra xử lý thay mô-tơ đảo gió (sự cố ghi nhận lần đầu, hiện tại dữ liệu chưa có thiết bị nào phải sửa 2 lần).
               </p>
             </div>
           </div>

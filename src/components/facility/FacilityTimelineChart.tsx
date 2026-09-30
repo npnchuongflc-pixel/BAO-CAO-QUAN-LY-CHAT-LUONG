@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { HygieneReport, FacilityQualityReport, ReportMode, FilterState } from './facilityTypes';
-import { BarChart3, Calendar, Camera, ClipboardCheck, Building2, Filter, X, Info, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { BarChart3, Calendar, Camera, ClipboardCheck, Building2, Filter, X, Info, ChevronRight, CheckCircle2, Eye, ChevronDown } from 'lucide-react';
 import { normalizeDateToIso, formatDateToShortDdMm } from '../../utils/dateUtils';
 import { 
   getFacilityDayTargetConfig, 
@@ -51,6 +51,30 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
     areaPhotos: Record<string, { photos: number; reports: number }>;
     index: number;
   } | null>(null);
+  const [selectedDay, setSelectedDay] = useState<{
+    rawDate: string;
+    dateLabel: string;
+    reportsCount: number;
+    photosCount: number;
+    totalScore: number;
+    passCount: number;
+    facilities: Set<string>;
+    facilityCounts: Record<string, { reports: number; photos: number }>;
+    areaPhotos: Record<string, { photos: number; reports: number }>;
+    index: number;
+  } | null>(null);
+
+  // Cuộn mượt đến bảng chi tiết toàn bộ khi người dùng bấm vào cột ngày
+  useEffect(() => {
+    if (selectedDay) {
+      setTimeout(() => {
+        const el = document.getElementById('facility-selected-day-details');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 50);
+    }
+  }, [selectedDay?.rawDate]);
 
   // Target config for selected facility (weekday: T2-T6, weekend: T7-CN)
   const targetConfig = useMemo(() => {
@@ -552,7 +576,9 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
               {/* BARS CONTAINER */}
               <div 
                 className="absolute inset-0 flex items-end z-30"
-                onMouseLeave={() => setHoveredDay(null)}
+                onMouseLeave={() => {
+                  setHoveredDay(null);
+                }}
               >
                 {dailyData.map((d, index) => {
                   const val = metric === 'photos' ? d.photosCount : d.reportsCount;
@@ -561,6 +587,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                   const targetForDay = isWk ? targetConfig.weekend : targetConfig.weekday;
                   const meetsTarget = val >= targetForDay;
                   const isHovered = hoveredDay?.rawDate === d.rawDate;
+                  const isSelected = selectedDay?.rawDate === d.rawDate;
 
                   return (
                     <div
@@ -568,6 +595,11 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                       style={{ width: `${100 / dailyData.length}%` }}
                       className="h-full flex flex-col items-center group relative justify-end hover:z-40 cursor-pointer"
                       onMouseEnter={() => setHoveredDay({ ...d, index })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDay(prev => prev?.rawDate === d.rawDate ? null : { ...d, index });
+                      }}
+                      title="Nhấn vào cột để mở rộng toàn bộ chi tiết ngày này"
                     >
                       {/* Day target tick indicator on the column */}
                       <div
@@ -581,7 +613,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                       <div
                         style={{ bottom: `${heightPercent}%` }}
                         className={`absolute left-1/2 -translate-x-1/2 mb-1 text-[11px] font-bold tracking-wider transition-all duration-150 z-20 whitespace-nowrap pointer-events-none ${
-                          isHovered
+                          isHovered || isSelected
                             ? 'scale-125 text-[#1A3A5C] drop-shadow-xs font-black'
                             : val === 0
                             ? 'text-slate-300 opacity-60'
@@ -599,7 +631,9 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                           <div
                             style={{ height: `${heightPercent}%` }}
                             className={`w-full rounded-t-sm transition-all duration-200 ${
-                              isHovered
+                              isSelected
+                                ? 'bg-gradient-to-t from-amber-500 to-amber-400 ring-2 ring-amber-500 shadow-md'
+                                : isHovered
                                 ? 'bg-gradient-to-t from-[#1B5EA6] to-[#3EA8E0] ring-2 ring-[#3EA8E0] shadow-md'
                                 : meetsTarget
                                 ? 'bg-gradient-to-t from-[#1B5EA6] to-[#3EA8E0] group-hover:brightness-110'
@@ -607,7 +641,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                             }`}
                           />
                         ) : (
-                          <div className={`w-full h-[2px] rounded-full transition-all ${isHovered ? 'bg-[#3EA8E0]' : 'bg-slate-200'}`} />
+                          <div className={`w-full h-[2px] rounded-full transition-all ${isSelected ? 'bg-amber-500 ring-2 ring-amber-400' : isHovered ? 'bg-[#3EA8E0]' : 'bg-slate-200'}`} />
                         )}
                       </div>
                     </div>
@@ -615,127 +649,33 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                 })}
               </div>
 
-              {/* FLOATING HOVER POPUP */}
-              {hoveredDay && (() => {
+              {/* TOOLTIP GỌN KHI TRỎ CHUỘT (KHÔNG hiển thị cảnh báo thiếu khi trỏ theo yêu cầu) */}
+              {hoveredDay && !selectedDay && (() => {
                 const isRightHalf = hoveredDay.index / dailyData.length > 0.5;
                 const colWidthPct = 100 / dailyData.length;
                 const colLeftPct = hoveredDay.index * colWidthPct;
                 const colRightPct = (hoveredDay.index + 1) * colWidthPct;
 
                 const posStyle: React.CSSProperties = isRightHalf
-                  ? { right: `calc(${100 - colLeftPct}% + 4px)`, top: '8px' }
-                  : { left: `calc(${colRightPct}% + 4px)`, top: '8px' };
+                  ? { right: `calc(${100 - colLeftPct}% + 6px)`, top: '8px' }
+                  : { left: `calc(${colRightPct}% + 6px)`, top: '8px' };
+
+                const val = metric === 'photos' ? hoveredDay.photosCount : hoveredDay.reportsCount;
 
                 return (
                   <div
                     style={posStyle}
-                    className="absolute z-50 pointer-events-none bg-white border border-[#3EA8E0]/30 text-slate-800 p-3.5 rounded-xl shadow-xl text-[11px] whitespace-nowrap ring-1 ring-slate-100 w-[240px] sm:w-[270px] animate-in fade-in zoom-in-95 duration-100"
+                    className="absolute z-50 pointer-events-none bg-slate-900/90 text-white px-3 py-1.5 rounded-lg shadow-xl text-[11px] ring-1 ring-white/10 whitespace-nowrap animate-in fade-in duration-75"
                   >
-                    <div className="font-bold text-[#1A3A5C] border-b border-slate-100 pb-1.5 mb-1.5 flex items-center justify-between gap-2">
+                    <div className="font-bold flex items-center gap-2">
                       <span>📅 Ngày: {hoveredDay.rawDate}</span>
-                      <span className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold ${
-                        isWeekendDay(hoveredDay.rawDate) ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {isWeekendDay(hoveredDay.rawDate) ? 'T7, CN (Cuối tuần)' : 'T2 - T6 (Ngày thường)'}
+                      <span className="text-amber-300 font-mono font-bold">
+                        {val} {metric === 'photos' ? 'ảnh' : 'lượt'}
                       </span>
                     </div>
-                    <div className="space-y-1 text-slate-600">
-                      <div className="flex items-center justify-between">
-                        <span>📸 Số lượng ảnh:</span>
-                        <strong className="text-[#1A3A5C] font-mono">{hoveredDay.photosCount} tấm</strong>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>📋 Số lượt báo cáo:</span>
-                        <strong className="text-[#1A3A5C] font-mono">{hoveredDay.reportsCount} lượt</strong>
-                      </div>
-                      <div className="flex items-center justify-between bg-slate-50 px-2 py-1 rounded border border-slate-200/80 text-[10.5px]">
-                        <span className="text-slate-700 font-medium">Quy định ngày này:</span>
-                        <strong className="font-mono text-slate-900 font-bold">
-                          {isWeekendDay(hoveredDay.rawDate) ? targetConfig.weekend : targetConfig.weekday} {metric === 'photos' ? 'ảnh' : 'lượt'}
-                        </strong>
-                      </div>
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span className="text-slate-500 font-medium">Đánh giá:</span>
-                        {(metric === 'photos' ? hoveredDay.photosCount : hoveredDay.reportsCount) >= (isWeekendDay(hoveredDay.rawDate) ? targetConfig.weekend : targetConfig.weekday) ? (
-                          <span className="text-emerald-800 font-bold text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            ✓ Đạt quy định
-                          </span>
-                        ) : (
-                          <span className="text-rose-700 font-bold text-[10px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            ⚠️ Thiếu {(isWeekendDay(hoveredDay.rawDate) ? targetConfig.weekend : targetConfig.weekday) - (metric === 'photos' ? hoveredDay.photosCount : hoveredDay.reportsCount)} {metric === 'photos' ? 'ảnh' : 'lượt'}
-                          </span>
-                        )}
-                      </div>
-                      {mode === 'hygiene' && hoveredDay.reportsCount > 0 && (
-                        <div className="flex items-center justify-between pt-0.5">
-                          <span>⭐ Điểm TB:</span>
-                          <strong className="text-[#1B5EA6] font-mono">{(hoveredDay.totalScore / hoveredDay.reportsCount).toFixed(0)} điểm</strong>
-                        </div>
-                      )}
-                      {isAllFacilities && hoveredDay.facilities.size > 0 && (
-                        <div className="text-[10px] text-slate-500 mt-1 border-t border-slate-100 pt-1">
-                          🏬 {hoveredDay.facilities.size} cơ sở thực hiện
-                        </div>
-                      )}
-                    </div>
-
-                    {/* DETAILED FACILITY & REPORT BREAKDOWN */}
-                    <div className="mt-1.5 pt-1.5 border-t border-slate-100">
-                      <div className="text-[10px] font-bold text-[#1A3A5C] uppercase tracking-wider mb-1 flex items-center justify-between">
-                        <span>{selectedFacility !== 'all' ? 'Chi tiết khu vực:' : 'Chi tiết cơ sở thực hiện:'}</span>
-                      </div>
-
-                      {selectedFacility !== 'all' && getFacilityTargetDetail(selectedFacility) ? (
-                        <div className="space-y-1">
-                          {getFacilityTargetDetail(selectedFacility)?.items.map((reqItem, idx) => {
-                            let photos = 0;
-                            let reports = 0;
-                            const areaEntries = Object.entries(hoveredDay.areaPhotos || {}) as [string, { photos: number; reports: number }][];
-                            areaEntries.forEach(([areaKey, info]) => {
-                              if (matchAreaToTargetLabel(areaKey, reqItem.label)) {
-                                photos += info.photos;
-                                reports += info.reports;
-                              }
-                            });
-
-                            const reqCount = reqItem.count || 1;
-                            const isMissing = photos < reqCount;
-                            const missingCount = reqCount - photos;
-
-                            return (
-                              <div key={idx} className="flex items-center justify-between gap-2 text-[10px]">
-                                <span className={isMissing ? 'text-rose-700 font-semibold truncate' : 'text-slate-700 truncate'}>
-                                  {isMissing ? '⚠️' : '✓'} {reqItem.label}:
-                                </span>
-                                <span className={`font-bold font-mono px-1.5 py-0.5 rounded text-[10px] whitespace-nowrap ${
-                                  isMissing 
-                                    ? 'text-rose-700 bg-rose-50 border border-rose-200' 
-                                    : 'text-[#4CAF8A] bg-[#4CAF8A]/10 border border-[#4CAF8A]/30'
-                                }`}>
-                                  {photos}/{reqCount} ảnh {isMissing ? `(Thiếu ${missingCount})` : ''}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="space-y-1 max-h-[160px] overflow-y-auto pr-0.5 custom-scrollbar">
-                          {Object.keys(hoveredDay.facilityCounts || {}).length > 0 ? (
-                            (Object.entries(hoveredDay.facilityCounts) as [string, { reports: number; photos: number }][])
-                              .sort((a, b) => b[1].reports - a[1].reports)
-                              .map(([facName, info]) => (
-                                <div key={facName} className="flex items-center justify-between gap-2 text-[10px]">
-                                  <span className="text-slate-700 truncate max-w-[140px] font-medium">{facName}:</span>
-                                  <span className="font-bold font-mono text-[#1B5EA6] bg-[#1B5EA6]/10 px-1.5 py-0.5 rounded border border-[#1B5EA6]/20 whitespace-nowrap">
-                                    {info.reports} lượt
-                                  </span>
-                                </div>
-                              ))
-                          ) : (
-                            <div className="text-[10px] text-rose-600 italic">Chưa ghi nhận báo cáo nào</div>
-                          )}
-                        </div>
-                      )}
+                    <div className="text-[9.5px] text-slate-300 mt-0.5 flex items-center gap-1 font-sans">
+                      <span className="text-amber-400">👆</span>
+                      <span>Nhấn vào để xem toàn bộ chi tiết</span>
                     </div>
                   </div>
                 );
@@ -873,10 +813,12 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                 <div
                   key={`xlabel-${d.rawDate}`}
                   style={{ width: `${100 / dailyData.length}%` }}
-                  className="flex flex-col justify-start items-center pt-1.5 h-14 relative"
+                  onClick={() => setSelectedDay(prev => prev?.rawDate === d.rawDate ? null : { ...d, index: dailyData.findIndex(x => x.rawDate === d.rawDate) })}
+                  className="flex flex-col justify-start items-center pt-1.5 h-14 relative cursor-pointer group"
+                  title="Bấm để xem toàn bộ chi tiết ngày này"
                 >
                   <span
-                    className={`inline-block transform -rotate-45 origin-top-left translate-x-1.5 text-[10px] font-bold font-mono tracking-tight transition-colors whitespace-nowrap ${
+                    className={`inline-block transform -rotate-45 origin-top-left translate-x-1.5 text-[10px] font-bold font-mono tracking-tight transition-colors whitespace-nowrap group-hover:text-[#1B5EA6] group-hover:scale-110 ${
                       val > 0 ? 'text-[#1A3A5C]' : 'text-slate-400'
                     }`}
                   >
@@ -893,6 +835,166 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
           </div>
 
           </div>
+        </div>
+      )}
+
+      {/* EXPANDED FULL SECTION WHEN A DAY IS CLICKED / SELECTED ("SHOW TOÀN BỘ RA") */}
+      {selectedDay && (
+        <div id="facility-selected-day-details" className="mt-4 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-white border-2 border-indigo-200/90 shadow-sm animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 mb-3.5 border-b border-slate-200/90">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-[#1A3A5C] text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-sm sm:text-base text-[#1A3A5C] tracking-tight">
+                    BẢNG CHI TIẾT NGÀY: {selectedDay.rawDate}
+                  </h4>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    isWeekendDay(selectedDay.rawDate) 
+                      ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                      : 'bg-slate-100 text-slate-700 border border-slate-200'
+                  }`}>
+                    {isWeekendDay(selectedDay.rawDate) ? 'Thứ 7, CN (Cuối tuần)' : 'Thứ 2 - Thứ 6 (Ngày thường)'}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                    Đang hiển thị toàn bộ
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {selectedFacility !== 'all' ? `Phạm vi: ${selectedFacility}` : 'Toàn bộ 19 cơ sở trên toàn hệ thống'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+              <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs font-mono">
+                Quy định: <strong>{isWeekendDay(selectedDay.rawDate) ? targetConfig.weekend : targetConfig.weekday} {metric === 'photos' ? 'ảnh' : 'lượt'}</strong>
+              </span>
+              <span className="text-xs bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs font-mono">
+                Thực tế: <strong className="text-indigo-700 font-bold">{metric === 'photos' ? selectedDay.photosCount : selectedDay.reportsCount} {metric === 'photos' ? 'ảnh' : 'lượt'}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                className="flex items-center gap-1 px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer"
+                title="Đóng bảng chi tiết"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Đóng</span>
+              </button>
+            </div>
+          </div>
+
+          {/* SHOW TOÀN BỘ KHU VỰC CHI TIẾT */}
+          {selectedFacility !== 'all' && getFacilityTargetDetail(selectedFacility) ? (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Tình trạng kiểm tra các khu vực quy định:</span>
+                <span className="text-[11px] font-normal text-slate-500 font-sans">
+                  (Tổng {getFacilityTargetDetail(selectedFacility)?.items.length} khu vực quy định)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {getFacilityTargetDetail(selectedFacility)?.items.map((reqItem, idx) => {
+                  let photos = 0;
+                  let reports = 0;
+                  const areaEntries = Object.entries(selectedDay.areaPhotos || {}) as [string, { photos: number; reports: number }][];
+                  areaEntries.forEach(([areaKey, info]) => {
+                    if (matchAreaToTargetLabel(areaKey, reqItem.label)) {
+                      photos += info.photos;
+                      reports += info.reports;
+                    }
+                  });
+
+                  const reqCount = reqItem.count || 1;
+                  const isMissing = photos < reqCount;
+                  const missingCount = reqCount - photos;
+
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
+                        isMissing 
+                          ? 'bg-rose-50/70 border-rose-200 text-rose-950' 
+                          : 'bg-emerald-50/40 border-emerald-200 text-emerald-950'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-base shrink-0">
+                          {isMissing ? '⚠️' : '✅'}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="font-bold truncate block text-slate-900">
+                            {reqItem.label}
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Chỉ tiêu quy định: {reqCount} ảnh/ngày
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className={`inline-block font-mono font-bold px-2 py-0.5 rounded text-xs ${
+                          isMissing 
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300' 
+                            : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        }`}>
+                          {photos}/{reqCount} ảnh
+                        </span>
+                        {isMissing ? (
+                          <span className="block text-[10px] text-rose-700 font-bold mt-0.5">
+                            (Còn thiếu {missingCount} ảnh)
+                          </span>
+                        ) : (
+                          <span className="block text-[10px] text-emerald-700 font-medium mt-0.5">
+                            ✓ Đạt quy định
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Danh sách các cơ sở thực hiện trong ngày:</span>
+                <span className="text-[11px] font-normal text-slate-500 font-sans">
+                  ({Object.keys(selectedDay.facilityCounts || {}).length} cơ sở đã gửi báo cáo)
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {Object.keys(selectedDay.facilityCounts || {}).length > 0 ? (
+                  (Object.entries(selectedDay.facilityCounts) as [string, { reports: number; photos: number }][])
+                    .sort((a, b) => b[1].reports - a[1].reports)
+                    .map(([facName, info]) => (
+                      <div 
+                        key={facName} 
+                        onClick={() => onSelectFacility(facName)}
+                        className="p-2.5 rounded-xl bg-white border border-slate-200 hover:border-[#1B5EA6] hover:bg-slate-50 transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs"
+                        title="Nhấn để xem chi tiết cơ sở này"
+                      >
+                        <span className="font-semibold text-slate-800 text-xs truncate">{facName}</span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-mono text-[11px] font-bold text-[#1B5EA6] bg-[#1B5EA6]/10 px-2 py-0.5 rounded border border-[#1B5EA6]/20">
+                            {info.reports} lượt ({info.photos} ảnh)
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="col-span-full p-4 text-center text-xs text-rose-600 bg-rose-50 rounded-xl border border-rose-200">
+                    Không có cơ sở nào gửi báo cáo trong ngày này
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

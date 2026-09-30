@@ -89,7 +89,7 @@ export async function fetchLiveProposalsFromSheet(): Promise<ProposalItem[]> {
       }
 
       const vatPham = getVal(4);
-      const soLanHongLapLai = vatPham.includes('APC_TT_LT_DH0') ? 3 : 1;
+      const soLanHongLapLai = 1;
 
       return {
         id: `DX-00${idx + 1}`,
