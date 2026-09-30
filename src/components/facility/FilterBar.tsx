@@ -9,9 +9,12 @@ import {
   Filter, 
   X, 
   Download,
-  Printer
+  Printer,
+  Wrench,
+  ExternalLink
 } from 'lucide-react';
 import { triggerPrintToPdf } from '../../utils/printUtils';
+import { REPAIR_APP_EXTERNAL_URL } from '../../repair/RepairManagementModule';
 
 interface FilterBarProps {
   mode: ReportMode;
@@ -22,6 +25,7 @@ interface FilterBarProps {
   availableAreas: string[];
   onExportCSV: () => void;
   totalFilteredCount: number;
+  onOpenRepairReport?: () => void;
 }
 
 export const FilterBar: React.FC<FilterBarProps> = ({
@@ -33,6 +37,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   availableAreas,
   onExportCSV,
   totalFilteredCount,
+  onOpenRepairReport,
 }) => {
   const hasActiveFilters = 
     filters.thang !== 'all' || 
@@ -108,6 +113,31 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Báo Cáo Sửa Chữa Quick Button */}
+          {onOpenRepairReport && (
+            <button
+              type="button"
+              onClick={onOpenRepairReport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-800 transition-colors shadow-2xs cursor-pointer"
+              title="Nhảy qua Báo Cáo Sửa Chữa & Đề Xuất (Sheet Đề Xuất)"
+            >
+              <Wrench className="w-3.5 h-3.5 text-amber-700" />
+              <span>Báo Cáo Sửa Chữa</span>
+            </button>
+          )}
+
+          {/* Link nhảy qua link app độc lập */}
+          <a
+            href={REPAIR_APP_EXTERNAL_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold text-indigo-700 transition-colors shadow-2xs"
+            title="Mở ứng dụng sửa chữa độc lập (Link: https://ai.studio/apps/2bfec445-3870-4ee6-ae4a-8cf7b5cb20ce)"
+          >
+            <span className="hidden sm:inline">Link App</span>
+            <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
+          </a>
+
           {/* Print PDF Button */}
           <button
             type="button"

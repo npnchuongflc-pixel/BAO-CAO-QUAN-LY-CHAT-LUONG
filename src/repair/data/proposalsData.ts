@@ -1,0 +1,90 @@
+/**
+ * Dữ liệu chuẩn xác 100% từ Sheet "ĐỀ XUẤT" (cập nhật mới nhất từ trang tính)
+ */
+
+import { ProposalItem } from '../types/proposal';
+
+export const INITIAL_PROPOSALS: ProposalItem[] = [
+  {
+    id: "DX-001",
+    ngay: "28/09/2026",
+    gio: "10:29",
+    nguoiDeXuat: "Nguyễn Phúc Nguyên Chương",
+    coSo: "Hà Đô",
+    vatPham: "Tầng 1 • Lễ Tân • Mạng",
+    mucDo: "Hư hỏng",
+    trangThaiGhiNhan: "Mạng yếu; camera chập chờn không ổn định",
+    deXuat: "Thay mới hoàn toàn",
+    phuongAn: "Kiểm tra kỹ thuật, cấu hình lại mạng và chuẩn bị phương án thay mới thiết bị nếu xác định hư hỏng phần cứng.",
+    linkAnh: "https://ik.imagekit.io/adr0daian/cleancheck/DE_XUAT_H_____Tng_1_L_Tn_Mng_1790566166069_mchnx1IiK.jpg",
+    nguoiKiemDuyet: "",
+    tinhTrangDuyet: "CHƯA DUYỆT",
+    nguoiKhacPhuc: "Phạm Văn Trưởng",
+    trangThaiSuaChua: "Chưa sửa chữa",
+    chiPhiThucTe: null,
+    soLanHongLapLai: 1
+  },
+  {
+    id: "DX-002",
+    ngay: "28/09/2026",
+    gio: "15:35",
+    nguoiDeXuat: "Ngô Thị Mỹ Quỳnh",
+    coSo: "An Phú",
+    vatPham: "[APC_TT_LT_DH0] Điều Hòa - Lễ Tân (Tầng Trệt)",
+    mucDo: "Hư hỏng",
+    trangThaiGhiNhan: "Cánh bị lỗi, không mở ra được nên bị đọng sương, nhiễu nước",
+    deXuat: "Cần sửa chữa",
+    phuongAn: "Đề xuất liên hệ kỹ thuật viên kiểm tra và thay thế mô-tơ đảo gió hoặc cánh vẫy để khắc phục dứt điểm tình trạng đọng sương chảy nước.",
+    linkAnh: "https://ik.imagekit.io/adr0daian/cleancheck/DE_XUAT_An_Ph__APCTTLTDH0_iu_Ha_L_Tn_Tng_Trt_1790584554674_5s773KwU0.jpg",
+    nguoiKiemDuyet: "",
+    tinhTrangDuyet: "CHƯA DUYỆT",
+    nguoiKhacPhuc: "Phạm Văn Trưởng",
+    trangThaiSuaChua: "Chưa sửa chữa",
+    chiPhiThucTe: null,
+    soLanHongLapLai: 3
+  },
+  {
+    id: "DX-003",
+    ngay: "28/09/2026",
+    gio: "17:13",
+    nguoiDeXuat: "Trần Thị Thương",
+    coSo: "Phổ Quang",
+    vatPham: "Tầng 1 • Phòng Vẽ 1 • Bồn rửa tay",
+    mucDo: "Hư hỏng nặng",
+    trangThaiGhiNhan: "Bồn bị bung keo, lủng lẳng sắp rơi",
+    deXuat: "Cần sửa chữa",
+    phuongAn: "Tiến hành gia cố ngay khung đỡ chịu lực và bắn keo silicon chuyên dụng để cố định lại bồn rửa tay.",
+    linkAnh: "https://ik.imagekit.io/adr0daian/cleancheck/DE_XUAT_Ph__Quang_Tng_1_Phng_V_1_Bn_ra_tay_1790590437885_OrV3uHTQF.jpg",
+    nguoiKiemDuyet: "Huỳnh Phi Đoan",
+    tinhTrangDuyet: "ĐÃ DUYỆT",
+    ghiChuKiemDuyet: "Thực hiện trước Thứ 5(01/10/2026)",
+    thoiGianThongBaoDuyet: "Đã mail (29/09, 16:22)",
+    ngayKiemDuyet: "29/09/2026 16:22",
+    nguoiKhacPhuc: "Phạm Văn Trưởng",
+    trangThaiSuaChua: "Chưa sửa chữa",
+    tienDoKhacPhuc: "Chưa xử lý",
+    ghiChuKhacPhuc: "Bồn được bắt vít với tường không thể bị rớt ra",
+    ngayHoanThanh: "01/10/2026",
+    chiPhiThucTe: 0,
+    soLanHongLapLai: 1
+  },
+  {
+    id: "DX-004",
+    ngay: "28/09/2026",
+    gio: "17:31",
+    nguoiDeXuat: "Trần Thị Thương",
+    coSo: "Phổ Quang",
+    vatPham: "Tầng Trệt • Phòng Cờ 1 • Sàn nhà",
+    mucDo: "Hư hỏng",
+    trangThaiGhiNhan: "Bị bung keo, rách, lủng lỗ",
+    deXuat: "Cần sửa chữa",
+    phuongAn: "Tiến hành dán vá cục bộ các vị trí sàn bị rách và bọc cao su chân bàn ghế để tránh tái diễn.",
+    linkAnh: "https://ik.imagekit.io/adr0daian/cleancheck/DE_XUAT_Ph__Quang_Tng_Trt_Phng_C_1_Sn_nh_1790591460412_7eaTPKk7s.jpg",
+    nguoiKiemDuyet: "",
+    tinhTrangDuyet: "CHƯA DUYỆT",
+    nguoiKhacPhuc: "Phạm Văn Trưởng",
+    trangThaiSuaChua: "Chưa sửa chữa",
+    chiPhiThucTe: null,
+    soLanHongLapLai: 1
+  }
+];
