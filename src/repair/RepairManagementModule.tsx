@@ -251,18 +251,6 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
           </div>
 
           <div className="flex items-center gap-2 print:hidden">
-            {/* Quick Link Button to external AI Studio App */}
-            <a
-              href={REPAIR_APP_EXTERNAL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors shadow-2xs"
-              title="Mở ứng dụng độc lập trên AI Studio"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="hidden md:inline">Mở link độc lập</span>
-            </a>
-
             <button
               onClick={() => loadSheetData(true)}
               disabled={isLoading}
@@ -311,17 +299,6 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                 Theo dõi tiến độ duyệt, khắc phục hỏng hóc, lead time xử lý và cảnh báo thiết bị hỏng lặp lại &gt; 2 lần.
               </p>
             </div>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-            <a
-              href={REPAIR_APP_EXTERNAL_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs"
-            >
-              <span>Xem link AI Studio</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
           </div>
         </div>
 

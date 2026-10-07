@@ -6,15 +6,8 @@ import {
   Calendar, 
   Building2, 
   MapPin, 
-  Filter, 
-  X, 
-  Download,
-  Printer,
-  Wrench,
-  ExternalLink
+  Filter
 } from 'lucide-react';
-import { triggerPrintToPdf } from '../../utils/printUtils';
-import { REPAIR_APP_EXTERNAL_URL } from '../../repair/RepairManagementModule';
 
 interface FilterBarProps {
   mode: ReportMode;
@@ -23,7 +16,7 @@ interface FilterBarProps {
   availableMonths: string[];
   availableFacilities: string[];
   availableAreas: string[];
-  onExportCSV: () => void;
+  onExportCSV?: () => void;
   totalFilteredCount: number;
   onOpenRepairReport?: () => void;
 }
@@ -32,40 +25,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   mode,
   filters,
   onFilterChange,
-  availableMonths,
   availableFacilities,
-  availableAreas,
-  onExportCSV,
   totalFilteredCount,
-  onOpenRepairReport,
 }) => {
-  const hasActiveFilters = 
-    filters.thang !== 'all' || 
-    Boolean(filters.tuNgay) ||
-    Boolean(filters.denNgay) ||
-    filters.coSo !== 'all' || 
-    filters.khuVuc !== 'all' || 
-    filters.trangThai !== 'all' || 
-    filters.searchQuery.trim() !== '';
-
-  const handleReset = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-    const lastDayStr = String(lastDay).padStart(2, '0');
-
-    onFilterChange({
-      thang: 'all',
-      tuNgay: `${year}-${month}-01`,
-      denNgay: `${year}-${month}-${lastDayStr}`,
-      coSo: 'all',
-      khuVuc: 'all',
-      trangThai: 'all',
-      searchQuery: '',
-    });
-  };
-
   const statusOptions = mode === 'hygiene' 
     ? [
         { value: 'all', label: 'Tất cả mức độ' },
@@ -110,69 +72,6 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full font-medium">
             {totalFilteredCount} kết quả
           </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Báo Cáo Sửa Chữa Quick Button */}
-          {onOpenRepairReport && (
-            <button
-              type="button"
-              onClick={onOpenRepairReport}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-800 transition-colors shadow-2xs cursor-pointer"
-              title="Nhảy qua Báo Cáo Sửa Chữa & Đề Xuất (Sheet Đề Xuất)"
-            >
-              <Wrench className="w-3.5 h-3.5 text-amber-700" />
-              <span>Báo Cáo Sửa Chữa</span>
-            </button>
-          )}
-
-          {/* Link nhảy qua link app độc lập */}
-          <a
-            href={REPAIR_APP_EXTERNAL_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold text-indigo-700 transition-colors shadow-2xs"
-            title="Mở ứng dụng sửa chữa độc lập (Link: https://ai.studio/apps/2bfec445-3870-4ee6-ae4a-8cf7b5cb20ce)"
-          >
-            <span className="hidden sm:inline">Link App</span>
-            <ExternalLink className="w-3.5 h-3.5 text-indigo-600" />
-          </a>
-
-          {/* Print PDF Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const modeName = mode === 'hygiene' ? 'Bao_Cao_Ve_Sinh' : 'Bao_Cao_Chat_Luong_Co_So';
-              triggerPrintToPdf({ title: modeName });
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 border border-slate-700 text-xs font-semibold text-white transition-colors cursor-pointer shadow-2xs"
-            title="In báo cáo ra file PDF (Khổ ngang A4)"
-          >
-            <Printer className="w-3.5 h-3.5 text-white" />
-            <span>In PDF</span>
-          </button>
-
-          {/* Export CSV */}
-          <button
-            type="button"
-            onClick={onExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-xs font-medium text-emerald-700 transition-colors cursor-pointer"
-            title="Xuất danh sách đã lọc ra CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Xuất File CSV</span>
-          </button>
-
-          {/* Clear button */}
-          {hasActiveFilters && (
-            <button
-              onClick={handleReset}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-xs font-medium text-rose-600 border border-rose-200 transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Xóa lọc</span>
-            </button>
-          )}
         </div>
       </div>
 
