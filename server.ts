@@ -9,9 +9,12 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.NODE_ENV === 'production'
-  ? (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080)
-  : (process.env.DEFAULT_APP_PORT ? parseInt(process.env.DEFAULT_APP_PORT, 10) : (process.env.PORT && process.env.PORT !== '8080' ? parseInt(process.env.PORT, 10) : 3000));
+
+const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION);
+const isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT && !isCloudRun);
+const PORT = isDevWorkspace
+  ? parseInt(process.env.DEFAULT_APP_PORT!, 10)
+  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080);
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -980,9 +983,9 @@ app.post('/api/warning-audits', async (req, res) => {
 });
 
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
   const distPath = path.join(process.cwd(), 'dist');
   const distIndexExists = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || isCloudRun || (distIndexExists && !isDevWorkspace);
 
   if (isProduction && distIndexExists) {
     app.use(express.static(distPath));
