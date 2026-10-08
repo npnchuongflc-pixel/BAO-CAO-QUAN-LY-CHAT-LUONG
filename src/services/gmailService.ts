@@ -52,9 +52,13 @@ export function buildRfc822Base64Url({
   const utf8FromName = `=?utf-8?B?${toBase64Utf8(fromName)}?=`;
 
   const fromHeader = `From: ${utf8FromName} <${effectiveSenderEmail}>`;
-  const base64Body = toBase64Utf8(htmlBody);
+  
+  // RFC 2045 & RFC 5322: base64 encoded body MUST be split into lines of at most 76 characters
+  const rawBase64 = toBase64Utf8(htmlBody);
+  const base64Body = rawBase64.match(/.{1,76}/g)?.join('\r\n') || rawBase64;
 
   const messageParts = [
+    `Date: ${new Date().toUTCString()}`,
     fromHeader,
     `To: ${to.trim()}`,
     `Reply-To: ${SYSTEM_SENDER_EMAIL}`,
@@ -88,8 +92,11 @@ export async function sendGmailReminder(payload: SendEmailPayload): Promise<{ id
   });
 
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 403) {
       clearCachedToken();
+      if (res.status === 403) {
+        throw new Error('Tài khoản Google chưa được cấp quyền gửi email qua Gmail. Vui lòng bấm Đổi tài khoản hoặc đăng nhập lại và cho phép quyền gửi email.');
+      }
       throw new Error('Phiên đăng nhập Google đã hết hạn. Vui lòng bấm đăng nhập lại để tiếp tục gửi email.');
     }
     const errorJson = await res.json().catch(() => ({}));

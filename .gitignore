@@ -16,3 +16,7 @@ public/data/
 
 # Netlify local state (the production configuration stays in netlify.toml)
 .netlify/
+
+# Prevent Bun lockfile conflicts on Cloudflare Pages / CI
+bun.lock
+bun.lockb

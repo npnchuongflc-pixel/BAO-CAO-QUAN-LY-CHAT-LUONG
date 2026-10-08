@@ -298,7 +298,11 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
       }, 6000);
     } catch (err: any) {
       console.error('Lỗi gửi email trực tiếp:', err);
-      if (err.message?.includes('hết hạn') || err.message?.includes('Chưa kết nối')) {
+      if (
+        err.message?.includes('hết hạn') || 
+        err.message?.includes('Chưa kết nối') ||
+        err.message?.includes('quyền')
+      ) {
         setHasGoogleAuth(false);
         handleOpenEmailModal(item, rowKey);
       } else {
