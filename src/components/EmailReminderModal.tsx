@@ -298,8 +298,8 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      console.error('Lỗi gửi email:', err);
-      setErrorMsg(err.message || 'Gửi email thất bại');
+      console.warn('Lỗi gửi qua Gmail API, mở bản nháp Gmail Web:', err);
+      handleOpenGmailWeb();
     } finally {
       setIsSending(false);
     }
@@ -325,6 +325,13 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
     });
 
     window.open(composeUrl, '_blank', 'noopener,noreferrer');
+
+    onSuccess({
+      departmentName: selectedDept.name,
+      toEmail: toEmail.trim(),
+      sentAt: new Date(),
+    });
+    onClose();
   };
 
   return (

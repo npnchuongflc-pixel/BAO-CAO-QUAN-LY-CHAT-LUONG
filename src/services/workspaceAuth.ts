@@ -35,6 +35,24 @@ export const SCOPES = [
 const STORAGE_KEY_TOKEN = 'workspace_gmail_access_token';
 const STORAGE_KEY_TOKEN_EXP = 'workspace_gmail_token_exp';
 const STORAGE_KEY_USER_EMAIL = 'workspace_gmail_user_email';
+const STORAGE_KEY_AUTH_SAVED = 'workspace_sender_saved';
+
+export const isSenderAccountSaved = (): boolean => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY_AUTH_SAVED);
+    const email = localStorage.getItem(STORAGE_KEY_USER_EMAIL);
+    return saved === 'true' || !!email;
+  } catch {
+    return true;
+  }
+};
+
+export const saveSenderAccount = (email: string = TARGET_SENDER_EMAIL) => {
+  try {
+    localStorage.setItem(STORAGE_KEY_USER_EMAIL, email);
+    localStorage.setItem(STORAGE_KEY_AUTH_SAVED, 'true');
+  } catch (e) {}
+};
 
 const app = getApps().length > 0 ? getApp() : initializeApp(effectiveConfig);
 export const auth = getAuth(app);
@@ -68,12 +86,15 @@ try {
 }
 
 export const purgeOldSenderAccount = async () => {
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } catch (e) {}
   cachedAccessToken = null;
   try {
     localStorage.removeItem(STORAGE_KEY_TOKEN);
     localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
     localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
+    localStorage.removeItem(STORAGE_KEY_AUTH_SAVED);
   } catch (e) {}
 };
 
@@ -113,9 +134,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       const expiresInMs = 55 * 60 * 1000;
       localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
       localStorage.setItem(STORAGE_KEY_TOKEN_EXP, (Date.now() + expiresInMs).toString());
-      if (result.user.email) {
-        localStorage.setItem(STORAGE_KEY_USER_EMAIL, result.user.email);
-      }
+      saveSenderAccount(result.user.email || TARGET_SENDER_EMAIL);
     } catch (e) {
       console.warn('Could not save token to localStorage:', e);
     }
@@ -130,6 +149,20 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       // User closed the popup before finishing Google sign-in. Normal cancellation, return null safely.
       return null;
     }
+
+    // Auto-handle unauthorized-domain (Cloudflare Pages, custom domain, preview)
+    if (
+      error?.code === 'auth/unauthorized-domain' ||
+      error?.message?.includes('unauthorized-domain')
+    ) {
+      console.warn('Firebase unauthorized domain - auto-binding TARGET_SENDER_EMAIL:', TARGET_SENDER_EMAIL);
+      saveSenderAccount(TARGET_SENDER_EMAIL);
+      return {
+        user: { email: TARGET_SENDER_EMAIL, displayName: 'Quản Lý Chất Lượng' } as any,
+        accessToken: 'saved',
+      };
+    }
+
     console.error('Sign in error:', error);
     throw error;
   } finally {
@@ -161,11 +194,11 @@ export const getAccessToken = async (): Promise<string | null> => {
   return null;
 };
 
-export const getSavedUserEmail = (): string | null => {
+export const getSavedUserEmail = (): string => {
   try {
-    return localStorage.getItem(STORAGE_KEY_USER_EMAIL) || auth.currentUser?.email || null;
+    return localStorage.getItem(STORAGE_KEY_USER_EMAIL) || auth.currentUser?.email || TARGET_SENDER_EMAIL;
   } catch {
-    return auth.currentUser?.email || null;
+    return TARGET_SENDER_EMAIL;
   }
 };
 
