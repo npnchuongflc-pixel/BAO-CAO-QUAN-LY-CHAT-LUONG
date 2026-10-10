@@ -29,6 +29,20 @@ Không chỉnh cùng một tệp ở nhiều công cụ vào cùng thời điể
 
 Các giá trị này đã được lưu trong `netlify.toml`, nên không cần nhập lại khi tạo deploy mới từ repository.
 
+## Cấu hình build Cloudflare (Pages & Workers)
+
+### 1. Cloudflare Pages (Khuyên Dùng)
+- **Framework preset:** `Vite` (hoặc `None`)
+- **Build command:** `npm run build:client` (hoặc `npm run build:cloudflare`)
+- **Build output directory:** `dist`
+- **Environment Variables:** `NODE_VERSION` = `22` (hoặc `20`)
+- Tệp `public/_redirects` đã được tạo sẵn để hỗ trợ SPA Routing (tải lại trang không bị lỗi 404).
+
+### 2. Cloudflare Workers (CLI / Git)
+- File cấu hình: `wrangler.toml` đã được tích hợp sẵn lệnh build tự động `[build] command = "npm run build:client"`.
+- Mã nguồn Worker: `src/worker.ts` tự động xử lý proxy Google Sheets và phục vụ static assets từ `./dist`.
+- Lệnh deploy nhanh qua terminal: `npx wrangler deploy`.
+
 ## Kiểm tra sau khi deploy
 
 - Trang chính: `/`
