@@ -10,7 +10,7 @@
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:client": "vite build",
-    "build:cloudflare": "vite build",
+   "build:cloudflare": "vite build && node -e \"const fs=require('fs'); const p='dist/_redirects'; if(fs.existsSync(p)){fs.unlinkSync(p); console.log('Removed '+p)} else {console.log('No redirects file found')}\"",
     "build:netlify": "vite build",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node server.ts",
