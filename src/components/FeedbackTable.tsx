@@ -2,12 +2,18 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { SheetRowItem } from '../types';
 import { formatDate } from '../services/sheetService';
 import { EmailReminderModal, DEPARTMENTS, getDefaultDepartmentId } from './EmailReminderModal';
-import { TARGET_SENDER_EMAIL } from '../services/workspaceAuth';
+import { 
+  TARGET_SENDER_EMAIL, 
+  googleSignIn, 
+  getAccessToken, 
+  getCurrentUser, 
+  purgeOldSenderAccount,
+  initAuth 
+} from '../services/workspaceAuth';
+import { User } from 'firebase/auth';
 import { 
   sendGmailReminder, 
   generateUrgentFeedbackHtml, 
-  generateUrgentFeedbackPlainText,
-  buildGmailComposeUrl,
   SYSTEM_SENDER_NAME 
 } from '../services/gmailService';
 import { 
@@ -16,7 +22,9 @@ import {
   AlertOctagon, 
   Loader2, 
   Eye, 
-  AlertTriangle 
+  AlertTriangle,
+  Mail,
+  LogOut
 } from 'lucide-react';
 
 interface FeedbackTableProps {
@@ -51,6 +59,52 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
   // Success toast
   const [toastMessage, setToastMessage] = useState<string>('');
   const [sendingRowKey, setSendingRowKey] = useState<string | null>(null);
+
+  // Google Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(getCurrentUser());
+  const [hasToken, setHasToken] = useState<boolean>(false);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = initAuth(
+      (user, token) => {
+        setCurrentUser(user);
+        setHasToken(!!token);
+      },
+      () => {
+        setCurrentUser(null);
+        setHasToken(false);
+      }
+    );
+    getAccessToken().then((t) => setHasToken(!!t));
+    return () => unsub();
+  }, []);
+
+  const handleLoginGoogle = async () => {
+    setIsAuthLoading(true);
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setCurrentUser(res.user);
+        setHasToken(true);
+        setToastMessage(`✓ Đã đăng nhập Google: ${res.user.email}!`);
+        setTimeout(() => setToastMessage(''), 5000);
+      }
+    } catch (err: any) {
+      setToastMessage(err.message || 'Đăng nhập Google thất bại');
+      setTimeout(() => setToastMessage(''), 7000);
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const handleLogoutGoogle = async () => {
+    await purgeOldSenderAccount();
+    setCurrentUser(null);
+    setHasToken(false);
+    setToastMessage('Đã đăng xuất tài khoản Google.');
+    setTimeout(() => setToastMessage(''), 4000);
+  };
 
   // Deterministic row key independent of index or sorting
   const getRowKey = (item: SheetRowItem): string => {
@@ -121,7 +175,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
       console.error(e);
     }
 
-    setToastMessage(`✓ Đã gửi email thông báo đến "${sentInfo.departmentName}" (${sentInfo.toEmail})!`);
+    setToastMessage(`✓ Đã gửi email thành công qua Gmail API đến "${sentInfo.departmentName}" (${sentInfo.toEmail})!`);
     setTimeout(() => {
       setToastMessage('');
     }, 5000);
@@ -133,6 +187,13 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
     const deptId = rowDepartments[rowKey] || defaultDeptId;
     const dept = DEPARTMENTS.find((d) => d.id === deptId) || DEPARTMENTS[0];
 
+    // If not authenticated, open the modal so the user can easily review and sign in
+    const token = await getAccessToken();
+    if (!token) {
+      handleOpenEmailModal(item, rowKey);
+      return;
+    }
+
     setSendingRowKey(rowKey);
     try {
       const subject = `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`;
@@ -140,31 +201,16 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
         item,
         departmentName: dept.name,
         roleDescription: dept.roleDescription,
-        senderIdentity: TARGET_SENDER_EMAIL,
+        senderIdentity: currentUser?.email || TARGET_SENDER_EMAIL,
       });
 
-      try {
-        await sendGmailReminder({
-          to: dept.defaultEmail,
-          subject,
-          htmlBody,
-          fromEmail: TARGET_SENDER_EMAIL,
-          fromName: SYSTEM_SENDER_NAME,
-        });
-      } catch (err) {
-        // Smoothly compose via Gmail Web pre-filled tab
-        const bodyText = generateUrgentFeedbackPlainText({
-          item,
-          departmentName: dept.name,
-          roleDescription: dept.roleDescription,
-        });
-        const composeUrl = buildGmailComposeUrl({
-          to: dept.defaultEmail,
-          subject,
-          bodyText,
-        });
-        window.open(composeUrl, '_blank');
-      }
+      await sendGmailReminder({
+        to: dept.defaultEmail,
+        subject,
+        htmlBody,
+        fromEmail: currentUser?.email || TARGET_SENDER_EMAIL,
+        fromName: SYSTEM_SENDER_NAME,
+      });
 
       const newSent = {
         ...sentRecords,
@@ -180,10 +226,14 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
         localStorage.setItem('urgent_feedback_sent_emails', JSON.stringify(newSent));
       } catch (e) {}
 
-      setToastMessage(`✓ Đã gửi email nhắc nhở đến "${dept.name}" (${dept.defaultEmail})!`);
+      setToastMessage(`✓ Đã gửi email thành công qua Gmail API đến "${dept.name}" (${dept.defaultEmail})!`);
       setTimeout(() => {
         setToastMessage('');
       }, 5000);
+    } catch (err: any) {
+      console.error('Lỗi gửi email:', err);
+      // Open modal so user can authenticate or review error
+      handleOpenEmailModal(item, rowKey);
     } finally {
       setSendingRowKey(null);
     }
@@ -215,6 +265,52 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
           </button>
         </div>
       )}
+
+      {/* SENDER GOOGLE ACCOUNT CONNECTION STRIP */}
+      <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Mail className="w-4 h-4 text-rose-600 shrink-0" />
+          <span className="font-bold text-slate-700">Tài khoản gửi chính thức:</span>
+          <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
+            {TARGET_SENDER_EMAIL}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          {currentUser && hasToken ? (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-lg">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Đã kết nối: <strong>{currentUser.email}</strong></span>
+              </span>
+              <button
+                type="button"
+                onClick={handleLogoutGoogle}
+                className="text-slate-500 hover:text-rose-600 font-semibold px-2 py-1 rounded border border-slate-200 hover:bg-white text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                title="Đăng xuất để đổi tài khoản Google khác"
+              >
+                <LogOut className="w-3 h-3" />
+                <span>Đổi tài khoản</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLoginGoogle}
+              disabled={isAuthLoading}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-xs font-bold text-slate-800 flex items-center gap-2 shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+              </svg>
+              <span>{isAuthLoading ? 'Đang kết nối Google…' : `Đăng nhập ${TARGET_SENDER_EMAIL}`}</span>
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* CLEAN PANEL HEADER */}
       <div className="panel-head flex flex-wrap items-center justify-between gap-4">

@@ -5,9 +5,16 @@ import {
   sendGmailReminder, 
   buildGmailComposeUrl, 
   generateUrgentFeedbackPlainText, 
-  SYSTEM_SENDER_EMAIL,
   SYSTEM_SENDER_NAME 
 } from '../services/gmailService';
+import { 
+  googleSignIn, 
+  getAccessToken, 
+  getCurrentUser, 
+  purgeOldSenderAccount, 
+  TARGET_SENDER_EMAIL 
+} from '../services/workspaceAuth';
+import { User } from 'firebase/auth';
 import { 
   Mail, 
   AlertTriangle, 
@@ -18,7 +25,8 @@ import {
   Calendar, 
   BookOpen, 
   ShieldAlert, 
-  Loader2 
+  Loader2,
+  LogOut
 } from 'lucide-react';
 
 export interface DepartmentOption {
@@ -86,12 +94,49 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
 
   const [toEmail, setToEmail] = useState<string>(selectedDept.defaultEmail);
   const [customNote, setCustomNote] = useState<string>('');
+  
+  // Auth & Sending State
+  const [currentUser, setCurrentUser] = useState<User | null>(getCurrentUser());
+  const [hasToken, setHasToken] = useState<boolean>(false);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   useEffect(() => {
     setToEmail(selectedDept.defaultEmail);
   }, [selectedDeptId]);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const u = getCurrentUser();
+      const t = await getAccessToken();
+      setCurrentUser(u);
+      setHasToken(!!t);
+    };
+    checkAuth();
+  }, []);
+
+  const handleLoginGoogle = async () => {
+    setIsLoggingIn(true);
+    setErrorMsg('');
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setCurrentUser(res.user);
+        setHasToken(true);
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Đăng nhập Google thất bại');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogoutGoogle = async () => {
+    await purgeOldSenderAccount();
+    setCurrentUser(null);
+    setHasToken(false);
+  };
 
   // Build subject and body
   const subject = `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`;
@@ -186,7 +231,7 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
               <li>Đề xuất giải pháp khắc phục và cập nhật trạng thái lên nhóm Quản lý Chất lượng.</li>
             </ul>
             <p style="margin: 0; font-size: 11px; color: #94a3b8;">
-              Email được gửi tự động từ Dashboard Quản Lý Chất Lượng theo yêu cầu của <strong>${SYSTEM_SENDER_NAME} (${SYSTEM_SENDER_EMAIL})</strong>.
+              Email được gửi tự động từ Dashboard Quản Lý Chất Lượng theo yêu cầu của <strong>${currentUser?.email || TARGET_SENDER_EMAIL}</strong>.
             </p>
           </div>
         </div>
@@ -204,12 +249,30 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
     setErrorMsg('');
 
     try {
+      let token = await getAccessToken();
+      let activeUser = currentUser;
+
+      if (!token) {
+        setIsLoggingIn(true);
+        const res = await googleSignIn();
+        setIsLoggingIn(false);
+        if (!res) {
+          setErrorMsg('Vui lòng hoàn tất đăng nhập tài khoản Google để gửi email.');
+          setIsSending(false);
+          return;
+        }
+        token = res.accessToken;
+        activeUser = res.user;
+        setCurrentUser(res.user);
+        setHasToken(true);
+      }
+
       const htmlBody = generateHtmlBody();
       await sendGmailReminder({
         to: toEmail.trim(),
         subject,
         htmlBody,
-        fromEmail: SYSTEM_SENDER_EMAIL,
+        fromEmail: activeUser?.email || TARGET_SENDER_EMAIL,
         fromName: SYSTEM_SENDER_NAME,
       });
 
@@ -220,10 +283,11 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
       });
       onClose();
     } catch (err: any) {
-      // Smoothly fallback to pre-filled Gmail Web tab
-      handleOpenGmailWeb();
+      console.error('Lỗi gửi qua Gmail API:', err);
+      setErrorMsg(err.message || 'Không thể gửi email qua Gmail API. Vui lòng đăng nhập lại hoặc thử lại.');
     } finally {
       setIsSending(false);
+      setIsLoggingIn(false);
     }
   };
 
@@ -278,13 +342,13 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-rose-100 mt-0.5">
-                Nhắc nhở bộ phận chuyên trách liên hệ hỗ trợ phụ huynh &amp; khắc phục chất lượng
+                Gửi email trực tiếp qua Gmail API đến bộ phận chuyên trách để hỗ trợ phụ huynh
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -398,25 +462,73 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
             </div>
           </div>
 
-          {/* Official Sender Badge */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4 text-rose-600 shrink-0" />
-              <span className="font-bold text-slate-700">Tài khoản gửi:</span>
-              <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                {SYSTEM_SENDER_EMAIL}
-              </span>
+          {/* Sender & Google Account Connection */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+              <div className="flex items-center gap-2">
+                <Mail className="w-4 h-4 text-rose-600 shrink-0" />
+                <span className="font-bold text-slate-700">Tài khoản gửi:</span>
+                <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                  {currentUser?.email || TARGET_SENDER_EMAIL}
+                </span>
+              </div>
+
+              {currentUser && hasToken ? (
+                <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Đã kết nối: <strong>{currentUser.email}</strong></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleLogoutGoogle}
+                    className="text-xs text-slate-500 hover:text-rose-600 font-semibold flex items-center gap-1 cursor-pointer"
+                    title="Đổi tài khoản Google khác"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Đổi tài khoản</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleLoginGoogle}
+                  disabled={isLoggingIn}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-2 shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
+                  title="Đăng nhập tài khoản Google để cấp quyền gửi email qua Gmail API"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                  </svg>
+                  <span>{isLoggingIn ? 'Đang kết nối Google…' : `Đăng nhập ${TARGET_SENDER_EMAIL}`}</span>
+                </button>
+              )}
             </div>
-            <div className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              <span>Đã lưu &amp; Sẵn sàng</span>
-            </div>
+
+            {!hasToken && (
+              <p className="text-[11px] text-slate-500 italic">
+                * Nhấn "Đăng nhập {TARGET_SENDER_EMAIL}" để cấp quyền gửi email trực tiếp qua Gmail API.
+              </p>
+            )}
           </div>
 
           {errorMsg && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>{errorMsg}</span>
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenGmailWeb}
+                className="px-2.5 py-1 bg-white hover:bg-slate-50 text-rose-700 border border-rose-300 rounded text-[11px] font-bold shrink-0 cursor-pointer"
+                title="Mở thư đã soạn sẵn trên web Gmail để gửi thủ công"
+              >
+                Mở web Gmail
+              </button>
             </div>
           )}
         </div>
@@ -426,14 +538,14 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            disabled={isSending}
+            disabled={isSending || isLoggingIn}
             className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
             Hủy bỏ
           </button>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Fallback Gmail web compose */}
+            {/* Fallback Gmail web compose (optional button) */}
             <button
               type="button"
               onClick={handleOpenGmailWeb}
@@ -448,18 +560,27 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
             <button
               type="button"
               onClick={handleSendEmail}
-              disabled={isSending}
+              disabled={isSending || isLoggingIn}
               className="px-5 py-2.5 text-xs font-black text-white bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 rounded-xl shadow-md shadow-rose-600/30 flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSending ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Đang gửi email…</span>
+                  <span>Đang gửi qua Gmail API…</span>
+                </>
+              ) : isLoggingIn ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Đang đăng nhập Google…</span>
                 </>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>Xác nhận gửi email ({selectedDept.name})</span>
+                  <span>
+                    {hasToken
+                      ? `Gửi email ngay (${selectedDept.name})`
+                      : `Đăng nhập Google & Gửi ngay (${selectedDept.name})`}
+                  </span>
                 </>
               )}
             </button>

@@ -127,7 +127,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
-      throw new Error('Không lấy được Access Token từ tài khoản Google.');
+      throw new Error('Không nhận được Access Token gửi email từ Google. Vui lòng thử lại và cấp quyền gửi email.');
     }
 
     cachedAccessToken = credential.accessToken;
@@ -149,31 +149,36 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       error?.code === 'auth/cancelled-popup-request' ||
       error?.message?.includes('popup-closed-by-user')
     ) {
-      // User closed the popup before finishing Google sign-in. Normal cancellation, return null safely.
+      // User closed the popup before finishing Google sign-in
       return null;
     }
 
-    // Auto-handle any Google OAuth / Firebase issues (unauthorized-domain, popup-blocked, origin mismatch, etc.)
-    console.warn('Google sign-in caught error, falling back to permanent sender email:', TARGET_SENDER_EMAIL, error);
-    saveSenderAccount(TARGET_SENDER_EMAIL);
-    return {
-      user: { email: TARGET_SENDER_EMAIL, displayName: 'Quản Lý Chất Lượng' } as any,
-      accessToken: 'saved',
-    };
+    if (
+      error?.code === 'auth/unauthorized-domain' ||
+      error?.message?.includes('unauthorized-domain')
+    ) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'domain';
+      throw new Error(
+        `Tên miền ${currentHost} chưa được thêm vào mục Authorized Domains của Firebase. Bạn hãy vào Firebase Console > Authentication > Settings > Authorized domains và thêm "${currentHost}".`
+      );
+    }
+
+    console.error('Google sign-in error:', error);
+    throw new Error(error?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
   } finally {
     isSigningIn = false;
   }
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (cachedAccessToken) {
+  if (cachedAccessToken && cachedAccessToken !== 'saved') {
     return cachedAccessToken;
   }
 
   try {
     const savedToken = localStorage.getItem(STORAGE_KEY_TOKEN);
     const savedExp = localStorage.getItem(STORAGE_KEY_TOKEN_EXP);
-    if (savedToken) {
+    if (savedToken && savedToken !== 'saved') {
       if (!savedExp || Date.now() < parseInt(savedExp, 10)) {
         cachedAccessToken = savedToken;
         return cachedAccessToken;
