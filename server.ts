@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
@@ -9,12 +8,7 @@ import Papa from 'papaparse';
 dotenv.config();
 
 const app = express();
-
-const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION);
-const isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT && !isCloudRun);
-const PORT = isDevWorkspace
-  ? parseInt(process.env.DEFAULT_APP_PORT!, 10)
-  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080);
+const PORT = 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -983,33 +977,22 @@ app.post('/api/warning-audits', async (req, res) => {
 });
 
 async function startServer() {
-  const distPath = path.join(process.cwd(), 'dist');
-  const distIndexExists = fs.existsSync(path.join(distPath, 'index.html'));
-  const isProduction = process.env.NODE_ENV === 'production' || isCloudRun || (distIndexExists && !isDevWorkspace);
-
-  if (isProduction && distIndexExists) {
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  } else {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Zalo OA Report App running at http://0.0.0.0:${PORT} (mode: ${isProduction ? 'production' : 'development'})`);
-  });
-
-  server.on('error', (err: any) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`[Server Error] Port ${PORT} is already in use.`);
-    } else {
-      console.error('[Server Error]', err);
-    }
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Zalo OA Report App running at http://localhost:${PORT}`);
   });
 }
 
