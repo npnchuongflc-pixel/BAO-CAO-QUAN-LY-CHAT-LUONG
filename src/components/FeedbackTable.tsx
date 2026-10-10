@@ -2,37 +2,21 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { SheetRowItem } from '../types';
 import { formatDate } from '../services/sheetService';
 import { EmailReminderModal, DEPARTMENTS, getDefaultDepartmentId } from './EmailReminderModal';
-import { 
-  getAccessToken, 
-  googleSignIn, 
-  getCurrentUser, 
-  logout, 
-  TARGET_SENDER_EMAIL,
-  getSavedUserEmail,
-  isSenderAccountSaved,
-  saveSenderAccount,
-  purgeOldSenderAccount
-} from '../services/workspaceAuth';
+import { TARGET_SENDER_EMAIL } from '../services/workspaceAuth';
 import { 
   sendGmailReminder, 
   generateUrgentFeedbackHtml, 
   generateUrgentFeedbackPlainText,
   buildGmailComposeUrl,
-  SYSTEM_SENDER_EMAIL,
   SYSTEM_SENDER_NAME 
 } from '../services/gmailService';
 import { 
   Send, 
   CheckCircle2, 
   AlertOctagon, 
-  Mail, 
-  Sparkles, 
-  Zap,
-  Loader2,
-  Eye,
-  LogOut,
-  ShieldCheck,
-  AlertTriangle
+  Loader2, 
+  Eye, 
+  AlertTriangle 
 } from 'lucide-react';
 
 interface FeedbackTableProps {
@@ -41,8 +25,8 @@ interface FeedbackTableProps {
 }
 
 export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExportCsv }) => {
-  // Filter mode: all or only urgent (rating 1-2 stars)
-  const [filterUrgentOnly, setFilterUrgentOnly] = useState<boolean>(false);
+  // Filter mode: 'all' | 'urgent' | 'sent'
+  const [filterMode, setFilterMode] = useState<'all' | 'urgent' | 'sent'>('all');
 
   // Selected department per row key: rowKey -> departmentId
   const [rowDepartments, setRowDepartments] = useState<Record<string, string>>({});
@@ -66,89 +50,39 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
 
   // Success toast
   const [toastMessage, setToastMessage] = useState<string>('');
-
-  // Google Workspace Sender Account Status
-  const [hasGoogleAuth, setHasGoogleAuth] = useState<boolean>(false);
-  const [currentSenderEmail, setCurrentSenderEmail] = useState<string | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [sendingRowKey, setSendingRowKey] = useState<string | null>(null);
 
-  // Auto Quick Send 1-Click preference (default: true)
-  const [autoQuickSend, setAutoQuickSend] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('urgent_feedback_auto_quick_send');
-      return saved !== null ? saved === 'true' : true;
-    } catch {
-      return true;
-    }
-  });
-
-  const checkAuthStatus = async () => {
-    const user = getCurrentUser();
-    const savedEmail = getSavedUserEmail();
-    const isSaved = isSenderAccountSaved();
-    setHasGoogleAuth(isSaved);
-    setCurrentSenderEmail(user?.email || savedEmail || TARGET_SENDER_EMAIL);
-  };
-
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const handleToggleQuickSend = (enabled: boolean) => {
-    setAutoQuickSend(enabled);
-    try {
-      localStorage.setItem('urgent_feedback_auto_quick_send', enabled ? 'true' : 'false');
-    } catch (e) {}
-  };
-
-  const handleConnectSender = async () => {
-    setIsAuthLoading(true);
-    try {
-      const res = await googleSignIn();
-      const email = res?.user?.email || TARGET_SENDER_EMAIL;
-      saveSenderAccount(email);
-      setHasGoogleAuth(true);
-      setCurrentSenderEmail(email);
-      setToastMessage(`Đã lưu tài khoản người gửi ${email}!`);
-      setTimeout(() => setToastMessage(''), 5000);
-    } catch (err: any) {
-      saveSenderAccount(TARGET_SENDER_EMAIL);
-      setHasGoogleAuth(true);
-      setCurrentSenderEmail(TARGET_SENDER_EMAIL);
-      setToastMessage(`Đã lưu tài khoản ${TARGET_SENDER_EMAIL} sẵn sàng gửi email!`);
-      setTimeout(() => setToastMessage(''), 5000);
-    } finally {
-      setIsAuthLoading(false);
-    }
-  };
-
-  const handleDisconnectSender = async () => {
-    await purgeOldSenderAccount();
-    setHasGoogleAuth(false);
-    setCurrentSenderEmail(null);
-    setToastMessage(`Đã đặt lại tài khoản gửi.`);
-    setTimeout(() => setToastMessage(''), 4000);
-  };
-
-  const getRowKey = (item: SheetRowItem, idx: number): string => {
-    const studentPart = (item.student || '').trim().toLowerCase();
-    const facilityPart = (item.facility || '').trim().toLowerCase();
-    const coursePart = (item.course || '').trim().toLowerCase();
-    const timePart = item.responseAt ? item.responseAt.getTime() : (item.sentAt ? item.sentAt.getTime() : idx);
-    return `${studentPart}_${facilityPart}_${coursePart}_${timePart}`;
+  // Deterministic row key independent of index or sorting
+  const getRowKey = (item: SheetRowItem): string => {
+    const student = (item.student || '').trim().toLowerCase();
+    const customer = (item.customer || '').trim().toLowerCase();
+    const facility = (item.facility || '').trim().toLowerCase();
+    const course = (item.course || '').trim().toLowerCase();
+    const subject = (item.subject || '').trim().toLowerCase();
+    const time = item.responseAt 
+      ? item.responseAt.toISOString() 
+      : (item.sentAt ? item.sentAt.toISOString() : '');
+    const detailSnippet = (item.detail || '').slice(0, 30).trim().toLowerCase();
+    return `${student}|${customer}|${facility}|${course}|${subject}|${time}|${detailSnippet}`;
   };
 
   const urgentCount = useMemo(() => {
     return feedback.filter((item) => item.rating === 1 || item.rating === 2).length;
   }, [feedback]);
 
+  const sentCount = useMemo(() => {
+    return feedback.filter((item) => !!sentRecords[getRowKey(item)]).length;
+  }, [feedback, sentRecords]);
+
   const displayedFeedback = useMemo(() => {
-    if (filterUrgentOnly) {
+    if (filterMode === 'urgent') {
       return feedback.filter((item) => item.rating === 1 || item.rating === 2);
     }
+    if (filterMode === 'sent') {
+      return feedback.filter((item) => !!sentRecords[getRowKey(item)]);
+    }
     return feedback;
-  }, [feedback, filterUrgentOnly]);
+  }, [feedback, filterMode, sentRecords]);
 
   const handleDepartmentChange = (rowKey: string, deptId: string) => {
     setRowDepartments((prev) => ({
@@ -187,76 +121,17 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
       console.error(e);
     }
 
-    // Refresh auth status in case modal logged in
-    checkAuthStatus();
-
-    setToastMessage(`Đã gửi email nhắc nhở khẩn cấp đến "${sentInfo.departmentName}" (${sentInfo.toEmail}) cho bé ${item.student}!`);
+    setToastMessage(`✓ Đã gửi email thông báo đến "${sentInfo.departmentName}" (${sentInfo.toEmail})!`);
     setTimeout(() => {
       setToastMessage('');
-    }, 6000);
+    }, 5000);
   };
 
-  // Direct Web Gmail Compose sender (100% reliable without OAuth / Google Cloud permissions)
-  const handleSendViaGmailWeb = (item: SheetRowItem, rowKey: string) => {
-    const defaultDeptId = getDefaultDepartmentId(item.subject);
-    const deptId = rowDepartments[rowKey] || defaultDeptId;
-    const dept = DEPARTMENTS.find((d) => d.id === deptId) || DEPARTMENTS[0];
-
-    const subject = `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`;
-    const bodyText = generateUrgentFeedbackPlainText({
-      item,
-      departmentName: dept.name,
-      roleDescription: dept.roleDescription,
-    });
-
-    const composeUrl = buildGmailComposeUrl({
-      to: dept.defaultEmail,
-      subject,
-      bodyText,
-    });
-
-    // Open pre-filled Gmail in new tab
-    window.open(composeUrl, '_blank', 'noopener,noreferrer');
-
-    // Mark row as sent
-    const newSent = {
-      ...sentRecords,
-      [rowKey]: {
-        departmentName: dept.name,
-        toEmail: dept.defaultEmail,
-        sentAt: new Date().toISOString(),
-      },
-    };
-
-    setSentRecords(newSent);
-    try {
-      localStorage.setItem('urgent_feedback_sent_emails', JSON.stringify(newSent));
-    } catch (e) {}
-
-    setToastMessage(`Đã mở Gmail soạn sẵn để gửi đến "${dept.name}" (${dept.defaultEmail})!`);
-    setTimeout(() => {
-      setToastMessage('');
-    }, 6000);
-  };
-
-  // Direct 1-Click Send button handler from row
+  // Direct Send button handler from table row
   const handleDirectSend = async (item: SheetRowItem, rowKey: string) => {
     const defaultDeptId = getDefaultDepartmentId(item.subject);
     const deptId = rowDepartments[rowKey] || defaultDeptId;
     const dept = DEPARTMENTS.find((d) => d.id === deptId) || DEPARTMENTS[0];
-
-    const token = await getAccessToken();
-    const isSaved = isSenderAccountSaved();
-
-    if (!token && !isSaved) {
-      handleOpenEmailModal(item, rowKey);
-      return;
-    }
-
-    if (!autoQuickSend) {
-      handleOpenEmailModal(item, rowKey);
-      return;
-    }
 
     setSendingRowKey(rowKey);
     try {
@@ -265,18 +140,19 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
         item,
         departmentName: dept.name,
         roleDescription: dept.roleDescription,
-        senderIdentity: currentSenderEmail || TARGET_SENDER_EMAIL,
+        senderIdentity: TARGET_SENDER_EMAIL,
       });
 
-      if (token && token !== 'saved') {
+      try {
         await sendGmailReminder({
           to: dept.defaultEmail,
           subject,
           htmlBody,
-          fromEmail: currentSenderEmail || getSavedUserEmail() || undefined,
+          fromEmail: TARGET_SENDER_EMAIL,
           fromName: SYSTEM_SENDER_NAME,
         });
-      } else {
+      } catch (err) {
+        // Smoothly compose via Gmail Web pre-filled tab
         const bodyText = generateUrgentFeedbackPlainText({
           item,
           departmentName: dept.name,
@@ -304,44 +180,14 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
         localStorage.setItem('urgent_feedback_sent_emails', JSON.stringify(newSent));
       } catch (e) {}
 
-      setToastMessage(`Đã gửi email nhắc nhở đến "${dept.name}" (${dept.defaultEmail})!`);
+      setToastMessage(`✓ Đã gửi email nhắc nhở đến "${dept.name}" (${dept.defaultEmail})!`);
       setTimeout(() => {
         setToastMessage('');
       }, 5000);
-    } catch (err: any) {
-      console.warn('Lỗi gửi trực tiếp, chuyển sang bản nháp Gmail:', err);
-      const bodyText = generateUrgentFeedbackPlainText({
-        item,
-        departmentName: dept.name,
-        roleDescription: dept.roleDescription,
-      });
-      const composeUrl = buildGmailComposeUrl({
-        to: dept.defaultEmail,
-        subject: `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`,
-        bodyText,
-      });
-      window.open(composeUrl, '_blank');
-
-      const newSent = {
-        ...sentRecords,
-        [rowKey]: {
-          departmentName: dept.name,
-          toEmail: dept.defaultEmail,
-          sentAt: new Date().toISOString(),
-        },
-      };
-      setSentRecords(newSent);
-      try {
-        localStorage.setItem('urgent_feedback_sent_emails', JSON.stringify(newSent));
-      } catch (e) {}
-      setToastMessage(`Đã mở Gmail gửi đến "${dept.name}" (${dept.defaultEmail})!`);
-      setTimeout(() => setToastMessage(''), 5000);
     } finally {
       setSendingRowKey(null);
     }
   };
-
-  const isMatchingSender = currentSenderEmail?.toLowerCase() === TARGET_SENDER_EMAIL.toLowerCase();
 
   return (
     <section className="panel table-panel feedback-panel relative">
@@ -370,77 +216,29 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
         </div>
       )}
 
-      {/* SENDER ACCOUNT & QUICK SEND CONTROL BAR */}
-      <div className="mb-4 bg-white border border-slate-200 rounded-xl p-3 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0">
-            <Mail className="w-3.5 h-3.5" />
-          </div>
-          <div className="flex items-center gap-2 flex-wrap text-xs">
-            <span className="font-bold text-slate-600">Tài khoản gửi email:</span>
-            <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              {currentSenderEmail || TARGET_SENDER_EMAIL}
-            </span>
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              Đã lưu
-            </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <label className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer select-none text-xs">
-            <input
-              type="checkbox"
-              checked={autoQuickSend}
-              onChange={(e) => handleToggleQuickSend(e.target.checked)}
-              className="w-3.5 h-3.5 text-rose-600 rounded focus:ring-0 cursor-pointer"
-            />
-            <span className="flex items-center gap-1 text-slate-700 font-semibold">
-              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              Gửi nhanh 1-Click
-            </span>
-          </label>
-
-          <button
-            type="button"
-            onClick={handleConnectSender}
-            disabled={isAuthLoading}
-            className="text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            title="Đăng nhập lại hoặc đổi tài khoản gửi"
-          >
-            {isAuthLoading ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <LogOut className="w-3.5 h-3.5 text-slate-500" />
-            )}
-            <span>Đổi tài khoản</span>
-          </button>
-        </div>
-      </div>
-
+      {/* CLEAN PANEL HEADER */}
       <div className="panel-head flex flex-wrap items-center justify-between gap-4">
         <div>
-          <span className="flex items-center gap-1.5 text-rose-600 font-extrabold">
-            <AlertOctagon className="w-3.5 h-3.5" />
-            CẢNH BÁO &amp; NỘI DUNG PHẢN HỒI
+          <span className="flex items-center gap-1.5 text-rose-600 font-extrabold text-xs">
+            <AlertOctagon className="w-4 h-4" />
+            CẢNH BÁO &amp; PHẢN HỒI PHỤ HUYNH
           </span>
           <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-            Danh sách cần xác minh &amp; Gửi Email Xử Lý Gấp (1–2★)
+            Danh sách ý kiến đóng góp &amp; Đánh giá cần xử lý
           </h2>
           <p className="text-xs text-slate-500">
-            Chỉ hiển thị phản hồi có nội dung hoặc rating từ 1–3 sao. Bạn có thể chọn bộ phận và bấm gửi email tự động qua Gmail.
+            Dễ dàng chọn bộ phận phụ trách và bấm gửi email thông báo nhanh qua hộp thư quản lý ({TARGET_SENDER_EMAIL}).
           </p>
         </div>
 
         <div className="flex items-center flex-wrap gap-2">
-          {/* Quick Filter: Urgent 1-2 star classes */}
+          {/* Quick Filters */}
           <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
             <button
               type="button"
-              onClick={() => setFilterUrgentOnly(false)}
+              onClick={() => setFilterMode('all')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                !filterUrgentOnly
+                filterMode === 'all'
                   ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
                   : 'text-slate-600 hover:text-slate-900 cursor-pointer'
               }`}
@@ -449,9 +247,9 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
             </button>
             <button
               type="button"
-              onClick={() => setFilterUrgentOnly(true)}
+              onClick={() => setFilterMode('urgent')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                filterUrgentOnly
+                filterMode === 'urgent'
                   ? 'bg-rose-600 text-white shadow-xs font-extrabold'
                   : 'text-rose-700 hover:bg-rose-50 cursor-pointer'
               }`}
@@ -459,11 +257,25 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
               <span className={`w-2 h-2 rounded-full ${urgentCount > 0 ? 'bg-rose-400 animate-pulse' : 'bg-slate-300'}`} />
               <span>Xử lý gấp 1–2★</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                filterUrgentOnly ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'
+                filterMode === 'urgent' ? 'bg-white/20 text-white' : 'bg-rose-100 text-rose-800'
               }`}>
                 {urgentCount}
               </span>
             </button>
+            {sentCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterMode('sent')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  filterMode === 'sent'
+                    ? 'bg-emerald-600 text-white shadow-xs font-extrabold'
+                    : 'text-emerald-700 hover:bg-emerald-50 cursor-pointer'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Đã gửi ({sentCount})</span>
+              </button>
+            )}
           </div>
 
           <button type="button" className="export-button" onClick={onExportCsv}>
@@ -471,7 +283,6 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
           </button>
         </div>
       </div>
-
 
       {displayedFeedback.length > 0 ? (
         <div className="table-scroll">
@@ -490,8 +301,8 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
               </tr>
             </thead>
             <tbody>
-              {displayedFeedback.slice(0, 100).map((item, idx) => {
-                const rowKey = getRowKey(item, idx);
+              {displayedFeedback.slice(0, 100).map((item) => {
+                const rowKey = getRowKey(item);
                 const isUrgent = item.rating === 1 || item.rating === 2;
                 const sentInfo = sentRecords[rowKey];
                 const defaultDeptId = getDefaultDepartmentId(item.subject);
@@ -502,7 +313,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                     key={rowKey}
                     className={`transition-colors ${
                       sentInfo
-                        ? 'bg-emerald-50/40 hover:bg-emerald-50/70 border-l-4 border-l-emerald-500'
+                        ? 'bg-emerald-50/50 hover:bg-emerald-50/80 border-l-4 border-l-emerald-500'
                         : isUrgent 
                           ? 'bg-rose-50/30 hover:bg-rose-50/60' 
                           : 'hover:bg-slate-50/50'
@@ -520,6 +331,12 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                         <div className="text-[11px] text-slate-500">
                           Bé: {item.student}
                         </div>
+                      )}
+                      {sentInfo && (
+                        <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-100/80 border border-emerald-300 px-1.5 py-0.2 rounded-md mt-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                          Đã gửi mail
+                        </span>
                       )}
                     </td>
 
@@ -550,16 +367,16 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                     </td>
 
                     {/* Column: Bộ phận xử lý & Nút gửi email */}
-                    <td className="col-action py-2.5 px-3">
+                    <td className="col-action py-3 px-3">
                       {sentInfo ? (
-                        <div className="space-y-1 select-none">
+                        <div className="space-y-1.5 select-none">
                           <div className="flex items-center gap-2 flex-wrap">
                             <div 
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-xs shadow-2xs shrink-0"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs shadow-xs shrink-0"
                               title={`Email đã được gửi đến ${sentInfo.departmentName} (${sentInfo.toEmail}) lúc ${formatDate(new Date(sentInfo.sentAt), true)}.`}
                             >
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>Đã gửi ({sentInfo.departmentName})</span>
+                              <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+                              <span>ĐÃ GỬI ({sentInfo.departmentName})</span>
                             </div>
                             <button
                               type="button"
@@ -570,10 +387,10 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                               Gửi lại
                             </button>
                           </div>
-                          <div className="text-[10px] text-emerald-700 font-mono flex items-center gap-1 pl-0.5">
-                            <span>✓ Lúc {formatDate(new Date(sentInfo.sentAt), true)}</span>
+                          <div className="text-[11px] text-emerald-800 font-medium flex items-center gap-1 pl-0.5">
+                            <span className="font-bold">✓ Lúc {formatDate(new Date(sentInfo.sentAt), true)}</span>
                             <span className="text-slate-400">·</span>
-                            <span className="truncate max-w-[170px]" title={sentInfo.toEmail}>({sentInfo.toEmail})</span>
+                            <span className="truncate max-w-[170px] font-mono text-[10.5px]" title={sentInfo.toEmail}>({sentInfo.toEmail})</span>
                           </div>
                         </div>
                       ) : (

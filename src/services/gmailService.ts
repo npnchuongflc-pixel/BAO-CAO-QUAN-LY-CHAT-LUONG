@@ -76,8 +76,8 @@ export function buildRfc822Base64Url({
 
 export async function sendGmailReminder(payload: SendEmailPayload): Promise<{ id: string; threadId: string }> {
   const token = await getAccessToken();
-  if (!token) {
-    throw new Error('Chưa kết nối tài khoản Google hoặc phiên làm việc đã hết hạn. Vui lòng bấm kết nối tài khoản Google để gửi email.');
+  if (!token || token === 'saved') {
+    throw new Error('USE_WEB_COMPOSE');
   }
 
   const raw = buildRfc822Base64Url(payload);
@@ -94,15 +94,11 @@ export async function sendGmailReminder(payload: SendEmailPayload): Promise<{ id
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
       clearCachedToken();
-      if (res.status === 403) {
-        throw new Error('Tài khoản Google chưa được cấp quyền gửi email qua Gmail. Vui lòng bấm Đổi tài khoản hoặc đăng nhập lại và cho phép quyền gửi email.');
-      }
-      throw new Error('Phiên đăng nhập Google đã hết hạn. Vui lòng bấm đăng nhập lại để tiếp tục gửi email.');
+      throw new Error('USE_WEB_COMPOSE');
     }
     const errorJson = await res.json().catch(() => ({}));
     console.error('Gmail API send error:', res.status, errorJson);
-    const message = errorJson.error?.message || `Lỗi từ dịch vụ Gmail (HTTP ${res.status})`;
-    throw new Error(message);
+    throw new Error('USE_WEB_COMPOSE');
   }
 
   return await res.json();
@@ -272,6 +268,7 @@ export function buildGmailComposeUrl({
     to,
     su: subject,
     body: bodyText,
+    authuser: SYSTEM_SENDER_EMAIL,
   });
   return `https://mail.google.com/mail/?${params.toString()}`;
 }
