@@ -26,7 +26,8 @@ import {
   Zap,
   CheckCheck,
   ExternalLink,
-  Video
+  Video,
+  BookOpen
 } from 'lucide-react';
 import { ScientificDateRangePicker } from './ScientificDateRangePicker';
 import {
@@ -70,7 +71,8 @@ interface LookerCameraReportProps {
   onResetFilters: () => void;
   onOpenEvidence: (url: string, title: string) => void;
   onSelectTeacherModal: (teacherName: string) => void;
-  onOpenAiModal: () => void;
+  onOpenAiModal?: () => void;
+  onOpenClassroomReport?: () => void;
   currentMonthKey: string;
   onSwitchToCameraStatus?: () => void;
 }
@@ -85,6 +87,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
   onOpenEvidence,
   onSelectTeacherModal,
   onOpenAiModal,
+  onOpenClassroomReport,
   currentMonthKey,
   onSwitchToCameraStatus,
 }) => {
@@ -478,15 +481,15 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
             <span>{showExtendedMetrics ? 'Đang bật chỉ số mở rộng' : '+ Thêm chỉ số cần thiết'}</span>
           </button>
 
-          {/* AI Advisor Button */}
+          {/* Classroom Report Button (Replaced AI Advisor Button per user request) */}
           <button
             type="button"
-            onClick={onOpenAiModal}
-            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white border border-indigo-600 hover:from-indigo-700 hover:to-violet-700 transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-200"
-            title="Phân tích chất lượng tự động bằng Gemini AI"
+            onClick={onOpenClassroomReport || onOpenAiModal}
+            className="min-h-10 px-4 py-2 text-xs font-bold rounded-xl bg-gradient-to-r from-blue-700 via-indigo-600 to-sky-600 hover:from-blue-800 hover:to-indigo-700 text-white border border-indigo-500 transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-200 cursor-pointer"
+            title="Báo cáo Lớp Học & Điều Phối Ca Dạy (từ GitHub BAO-CAO-LOP-HOC)"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>Cố Vấn AI</span>
+            <BookOpen className="w-4 h-4 text-sky-200" />
+            <span>Báo Cáo Lớp Học</span>
           </button>
 
           {/* Integrated Camera Report Button */}

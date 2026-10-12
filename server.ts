@@ -162,6 +162,95 @@ app.get('/api/facility-sheet-data', async (req, res) => {
   }
 });
 
+// ============================================================================
+// Classroom Report APIs (BAO-CAO-LOP-HOC)
+// Spreadsheet ID: 1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE
+// ============================================================================
+const CLASSROOM_SPREADSHEET_ID = '1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE';
+
+app.get('/api/all-sheets', (req, res) => {
+  const jsonPath = path.resolve(process.cwd(), 'public/data/all_sheets.json');
+  if (!fs.existsSync(jsonPath)) {
+    return res.status(404).json({ error: 'File not found' });
+  }
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  return res.sendFile(jsonPath);
+});
+
+app.get('/api/live-sheet', async (req, res) => {
+  const gid = req.query.gid as string;
+  const spreadsheetId = (req.query.spreadsheetId as string) || CLASSROOM_SPREADSHEET_ID;
+  if (!gid) {
+    return res.status(400).json({ error: 'Missing gid parameter' });
+  }
+  try {
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}&t=${Date.now()}`;
+    const response = await fetch(targetUrl, {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`Google Sheet returned HTTP ${response.status}`);
+    }
+    const csvData = await response.text();
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    return res.send(csvData);
+  } catch (err: any) {
+    console.error(`Lỗi tải live sheet GID ${gid}:`, err.message);
+    return res.status(502).json({ error: err.message });
+  }
+});
+
+app.all('/api/sync-all', async (req, res) => {
+  const jsonPath = path.resolve(process.cwd(), 'public/data/all_sheets.json');
+  try {
+    if (!fs.existsSync(jsonPath)) {
+      return res.status(404).json({ error: 'Data file not found' });
+    }
+    const raw = fs.readFileSync(jsonPath, 'utf8');
+    const data = JSON.parse(raw);
+    const gids = Object.keys(data.sheets || {});
+    await Promise.all(
+      gids.map(async (gid) => {
+        try {
+          const targetUrl = `https://docs.google.com/spreadsheets/d/${CLASSROOM_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&gid=${gid}&t=${Date.now()}`;
+          const response = await fetch(targetUrl, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'User-Agent': 'Mozilla/5.0'
+            }
+          });
+          if (response.ok) {
+            const csv = await response.text();
+            if (csv && csv.length > 20) {
+              const parsed = Papa.parse<string[]>(csv, { skipEmptyLines: true });
+              if (parsed.data && parsed.data.length > 0) {
+                data.sheets[gid].rows = parsed.data;
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn(`Lỗi sync gid ${gid}:`, e.message);
+        }
+      })
+    );
+    data.exportedAt = new Date().toISOString();
+    fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), 'utf8');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    return res.json(data);
+  } catch (err: any) {
+    console.error('Lỗi sync-all:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // AI Insights API using Gemini 3.7 Flash
 app.post('/api/ai-insights', async (req, res) => {
   try {

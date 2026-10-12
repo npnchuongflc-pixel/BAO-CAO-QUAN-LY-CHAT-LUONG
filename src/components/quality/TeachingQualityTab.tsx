@@ -39,6 +39,7 @@ import { EvidenceModal } from './EvidenceModal';
 import { TeachingAiModal } from './TeachingAiModal';
 import { TeacherViolationDetailModal } from './TeacherViolationDetailModal';
 import { CameraStatusReportModule } from '../../camera/CameraStatusReportModule';
+import { ClassroomReportModule } from '../../classroom/ClassroomReportModule';
 import { getCurrentMonthKey } from '../../utils/dateUtils';
 
 const INITIAL_FILTERS: TeachingFilterState = {
@@ -55,7 +56,7 @@ const INITIAL_FILTERS: TeachingFilterState = {
   onlyViolations: false,
 };
 
-type ReportViewMode = 'looker-camera' | 'camera-status' | 'audit-log' | 'standards-6' | 'ranking';
+type ReportViewMode = 'looker-camera' | 'camera-status' | 'classroom-report' | 'audit-log' | 'standards-6' | 'ranking';
 
 interface TeachingQualityTabProps {
   onUpdateTotalShifts?: (count: number) => void;
@@ -204,8 +205,16 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
           onOpenEvidence={handleOpenEvidence}
           onSelectTeacherModal={handleSelectTeacherModal}
           onOpenAiModal={() => setIsAiModalOpen(true)}
+          onOpenClassroomReport={() => setViewMode('classroom-report')}
           currentMonthKey={currentMonthKey}
           onSwitchToCameraStatus={() => setViewMode('camera-status')}
+        />
+      )}
+
+      {/* VIEW: CLASSROOM SCHEDULE & TEACHER ALLOCATION REPORT (BAO-CAO-LOP-HOC) */}
+      {viewMode === 'classroom-report' && (
+        <ClassroomReportModule
+          onBack={() => setViewMode('looker-camera')}
         />
       )}
 
