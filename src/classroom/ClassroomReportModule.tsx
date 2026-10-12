@@ -5,6 +5,8 @@ import { syncLiveSheetsFromLink } from './utils/googleSheetsSync';
 import { 
   getStoredTeacherChanges, 
   saveTeacherChanges, 
+  detectRealTeacherChangesFromLiveSync,
+  updateBaselineSnapshot,
   TeacherChangeRecord 
 } from './utils/teacherChangeTracker';
 import { CalendarDatePicker } from './components/CalendarDatePicker';
@@ -179,6 +181,19 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
       if (syncedCount > 0) {
         setData(updatedData);
         setLastSyncTime(new Date().toLocaleTimeString('vi-VN'));
+        try {
+          const { changes: newChanges, newBaseline } = detectRealTeacherChangesFromLiveSync(updatedData, daysConfig);
+          if (newChanges.length > 0) {
+            setTeacherChanges((prev) => {
+              const combined = [...newChanges, ...prev];
+              saveTeacherChanges(combined);
+              return combined;
+            });
+            updateBaselineSnapshot(newBaseline);
+          }
+        } catch (changeErr) {
+          console.warn('Lỗi kiểm tra thay đổi giáo viên:', changeErr);
+        }
       }
     } catch (err) {
       console.error('Lỗi sync live:', err);

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { SheetRowItem } from '../types';
-import { formatDate } from '../services/sheetService';
+import { formatDate, INCIDENT_SHEET_URL } from '../services/sheetService';
 import { EmailReminderModal, DEPARTMENTS, getDefaultDepartmentId } from './EmailReminderModal';
 import { 
   TARGET_SENDER_EMAIL, 
@@ -23,18 +23,24 @@ import {
   Loader2, 
   Eye, 
   AlertTriangle,
+  AlertCircle,
   Mail,
-  LogOut
+  LogOut,
+  Clock,
+  ExternalLink,
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 
 interface FeedbackTableProps {
   feedback: SheetRowItem[];
   onExportCsv: () => void;
+  onRefresh?: () => void;
 }
 
-export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExportCsv }) => {
-  // Filter mode: 'all' | 'urgent' | 'sent'
-  const [filterMode, setFilterMode] = useState<'all' | 'urgent' | 'sent'>('all');
+export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExportCsv, onRefresh }) => {
+  // Filter mode: 'all' | 'urgent' | 'unprocessed' | 'resolved' | 'sent'
+  const [filterMode, setFilterMode] = useState<'all' | 'urgent' | 'unprocessed' | 'resolved' | 'sent'>('all');
 
   // Selected department per row key: rowKey -> departmentId
   const [rowDepartments, setRowDepartments] = useState<Record<string, string>>({});
@@ -124,6 +130,14 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
     return feedback.filter((item) => item.rating === 1 || item.rating === 2).length;
   }, [feedback]);
 
+  const unprocessedCount = useMemo(() => {
+    return feedback.filter((item) => (item.rating ?? 5) <= 3 && item.processStatus !== 'Đã xử lý').length;
+  }, [feedback]);
+
+  const resolvedCount = useMemo(() => {
+    return feedback.filter((item) => item.processStatus === 'Đã xử lý' && (item.rating ?? 5) <= 3).length;
+  }, [feedback]);
+
   const sentCount = useMemo(() => {
     return feedback.filter((item) => !!sentRecords[getRowKey(item)]).length;
   }, [feedback, sentRecords]);
@@ -131,6 +145,12 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
   const displayedFeedback = useMemo(() => {
     if (filterMode === 'urgent') {
       return feedback.filter((item) => item.rating === 1 || item.rating === 2);
+    }
+    if (filterMode === 'unprocessed') {
+      return feedback.filter((item) => (item.rating ?? 5) <= 3 && item.processStatus !== 'Đã xử lý');
+    }
+    if (filterMode === 'resolved') {
+      return feedback.filter((item) => item.processStatus === 'Đã xử lý' && (item.rating ?? 5) <= 3);
     }
     if (filterMode === 'sent') {
       return feedback.filter((item) => !!sentRecords[getRowKey(item)]);
@@ -358,6 +378,49 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                 {urgentCount}
               </span>
             </button>
+
+            {unprocessedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterMode('unprocessed')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  filterMode === 'unprocessed'
+                    ? 'bg-amber-600 text-white shadow-xs font-extrabold'
+                    : 'text-amber-800 hover:bg-amber-50 cursor-pointer'
+                }`}
+                title="Lọc các phản hồi đánh giá ít sao chưa có phương án xử lý hoặc chưa hoàn thành"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                <span>Chưa xử lý</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  filterMode === 'unprocessed' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-900'
+                }`}>
+                  {unprocessedCount}
+                </span>
+              </button>
+            )}
+
+            {resolvedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterMode('resolved')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  filterMode === 'resolved'
+                    ? 'bg-teal-600 text-white shadow-xs font-extrabold'
+                    : 'text-teal-800 hover:bg-teal-50 cursor-pointer'
+                }`}
+                title="Lọc các ca phản hồi đã hoàn tất xử lý và có kết quả ghi nhận"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-teal-500" />
+                <span>Đã xử lý</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  filterMode === 'resolved' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-900'
+                }`}>
+                  {resolvedCount}
+                </span>
+              </button>
+            )}
+
             {sentCount > 0 && (
               <button
                 type="button"
@@ -369,10 +432,36 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                 }`}
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Đã gửi ({sentCount})</span>
+                <span>Đã gửi mail ({sentCount})</span>
               </button>
             )}
           </div>
+
+          {/* Quick link to Incident Resolution Sheet (GID 206722729) */}
+          <a
+            href={INCIDENT_SHEET_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-blue-300 bg-blue-50/90 hover:bg-blue-100 text-blue-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+            title="Mở Google Sheet theo dõi tiến độ xử lý và phương án giải quyết (GID 206722729)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden sm:inline">Sheet Xử Lý (GID 206722729)</span>
+            <span className="sm:hidden">Sheet 206722729</span>
+            <ExternalLink className="w-3 h-3 text-blue-500" />
+          </a>
+
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              title="Tải lại ngay lập tức dữ liệu mới nhất từ Google Sheets"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-600" />
+              <span>Làm mới</span>
+            </button>
+          )}
 
           <button type="button" className="export-button" onClick={onExportCsv}>
             Xuất CSV đã lọc
@@ -391,6 +480,8 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                 <th className="col-subject">Môn</th>
                 <th className="col-rating">Rating</th>
                 <th className="col-detail">Nội dung phản hồi</th>
+                <th style={{ minWidth: '180px' }}>Phương án xử lý</th>
+                <th style={{ minWidth: '190px' }}>Tình trạng xử lý</th>
                 <th className="col-action" style={{ minWidth: '260px' }}>
                   Bộ phận xử lý &amp; Gửi Email Nhắc Nhở
                 </th>
@@ -459,6 +550,96 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                         <span className="text-slate-400 italic">
                           Phụ huynh chỉ gửi rating, chưa có nội dung chi tiết.
                         </span>
+                      )}
+                    </td>
+
+                    {/* CỘT 1: PHƯƠNG ÁN XỬ LÝ (TỪ SHEET GID 206722729) */}
+                    <td className="col-solution text-xs py-3 px-3">
+                      {item.solutionPlan ? (
+                        <div className="space-y-1.5">
+                          <div className="font-bold text-slate-800 leading-snug">
+                            {item.solutionPlan}
+                          </div>
+                          {item.assignedPerson && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              Người nhận: {item.assignedPerson}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        item.rating && item.rating <= 3 ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                              <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
+                              <span>Chờ đề xuất phương án</span>
+                            </span>
+                            {item.assignedPerson && (
+                              <div className="text-[10.5px] text-slate-500 font-medium">
+                                {item.assignedPerson} tiếp nhận
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs">—</span>
+                        )
+                      )}
+                    </td>
+
+                    {/* CỘT 2: TÌNH TRẠNG XỬ LÝ (TỪ SHEET GID 206722729) */}
+                    <td className="col-status text-xs py-3 px-3">
+                      {item.processStatus === 'Đã xử lý' ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>Đã xử lý</span>
+                          </span>
+                          {item.processResult ? (
+                            <p className="text-[11px] text-slate-700 leading-tight line-clamp-2" title={item.processResult}>
+                              {item.processResult}
+                            </p>
+                          ) : item.solutionPlan ? (
+                            <p className="text-[10.5px] text-emerald-800 font-medium leading-tight">
+                              ✓ {item.solutionPlan}
+                            </p>
+                          ) : null}
+                          {item.completedDate && (
+                            <div className="text-[10px] text-emerald-700 font-mono">
+                              Hoàn thành: {item.completedDate}
+                            </div>
+                          )}
+                        </div>
+                      ) : item.processStatus === 'Đang xử lý' ? (
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300">
+                            <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span>Đang xử lý</span>
+                          </span>
+                          {item.processResult ? (
+                            <p className="text-[11px] text-slate-700 leading-tight">
+                              {item.processResult}
+                            </p>
+                          ) : (
+                            <div className="text-[10px] text-blue-600 italic">
+                              Đang phối hợp thực hiện
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        item.rating && item.rating <= 3 ? (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                              <span>Chưa xử lý</span>
+                            </span>
+                            <div className="text-[10px] text-rose-600 font-medium">
+                              Cần xử lý &amp; ghi nhận
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            Đạt (Hài lòng)
+                          </span>
+                        )
                       )}
                     </td>
 

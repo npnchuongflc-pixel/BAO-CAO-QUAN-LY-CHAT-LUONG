@@ -3,7 +3,32 @@ import { SheetRowItem } from '../types';
 export const SPREADSHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
 export const SHEET_NAME = 'Zalo đánh giá';
 export const SOURCE_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?usp=sharing`;
+export const INCIDENT_SHEET_GID = '206722729';
+export const INCIDENT_SHEET_URL = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/edit?gid=${INCIDENT_SHEET_GID}#gid=${INCIDENT_SHEET_GID}`;
 export const MIN_RANK_REPLIES = 5;
+
+export interface IncidentResolutionItem {
+  rawName: string;
+  normName: string;
+  facility: string;
+  rating: number | null;
+  assignee: string;
+  solutionPlan: string;
+  processResult: string;
+  completedDate: string;
+  processStatus: 'Đã xử lý' | 'Đang xử lý' | 'Chưa xử lý';
+}
+
+export function normalizeStudentName(str: string): string {
+  if (!str) return '';
+  return str.toLowerCase()
+    .replace(/^ph\s*(bé)?:?\s*/i, '')
+    .replace(/^phụ\s*huynh\s*(bé)?:?\s*/i, '')
+    .replace(/^bé\s*:?\s*/i, '')
+    .replace(/[()\-–—_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export function parseString(cell: any): string {
   if (cell == null) return '';
@@ -85,7 +110,125 @@ export function parseTableRows(table: any): SheetRowItem[] {
   }).filter((item: SheetRowItem) => item.sentAt || item.responseAt);
 }
 
-export function fetchGoogleSheetData(): Promise<SheetRowItem[]> {
+export function parseIncidentTableRows(table: any): IncidentResolutionItem[] {
+  const rows = table?.rows ?? [];
+  return rows.map(({ c = [] }: any) => {
+    const rawName = parseString(c[5]);
+    const plan = parseString(c[8]);
+    const result = parseString(c[9]);
+    const completed = parseString(c[10]);
+    const assignee = parseString(c[7]);
+
+    // Trạng thái xử lý:
+    // 1. Nếu đã có phương án xử lý (plan) HOẶC kết quả (result) HOẶC ngày hoàn thành (completed) -> ĐÃ XỬ LÝ
+    // 2. Nếu chưa có phương án nhưng đã có người/bộ phận tiếp nhận (assignee) -> ĐANG XỬ LÝ
+    // 3. Nếu chưa có thông tin nào -> CHƯA XỬ LÝ
+    let processStatus: 'Đã xử lý' | 'Đang xử lý' | 'Chưa xử lý' = 'Chưa xử lý';
+    if (plan.trim() || result.trim() || completed.trim()) {
+      processStatus = 'Đã xử lý';
+    } else if (assignee.trim()) {
+      processStatus = 'Đang xử lý';
+    }
+
+    return {
+      rawName,
+      normName: normalizeStudentName(rawName),
+      facility: parseString(c[1]) || parseString(c[6]),
+      rating: Number(c[2]?.v ?? parseString(c[2])) || null,
+      assignee,
+      solutionPlan: plan,
+      processResult: result,
+      completedDate: completed,
+      processStatus
+    };
+  }).filter((item: IncidentResolutionItem) => item.rawName.length > 0);
+}
+
+export async function fetchIncidentResolutions(): Promise<IncidentResolutionItem[]> {
+  // 1. Thử qua backend proxy nội bộ trước (force=true để ép bypass cache khi có cập nhật mới)
+  try {
+    const res = await fetch(`/api/incident-data?force=true&t=${Date.now()}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.data?.table) {
+        return parseIncidentTableRows(json.data.table);
+      }
+    }
+  } catch (e) {
+    // tiếp tục fallback
+  }
+
+  // 2. Dự phòng: gọi trực tiếp Google Sheets GViz endpoint
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?gid=${INCIDENT_SHEET_GID}&tqx=out:json&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) {
+      const text = await res.text();
+      const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      const json = JSON.parse(jsonStr);
+      if (json?.table) {
+        return parseIncidentTableRows(json.table);
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi tải dữ liệu phương án xử lý (gid=206722729):', err);
+  }
+  return [];
+}
+
+export function mergeIncidentDataIntoFeedbacks(
+  feedbacks: SheetRowItem[],
+  incidents: IncidentResolutionItem[]
+): SheetRowItem[] {
+  return feedbacks.map((item) => {
+    const normStudent = normalizeStudentName(item.student);
+    const normCustomer = normalizeStudentName(item.customer);
+
+    const match = incidents.find((inc) => {
+      if (inc.normName === normStudent || inc.normName === normCustomer) return true;
+      if (normStudent && normStudent.length >= 3 && (inc.normName.includes(normStudent) || normStudent.includes(inc.normName))) return true;
+      if (normCustomer && normCustomer.length >= 3 && (inc.normName.includes(normCustomer) || normCustomer.includes(inc.normName))) return true;
+      return false;
+    });
+
+    if (match) {
+      // Khi đã có phương án xử lý hoặc kết quả xử lý thì luôn ghi nhận trạng thái là 'Đã xử lý'
+      let finalStatus: 'Đã xử lý' | 'Đang xử lý' | 'Chưa xử lý' = match.processStatus;
+      if (match.solutionPlan?.trim() || match.processResult?.trim() || match.completedDate?.trim()) {
+        finalStatus = 'Đã xử lý';
+      }
+
+      return {
+        ...item,
+        solutionPlan: match.solutionPlan || (match.assignee ? `${match.assignee} tiếp nhận` : ''),
+        processResult: match.processResult,
+        processStatus: finalStatus,
+        assignedPerson: match.assignee,
+        completedDate: match.completedDate,
+      };
+    }
+
+    // Với phản hồi ít sao (<= 3 sao) chưa được ghi nhận trên Sheet xử lý
+    if (item.rating && item.rating <= 3) {
+      return {
+        ...item,
+        solutionPlan: '',
+        processResult: '',
+        processStatus: 'Chưa xử lý',
+      };
+    }
+
+    // Mặc định phản hồi tốt (4 - 5 sao)
+    return {
+      ...item,
+      solutionPlan: 'Đạt tiêu chuẩn',
+      processResult: 'Hài lòng',
+      processStatus: 'Đã xử lý',
+    };
+  });
+}
+
+function fetchRawZaloFeedbacks(): Promise<SheetRowItem[]> {
   return new Promise((resolve, reject) => {
     const callbackName = `__zalo_cb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const script = document.createElement('script');
@@ -139,6 +282,15 @@ export function fetchGoogleSheetData(): Promise<SheetRowItem[]> {
     script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?sheet=${encodedSheet}&tqx=out:json;responseHandler:${callbackName}&tq=select%20A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P`;
     document.head.appendChild(script);
   });
+}
+
+export async function fetchGoogleSheetData(): Promise<SheetRowItem[]> {
+  const [feedbacks, incidents] = await Promise.all([
+    fetchRawZaloFeedbacks(),
+    fetchIncidentResolutions().catch(() => [] as IncidentResolutionItem[])
+  ]);
+
+  return mergeIncidentDataIntoFeedbacks(feedbacks, incidents);
 }
 
 export function formatNumber(val: number | null | undefined): string {

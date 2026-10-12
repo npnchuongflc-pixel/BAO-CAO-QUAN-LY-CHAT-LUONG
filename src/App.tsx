@@ -604,6 +604,7 @@ export default function App() {
                     <FeedbackTable
                       feedback={reportData.feedback}
                       onExportCsv={handleExportCsv}
+                      onRefresh={loadData}
                     />
                   </>
                 )

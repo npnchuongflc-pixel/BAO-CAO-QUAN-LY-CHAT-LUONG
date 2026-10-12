@@ -9,6 +9,12 @@ export interface SheetRowItem {
   detail: string;
   facility: string;
   subject: string;
+  // Dữ liệu từ Sheet xử lý phản hồi ít sao (GID 206722729)
+  solutionPlan?: string;     // Đề xuất hướng giải quyết / Phương án xử lý
+  processResult?: string;    // Kết quả xử lý
+  processStatus?: 'Đã xử lý' | 'Đang xử lý' | 'Chưa xử lý'; // Tình trạng xử lý
+  assignedPerson?: string;   // Người / bộ phận tiếp nhận (PKD, Trưởng nhóm cờ, Trưởng nhóm Vẽ)
+  completedDate?: string;    // Ngày hoàn thành
 }
 
 export interface FilterState {

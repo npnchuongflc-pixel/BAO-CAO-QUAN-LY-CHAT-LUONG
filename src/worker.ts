@@ -5,7 +5,7 @@ export interface Env {
 }
 
 const FACILITY_SHEET_ID = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
-const FEEDBACK_SHEET_ID = '1B2xR3L_Xm7rM92qYQxHk_0HlD8j8_t4_g7v7X2F4A';
+const FEEDBACK_SHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -85,6 +85,31 @@ export default {
     // Teaching Quality Google Sheets GViz proxy (gid=282336280)
     if (url.pathname === '/api/teaching-sheet-data') {
       const targetUrl = `https://docs.google.com/spreadsheets/d/${FEEDBACK_SHEET_ID}/gviz/tq?gid=282336280`;
+      try {
+        const upstream = await fetch(targetUrl);
+        const text = await upstream.text();
+        const jsonMatch = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?/);
+        if (jsonMatch && jsonMatch[1]) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          return new Response(JSON.stringify({ success: true, data: parsed }), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        return new Response(JSON.stringify({ success: false, error: 'Invalid GViz format' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ success: false, error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
+    // Incident Resolution Google Sheets GViz proxy (gid=206722729)
+    if (url.pathname === '/api/incident-data') {
+      const targetUrl = `https://docs.google.com/spreadsheets/d/${FEEDBACK_SHEET_ID}/gviz/tq?gid=206722729`;
       try {
         const upstream = await fetch(targetUrl);
         const text = await upstream.text();

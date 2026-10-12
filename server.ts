@@ -45,6 +45,10 @@ const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 let cachedTeachingData: any = null;
 let lastTeachingCacheTime = 0;
 
+// Cache for Incident Resolution Sheet data (gid=206722729)
+let cachedIncidentData: any = null;
+let lastIncidentCacheTime = 0;
+
 // Cache for the complete Facility Hygiene / Quality CSV exports.
 const facilitySheetCache = new Map<string, { csv: string; cachedAt: number }>();
 
@@ -110,6 +114,40 @@ app.get('/api/teaching-sheet-data', async (req, res) => {
       return res.json({ success: true, data: cachedTeachingData, cached: true, warning: 'Using stale cache' });
     }
     res.status(500).json({ success: false, error: err.message || 'Không thể tải Google Sheets Giám Sát Giảng Dạy' });
+  }
+});
+
+// Google Sheets Proxy API - Incident Resolution (gid=206722729)
+app.get('/api/incident-data', async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const now = Date.now();
+    if (!force && cachedIncidentData && (now - lastIncidentCacheTime < CACHE_TTL_MS)) {
+      return res.json({ success: true, data: cachedIncidentData, cached: true });
+    }
+
+    const sheetId = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
+    const gid = '206722729';
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${gid}&tqx=out:json`;
+    const response = await fetch(targetUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      throw new Error(`Google Sheets GViz responded with HTTP ${response.status}`);
+    }
+
+    const text = await response.text();
+    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    const parsed = JSON.parse(jsonStr);
+
+    cachedIncidentData = { table: parsed.table };
+    lastIncidentCacheTime = now;
+
+    res.json({ success: true, data: cachedIncidentData, cached: false });
+  } catch (err: any) {
+    console.error('Error fetching incident sheet data:', err);
+    if (cachedIncidentData) {
+      return res.json({ success: true, data: cachedIncidentData, cached: true, warning: 'Using stale cache' });
+    }
+    res.status(500).json({ success: false, error: err.message || 'Không thể tải Google Sheets Xử Lý Đánh Giá Ít Sao' });
   }
 });
 
