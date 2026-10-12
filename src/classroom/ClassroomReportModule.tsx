@@ -158,17 +158,11 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
               <h1 className="font-extrabold text-base md:text-lg text-white tracking-wide">
                 BÁO CÁO LỚP HỌC & ĐIỀU PHỐI CA DẠY
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#4CAF8A]/20 text-[#4CAF8A] border border-[#4CAF8A]/40 uppercase tracking-wider">
-                BAO-CAO-LOP-HOC
-              </span>
             </div>
-            <p className="text-xs text-slate-300 hidden sm:block">
-              Hệ thống điều phối 20 sheet, lịch ca dạy, trực ban &amp; danh bạ giáo viên CLB Cờ Vua Sài Gòn
-            </p>
           </div>
         </div>
 
-        {/* View Switcher Tabs & Links */}
+        {/* View Switcher Tabs */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Main Views Tabs */}
           <div className="bg-[#0d1b2a]/70 p-1 rounded-xl border border-[#1B5EA6]/60 flex items-center gap-1 shadow-inner">
@@ -211,44 +205,6 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
               <span>Trực Ban Tuần</span>
             </button>
           </div>
-
-          {/* Sync Button */}
-          <button
-            type="button"
-            onClick={handleLiveSync}
-            disabled={isSyncing}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#4CAF8A] hover:bg-[#439c7a] active:scale-95 text-slate-900 text-xs font-bold rounded-xl transition-all shadow-md shadow-[#4CAF8A]/20 cursor-pointer disabled:opacity-50"
-            title="Đồng bộ lại dữ liệu tức thì từ Google Sheets"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Đang tải...' : 'Đồng bộ'}</span>
-          </button>
-
-          {/* Direct Link to GitHub */}
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold rounded-xl border border-slate-600 transition-all shadow-sm cursor-pointer"
-            title="Mở kho mã nguồn báo cáo trên GitHub"
-          >
-            <Github className="w-3.5 h-3.5 text-violet-400" />
-            <span className="hidden md:inline">GitHub</span>
-            <ExternalLink className="w-3 h-3 text-slate-400" />
-          </a>
-
-          {/* Direct Link to Google Sheets Source */}
-          <a
-            href={GOOGLE_SHEET_SOURCE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1A3A5C] hover:bg-[#1B5EA6] text-slate-200 hover:text-white text-xs font-bold rounded-xl border border-[#1B5EA6]/60 transition-all shadow-sm cursor-pointer"
-            title="Mở Google Sheet gốc chứa 20 Tab điều phối"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-[#3EA8E0]" />
-            <span className="hidden md:inline">Google Sheet</span>
-            <ExternalLink className="w-3 h-3 text-slate-400" />
-          </a>
         </div>
       </header>
 
