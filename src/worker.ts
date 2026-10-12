@@ -127,6 +127,41 @@ export default {
       });
     }
 
+    // Classroom Report Live Sheet CSV Proxy (Cloudflare Edge Worker)
+    if (url.pathname === '/api/live-sheet') {
+      const gid = url.searchParams.get('gid') || '';
+      const spreadsheetId = url.searchParams.get('spreadsheetId') || '1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE';
+      if (!gid) {
+        return new Response(JSON.stringify({ error: 'Missing gid parameter' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+      try {
+        const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${encodeURIComponent(gid)}&t=${Date.now()}`;
+        const upstream = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+        });
+        const csvText = await upstream.text();
+        return new Response(csvText, {
+          status: upstream.status,
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=60',
+          },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+
     // Static Assets fallback for SPA
     return env.ASSETS.fetch(request);
   },

@@ -11,9 +11,6 @@ coverage/
 .openai/
 upload/
 
-# Private Google Sheets snapshots used only by the preview environment
-public/data/
-
 # Netlify local state (the production configuration stays in netlify.toml)
 .netlify/
 

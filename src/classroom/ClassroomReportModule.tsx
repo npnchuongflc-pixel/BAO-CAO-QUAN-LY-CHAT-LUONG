@@ -58,25 +58,85 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
   const [teacherChanges, setTeacherChanges] = useState<TeacherChangeRecord[]>(() => getStoredTeacherChanges());
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadData = async () => {
+      let loadedData: SpreadsheetData | null = null;
+
+      // Tier 1: Thử gọi API proxy nội bộ /api/all-sheets
       try {
-        let res = await fetch(`/api/all-sheets?t=${Date.now()}`);
-        if (!res.ok) {
-          res = await fetch(`/data/all_sheets.json?t=${Date.now()}`);
+        const res = await fetch(`/api/all-sheets?t=${Date.now()}`);
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json && json.sheets && Object.keys(json.sheets).length > 0) {
+            loadedData = json as SpreadsheetData;
+          }
         }
-        if (!res.ok) {
-          throw new Error('Không thể tải dữ liệu lớp học');
+      } catch (e) {
+        // Tiếp tục thử các nguồn dự phòng tiếp theo
+      }
+
+      // Tier 2: Thử tải file tĩnh /data/all_sheets.json
+      if (!loadedData) {
+        try {
+          const res = await fetch(`/data/all_sheets.json?t=${Date.now()}`);
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.includes('application/json')) {
+            const json = await res.json();
+            if (json && json.sheets && Object.keys(json.sheets).length > 0) {
+              loadedData = json as SpreadsheetData;
+            }
+          }
+        } catch (e) {
+          // Tiếp tục thử bundled module
         }
-        const jsonData: SpreadsheetData = await res.json();
-        setData(jsonData);
-        setLastSyncTime(new Date().toLocaleTimeString('vi-VN'));
-      } catch (err) {
-        console.warn('Lỗi tải dữ liệu ban đầu, dùng fallback:', err);
-      } finally {
+      }
+
+      // Tier 3: Nhập dữ liệu đóng gói tĩnh sẵn trong bundle (chạy hoàn hảo 100% trên Cloudflare Workers/Pages)
+      if (!loadedData) {
+        try {
+          const bundledModule = await import('./data/defaultSheetsData.json');
+          const defaultData = (bundledModule.default || bundledModule) as unknown as SpreadsheetData;
+          if (defaultData && defaultData.sheets && Object.keys(defaultData.sheets).length > 0) {
+            loadedData = defaultData;
+          }
+        } catch (bundleErr) {
+          console.warn('Lỗi tải bundled fallback data:', bundleErr);
+        }
+      }
+
+      // Tier 4: Nếu cả 3 nguồn trên đều không có, tự động đồng bộ trực tiếp từ Google Sheets công khai
+      if (!loadedData) {
+        try {
+          const initialSkeleton: SpreadsheetData = {
+            spreadsheetId: '1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE',
+            sheets: {},
+            sheetList: []
+          };
+          const { updatedData } = await syncLiveSheetsFromLink(initialSkeleton, DAYS_CONFIG);
+          if (updatedData && Object.keys(updatedData.sheets).length > 0) {
+            loadedData = updatedData;
+          }
+        } catch (syncErr) {
+          console.error('Lỗi tự động fetch Google Sheets live:', syncErr);
+        }
+      }
+
+      if (isMounted) {
+        if (loadedData) {
+          setData(loadedData);
+          setLastSyncTime(new Date().toLocaleTimeString('vi-VN'));
+        }
         setLoading(false);
       }
     };
+
     loadData();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Tính toán dynamic ngày tháng theo từng sheet thực tế
@@ -107,10 +167,15 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
 
   // Hàm đồng bộ trực tiếp song song từ Google Sheets
   const handleLiveSync = async () => {
-    if (!data || isSyncing) return;
+    if (isSyncing) return;
     setIsSyncing(true);
     try {
-      const { updatedData, syncedCount } = await syncLiveSheetsFromLink(data, daysConfig, selectedDayConfig);
+      const baseData: SpreadsheetData = data || {
+        spreadsheetId: '1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE',
+        sheets: {},
+        sheetList: []
+      };
+      const { updatedData, syncedCount } = await syncLiveSheetsFromLink(baseData, daysConfig, selectedDayConfig);
       if (syncedCount > 0) {
         setData(updatedData);
         setLastSyncTime(new Date().toLocaleTimeString('vi-VN'));
@@ -128,6 +193,27 @@ export const ClassroomReportModule: React.FC<ClassroomReportModuleProps> = ({ on
         <RefreshCw className="w-10 h-10 animate-spin text-[#3EA8E0]" />
         <h3 className="text-lg font-bold">Đang tải Báo Cáo Lớp Học & Điều Phối Ca Dạy...</h3>
         <p className="text-sm text-slate-400">Đang khởi tạo 20 Sheet điều phối CLB Cờ Vua Sài Gòn</p>
+      </div>
+    );
+  }
+
+  if (!data || Object.keys(data.sheets || {}).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[500px] bg-[#0d1b2a] text-white rounded-2xl p-8 space-y-4 shadow-xl text-center border border-slate-700/60">
+        <RefreshCw className="w-12 h-12 text-[#3EA8E0]" />
+        <h3 className="text-lg font-bold">Đang chuẩn bị dữ liệu lớp học</h3>
+        <p className="text-sm text-slate-400 max-w-md">
+          Chưa nhận được phản hồi dữ liệu ban đầu. Vui lòng nhấn nút bên dưới để tải trực tiếp từ Google Sheets.
+        </p>
+        <button
+          type="button"
+          onClick={handleLiveSync}
+          disabled={isSyncing}
+          className="px-5 py-2.5 bg-[#4CAF8A] hover:bg-[#439c7a] text-slate-900 font-bold rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          <span>{isSyncing ? 'Đang tải dữ liệu...' : 'Tải lại dữ liệu Google Sheets'}</span>
+        </button>
       </div>
     );
   }
