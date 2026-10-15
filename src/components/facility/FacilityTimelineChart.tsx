@@ -109,8 +109,8 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
     }>();
 
     // Pre-populate date range if tuNgay and denNgay are set and <= 31 days apart
-    const startIso = normalizeDateToIso(filters.tuNgay);
-    const endIso = normalizeDateToIso(filters.denNgay);
+    const startIso = filters.tuNgay ? normalizeDateToIso(filters.tuNgay) : null;
+    const endIso = filters.denNgay ? normalizeDateToIso(filters.denNgay) : null;
 
     if (startIso && endIso) {
       const dStart = new Date(startIso);

@@ -108,6 +108,22 @@ export async function sendGmailReminder(payload: SendEmailPayload): Promise<{ id
   return await res.json();
 }
 
+export function buildUrgentEmailSubject({
+  item,
+  departmentName,
+}: {
+  item: SheetRowItem;
+  departmentName?: string;
+}): string {
+  const rating = item.rating ?? 1;
+  const tag = rating <= 1 ? '[XỬ LÝ GẤP 24H' : rating <= 2 ? '[CẦN XỬ LÝ' : '[THEO DÕI';
+  const deptSuffix = departmentName ? ` ➔ ${departmentName}` : '';
+  const facility = item.facility || 'Cơ sở';
+  const student = item.student ? `Bé ${item.student}` : 'Học viên';
+  const subjectName = item.subject || 'Lớp học';
+  return `${tag} - RATING ${rating}★] CS ${facility} | ${student} (${subjectName})${deptSuffix}`;
+}
+
 export function generateUrgentFeedbackHtml({
   item,
   departmentName,
@@ -122,98 +138,267 @@ export function generateUrgentFeedbackHtml({
   senderIdentity?: string;
 }): string {
   const feedbackText = item.detail && item.detail.trim().length > 0 
-    ? item.detail 
-    : 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết.';
+    ? item.detail.trim() 
+    : 'Phụ huynh chỉ gửi rating đánh giá, chưa để lại lời nhận xét chi tiết. Đề nghị bộ phận tiếp nhận liên hệ trực tiếp để lắng nghe ý kiến phản hồi.';
+
+  const rating = item.rating ?? 1;
+  const isCritical = rating <= 1;
+  const isWarning = rating === 2;
+
+  // Star visualization
+  const ratingStars = '★'.repeat(Math.max(1, Math.min(5, rating))) + '☆'.repeat(Math.max(0, 5 - rating));
+
+  // Dynamic Theme Colors
+  const headerGradient = isCritical
+    ? 'linear-gradient(135deg, #7F1D1D 0%, #B91C1C 50%, #DC2626 100%)'
+    : isWarning
+    ? 'linear-gradient(135deg, #9A3412 0%, #C2410C 50%, #EA580C 100%)'
+    : 'linear-gradient(135deg, #1E293B 0%, #1E3A8A 50%, #2563EB 100%)';
+
+  const badgeColor = isCritical ? '#DC2626' : isWarning ? '#EA580C' : '#2563EB';
+  const badgeBg = isCritical ? '#FEF2F2' : isWarning ? '#FFF7ED' : '#EFF6FF';
+  const badgeBorder = isCritical ? '#FECACA' : isWarning ? '#FFEDD5' : '#BFDBFE';
+
+  const urgencyLabel = isCritical
+    ? '⚡ XỬ LÝ GẤP TRONG VÒNG 24 GIỜ'
+    : isWarning
+    ? '⚠️ CẦN XÁC MINH & XỬ LÝ (24H - 48H)'
+    : '📌 THEO DÕI & HỖ TRỢ PHỤ HUYNH';
+
+  // Process Status badge
+  const processStatus = item.processStatus || (item.solutionPlan ? 'Đang xử lý' : 'Chưa xử lý');
+  const isResolved = processStatus === 'Đã xử lý';
+  const isInProgress = processStatus === 'Đang xử lý';
+
+  const statusBg = isResolved ? '#ECFDF5' : isInProgress ? '#FFFBEB' : '#FEF2F2';
+  const statusColor = isResolved ? '#047857' : isInProgress ? '#B45309' : '#B91C1C';
+  const statusBorder = isResolved ? '#A7F3D0' : isInProgress ? '#FDE68A' : '#FECACA';
+  const statusIcon = isResolved ? '✓' : isInProgress ? '⏳' : '⚠️';
+
+  const sheetUrl = 'https://docs.google.com/spreadsheets/d/1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo/edit?gid=206722729#gid=206722729';
 
   return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 650px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-      <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: #ffffff; padding: 20px 24px;">
-        <h2 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">
-          ⚠️ THÔNG BÁO XỬ LÝ GẤP PHẢN HỒI ĐÁNH GIÁ THẤP (${item.rating}★)
-        </h2>
-        <p style="margin: 0; font-size: 13px; opacity: 0.9;">
-          Hệ thống Giám sát & Quản lý Chất lượng Saigon Academy
-        </p>
-      </div>
-      
-      <div style="padding: 24px; background-color: #ffffff;">
-        <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
-          <p style="margin: 0; font-size: 14px; color: #991b1b; font-weight: 700;">
-            Chỉ định bộ phận xử lý: <u>${departmentName}</u>
-          </p>
-          <p style="margin: 4px 0 0 0; font-size: 12px; color: #b91c1c;">
-            Nhiệm vụ: ${roleDescription}
-          </p>
-        </div>
+    <div style="margin: 0; padding: 24px 8px; background-color: #F1F5F9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1E293B; -webkit-font-smoothing: antialiased;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width: 640px; width: 100%; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04); border: 1px solid #E2E8F0; border-collapse: separate;">
+        
+        <!-- HEADER BANNER -->
+        <tr>
+          <td style="background: ${headerGradient}; color: #FFFFFF; padding: 28px 30px; text-align: left;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td>
+                  <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: rgba(255, 255, 255, 0.85); margin-bottom: 6px;">
+                    CLB CỜ VUA SÀI GÒN &amp; SÀI GÒN ART • QUẢN LÝ CHẤT LƯỢNG
+                  </div>
+                  <h1 style="margin: 0 0 10px 0; font-size: 20px; font-weight: 900; letter-spacing: -0.3px; line-height: 1.35; color: #FFFFFF;">
+                    ⚠️ THÔNG BÁO XỬ LÝ PHẢN HỒI ĐÁNH GIÁ ${rating}★
+                  </h1>
+                  <div style="display: inline-block; background-color: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.35); padding: 5px 14px; border-radius: 20px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; color: #FFFFFF;">
+                    ${urgencyLabel}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-        <h3 style="font-size: 15px; color: #0f172a; margin: 0 0 12px 0; border-bottom: 2px solid #f1f5f9; padding-bottom: 6px;">
-          📌 Chi Tiết Lớp Học & Phản Hồi Từ Phụ Huynh
-        </h3>
+        <!-- MAIN BODY CONTENT -->
+        <tr>
+          <td style="padding: 26px 30px;">
 
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
-          <tbody>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; width: 140px; font-weight: 600;">Cơ sở:</td>
-              <td style="padding: 8px 0; color: #0f172a; font-weight: 700;">${item.facility}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Môn học & Khóa:</td>
-              <td style="padding: 8px 0; color: #0f172a;">${item.subject} (${item.course})</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Học viên:</td>
-              <td style="padding: 8px 0; color: #0f172a; font-weight: 700;">${item.student}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Phụ huynh:</td>
-              <td style="padding: 8px 0; color: #0f172a;">${item.customer || 'Theo thông tin học viên'}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Thời gian đánh giá:</td>
-              <td style="padding: 8px 0; color: #0f172a;">${formatDate(item.responseAt, true)}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #f1f5f9;">
-              <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Đánh giá (Rating):</td>
-              <td style="padding: 8px 0;">
-                <span style="display: inline-block; background-color: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 14px; padding: 2px 10px; border-radius: 9999px; border: 1px solid #fca5a5;">
-                  ${item.rating} ★ (Mức báo động)
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+            <!-- PHÂN CÔNG BỘ PHẬN TIẾP NHẬN -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #F8FAFC; border-left: 4px solid ${badgeColor}; border-top: 1px solid #E2E8F0; border-right: 1px solid #E2E8F0; border-bottom: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 22px;">
+              <tr>
+                <td style="padding: 14px 18px;">
+                  <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; color: #64748B; letter-spacing: 0.8px; margin-bottom: 3px;">
+                    ĐƠN VỊ TIẾP NHẬN &amp; CHỦ TRÌ XỬ LÝ
+                  </div>
+                  <div style="font-size: 15px; font-weight: 800; color: #0F172A;">
+                    Bộ phận: <span style="color: ${badgeColor};">${departmentName}</span>
+                  </div>
+                  <div style="font-size: 12px; color: #475569; margin-top: 2px;">
+                    ${roleDescription}
+                  </div>
+                </td>
+              </tr>
+            </table>
 
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
-          <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 6px;">
-            💬 Nội Dung Phản Ánh Của Phụ Huynh:
-          </div>
-          <div style="font-size: 14px; color: #0f172a; font-style: italic; background-color: #ffffff; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
-            "${feedbackText}"
-          </div>
-        </div>
+            <!-- BẢNG TÓM TẮT THÔNG TIN HỌC VIÊN & LỚP HỌC -->
+            <div style="margin-bottom: 22px;">
+              <div style="font-size: 11.5px; font-weight: 800; text-transform: uppercase; color: #475569; letter-spacing: 0.6px; margin-bottom: 8px; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px;">
+                📌 THÔNG TIN HỌC VIÊN &amp; LỚP HỌC
+              </div>
 
-        ${customNote ? `
-          <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
-            <div style="font-size: 12px; font-weight: 700; color: #b45309; text-transform: uppercase; margin-bottom: 6px;">
-              📝 Ghi Chú Chỉ Đạo Bổ Sung:
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse: separate; border-spacing: 0; font-size: 13px; border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden;">
+                <tr>
+                  <td style="padding: 10px 14px; background-color: #F8FAFC; color: #64748B; font-weight: 600; width: 34%; border-bottom: 1px solid #E2E8F0;">
+                    Học viên:
+                  </td>
+                  <td style="padding: 10px 14px; background-color: #FFFFFF; color: #0F172A; font-weight: 800; border-bottom: 1px solid #E2E8F0;">
+                    ${item.student}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; background-color: #F8FAFC; color: #64748B; font-weight: 600; border-bottom: 1px solid #E2E8F0;">
+                    Phụ huynh:
+                  </td>
+                  <td style="padding: 10px 14px; background-color: #FFFFFF; color: #0F172A; font-weight: 600; border-bottom: 1px solid #E2E8F0;">
+                    ${item.customer || 'Theo thông tin học viên'}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; background-color: #F8FAFC; color: #64748B; font-weight: 600; border-bottom: 1px solid #E2E8F0;">
+                    Cơ sở &amp; Bộ môn:
+                  </td>
+                  <td style="padding: 10px 14px; background-color: #FFFFFF; color: #0F172A; font-weight: 700; border-bottom: 1px solid #E2E8F0;">
+                    ${item.facility} • Môn ${item.subject} (${item.course})
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; background-color: #F8FAFC; color: #64748B; font-weight: 600; border-bottom: 1px solid #E2E8F0;">
+                    Thời gian phản hồi:
+                  </td>
+                  <td style="padding: 10px 14px; background-color: #FFFFFF; color: #334155; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; border-bottom: 1px solid #E2E8F0;">
+                    ${formatDate(item.responseAt, true)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 14px; background-color: #F8FAFC; color: #64748B; font-weight: 600;">
+                    Đánh giá (Rating):
+                  </td>
+                  <td style="padding: 10px 14px; background-color: #FFFFFF;">
+                    <span style="display: inline-block; background-color: ${badgeBg}; color: ${badgeColor}; font-weight: 900; font-size: 13.5px; padding: 3px 12px; border-radius: 9999px; border: 1px solid ${badgeBorder};">
+                      ${ratingStars} (${rating}/5 sao)
+                    </span>
+                  </td>
+                </tr>
+              </table>
             </div>
-            <div style="font-size: 13px; color: #78350f;">
-              ${customNote.replace(/\n/g, '<br/>')}
-            </div>
-          </div>
-        ` : ''}
 
-        <div style="border-top: 1px dashed #cbd5e1; padding-top: 16px; margin-top: 20px; font-size: 12px; color: #64748b;">
-          <p style="margin: 0 0 4px 0;"><strong>⚠️ Đề nghị hành động:</strong></p>
-          <ul style="margin: 4px 0 12px 20px; padding: 0;">
-            <li>Liên hệ xác minh tình hình với phụ huynh / giáo viên trong vòng <strong>24 giờ</strong>.</li>
-            <li>Đề xuất giải pháp khắc phục và cập nhật trạng thái lên nhóm Quản lý Chất lượng.</li>
-          </ul>
-          <p style="margin: 0; font-size: 11px; color: #94a3b8;">
-            Email được gửi tự động từ Dashboard Quản Lý Chất Lượng (${SYSTEM_SENDER_EMAIL})${senderIdentity ? ` theo yêu cầu của ${senderIdentity}` : ''}.
-          </p>
-        </div>
-      </div>
+            <!-- Ý KIẾN PHẢN ÁNH CỦA PHỤ HUYNH -->
+            <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 18px; margin-bottom: 22px;">
+              <div style="font-size: 11px; font-weight: 800; color: #991B1B; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">
+                💬 NỘI DUNG PHẢN ÁNH NGUYÊN VĂN TỪ PHỤ HUYNH:
+              </div>
+              <div style="font-size: 14.5px; color: #7F1D1D; font-style: italic; background-color: #FFFFFF; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #DC2626; line-height: 1.55; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);">
+                "${feedbackText}"
+              </div>
+            </div>
+
+            <!-- TÌNH TRẠNG & PHƯƠNG ÁN XỬ LÝ TRÊN SHEET -->
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 18px; margin-bottom: 22px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <div style="font-size: 11px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.6px;">
+                      📋 TÌNH TRẠNG &amp; PHƯƠNG ÁN XỬ LÝ (SHEET SỰ VỤ)
+                    </div>
+                  </td>
+                  <td align="right" style="vertical-align: middle;">
+                    <span style="display: inline-block; background-color: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder}; padding: 3px 10px; border-radius: 9999px; font-size: 11.5px; font-weight: 800;">
+                      ${statusIcon} ${processStatus}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #CBD5E1;">
+                ${item.solutionPlan ? `
+                  <div style="font-size: 13.5px; font-weight: 700; color: #0F172A; line-height: 1.5; margin-bottom: 6px;">
+                    Phương án đã đề xuất: <span style="color: #1E40AF;">${item.solutionPlan}</span>
+                  </div>
+                  ${item.assignedPerson ? `
+                    <div style="font-size: 12px; color: #475569; margin-bottom: 4px;">
+                      👤 Nhân sự tiếp nhận: <strong>${item.assignedPerson}</strong>
+                    </div>
+                  ` : ''}
+                  ${item.processResult ? `
+                    <div style="font-size: 12.5px; color: #047857; font-weight: 600; margin-top: 4px;">
+                      ✓ Kết quả xử lý: <strong>${item.processResult}</strong>
+                    </div>
+                  ` : ''}
+                ` : `
+                  <div style="font-size: 13px; color: #991B1B; font-style: italic; background-color: #FEF2F2; padding: 10px 12px; border-radius: 6px; border: 1px dashed #FCA5A5;">
+                    ⚠️ Chưa ghi nhận phương án trên Sheet. Đề nghị bộ phận tiếp nhận khẩn trương liên hệ và đưa ra phương án xử lý kịp thời.
+                  </div>
+                `}
+              </div>
+            </div>
+
+            <!-- CHỈ ĐẠO CỤ THỂ TỪ BAN QUẢN LÝ (NẾU CÓ) -->
+            ${customNote ? `
+              <div style="background-color: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 16px 18px; margin-bottom: 22px;">
+                <div style="font-size: 11px; font-weight: 800; color: #92400E; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">
+                  📝 CHỈ ĐẠO CỤ THỂ TỪ BAN QUẢN LÝ / ĐIỀU PHỐI:
+                </div>
+                <div style="font-size: 13.5px; color: #78350F; font-weight: 600; line-height: 1.55;">
+                  ${customNote.replace(/\n/g, '<br/>')}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- QUY TRÌNH HÀNH ĐỘNG 3 BƯỚC CHO BỘ PHẬN TIẾP NHẬN -->
+            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px 18px; margin-bottom: 24px;">
+              <div style="font-size: 11px; font-weight: 800; color: #0F172A; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
+                ⚡ QUY TRÌNH 3 BƯỚC XỬ LÝ BẮT BUỘC
+              </div>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-size: 12.5px; color: #334155; line-height: 1.5;">
+                <tr>
+                  <td style="vertical-align: top; width: 26px; font-weight: 900; color: ${badgeColor}; padding-bottom: 8px;">1.</td>
+                  <td style="padding-bottom: 8px;">
+                    <strong>Xác minh trong vòng 24 giờ:</strong> Liên hệ phụ huynh và giáo viên/quản lý cơ sở để lắng nghe, làm rõ nguyên nhân.
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align: top; width: 26px; font-weight: 900; color: ${badgeColor}; padding-bottom: 8px;">2.</td>
+                  <td style="padding-bottom: 8px;">
+                    <strong>Đề xuất giải pháp khắc phục:</strong> Trao đổi chân thành, đưa ra phương án hỗ trợ chu đáo nhằm tạo sự an tâm và hài lòng cho gia đình.
+                  </td>
+                </tr>
+                <tr>
+                  <td style="vertical-align: top; width: 26px; font-weight: 900; color: ${badgeColor};">3.</td>
+                  <td>
+                    <strong>Cập nhật Bảng theo dõi:</strong> Điền phương án &amp; kết quả xử lý vào Sheet sự vụ để Ban Quản lý nghiệm thu và đóng vụ việc.
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- NÚT CTA TRUY CẬP TRỰC TIẾP SHEET SỰ VỤ -->
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 10px auto 10px auto;">
+              <tr>
+                <td align="center" style="border-radius: 10px; background-color: #0F172A;">
+                  <a 
+                    href="${sheetUrl}" 
+                    target="_blank" 
+                    style="display: inline-block; padding: 13px 26px; font-size: 13px; font-weight: 800; color: #FFFFFF; text-decoration: none; border-radius: 10px; letter-spacing: 0.3px;"
+                  >
+                    📊 Mở Bảng Theo Dõi Xử Lý Sự Vụ Trên Sheet ➔
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+          </td>
+        </tr>
+
+        <!-- FOOTER BRANDING -->
+        <tr>
+          <td style="background-color: #F8FAFC; border-top: 1px solid #E2E8F0; padding: 20px 30px; text-align: center; font-size: 11.5px; color: #64748B;">
+            <div style="font-weight: 800; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+              HỆ THỐNG QUẢN LÝ CHẤT LƯỢNG — CLB CỜ VUA SÀI GÒN &amp; SÀI GÒN ART
+            </div>
+            <div style="margin-bottom: 6px;">
+              Hộp thư điều phối chính thức: <a href="mailto:${SYSTEM_SENDER_EMAIL}" style="color: #0F172A; font-weight: 700; text-decoration: none; font-family: ui-monospace, Menlo, Consolas, monospace;">${SYSTEM_SENDER_EMAIL}</a>
+              ${senderIdentity ? ` • Người gửi: <strong>${senderIdentity}</strong>` : ''}
+            </div>
+            <div style="font-size: 11px; color: #94A3B8; font-style: italic;">
+              * Thông tin nội bộ phục vụ công tác nâng cao chất lượng dịch vụ và chăm sóc học viên.
+            </div>
+          </td>
+        </tr>
+
+      </table>
     </div>
   `;
 }
@@ -230,31 +415,55 @@ export function generateUrgentFeedbackPlainText({
   customNote?: string;
 }): string {
   const feedbackText = item.detail && item.detail.trim().length > 0 
-    ? item.detail 
-    : 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết.';
+    ? item.detail.trim() 
+    : 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết. Đề nghị bộ phận tiếp nhận liên hệ trực tiếp để lắng nghe ý kiến.';
 
-  return `⚠️ THÔNG BÁO XỬ LÝ GẤP PHẢN HỒI ĐÁNH GIÁ THẤP (${item.rating}★)
-Hệ thống Giám sát & Quản lý Chất lượng Saigon Academy
+  const rating = item.rating ?? 1;
+  const isCritical = rating <= 1;
+  const ratingStars = '★'.repeat(Math.max(1, Math.min(5, rating))) + '☆'.repeat(Math.max(0, 5 - rating));
+  const processStatus = item.processStatus || (item.solutionPlan ? 'Đang xử lý' : 'Chưa xử lý');
 
-- Chỉ định bộ phận xử lý: ${departmentName}
+  return `======================================================================
+⚠️ THÔNG BÁO XỬ LÝ PHẢN HỒI ĐÁNH GIÁ ${rating}★ (${ratingStars})
+CLB CỜ VUA SÀI GÒN & SÀI GÒN ART • QUẢN LÝ CHẤT LƯỢNG
+Thời hạn: ${isCritical ? '⚡ XỬ LÝ GẤP TRONG VÒNG 24 GIỜ' : '⚠️ CẦN XÁC MINH & HỖ TRỢ (24H - 48H)'}
+======================================================================
+
+🏢 ĐƠN VỊ TIẾP NHẬN:
+- Bộ phận: ${departmentName}
 - Nhiệm vụ: ${roleDescription}
 
-📌 CHI TIẾT LỚP HỌC & PHẢN HỒI TỪ PHỤ HUYNH:
+📌 THÔNG TIN HỌC VIÊN & LỚP HỌC:
+- Học viên: ${item.student}
+- Phụ huynh: ${item.customer || 'Theo thông tin học viên'}
 - Cơ sở: ${item.facility}
-- Môn học & Khóa: ${item.subject} (${item.course})
-- Học viên: ${item.student} ${item.customer ? `(PH: ${item.customer})` : ''}
-- Thời gian đánh giá: ${formatDate(item.responseAt, true)}
-- Đánh giá (Rating): ${item.rating}★ (Mức báo động)
+- Môn học & Khóa: Môn ${item.subject} (${item.course})
+- Thời gian gửi: ${formatDate(item.responseAt, true)}
+- Điểm đánh giá: ${ratingStars} (${rating}/5 sao)
 
-💬 NỘI DUNG PHẢN ÁNH CỦA PHỤ HUYNH:
+💬 NỘI DUNG PHẢN ÁNH TỪ PHỤ HUYNH:
 "${feedbackText}"
 
-${customNote ? `📝 GHI CHÚ CHỈ ĐẠO BỔ SUNG:\n${customNote}\n\n` : ''}⚠️ ĐỀ NGHỊ HÀNH ĐỘNG:
-1. Liên hệ xác minh tình hình với phụ huynh / giáo viên trong vòng 24 giờ.
-2. Đề xuất giải pháp khắc phục và cập nhật trạng thái lên nhóm Quản lý Chất lượng.
+📋 TÌNH TRẠNG & PHƯƠNG ÁN XỬ LÝ (SHEET SỰ VỤ):
+- Tình trạng: ${processStatus}
+${item.solutionPlan ? `- Phương án đã đề xuất: ${item.solutionPlan}` : '- Chưa ghi nhận phương án trên Sheet sự vụ (Cần lên phương án gấp)'}
+${item.assignedPerson ? `- Nhân sự tiếp nhận: ${item.assignedPerson}` : ''}
+${item.processResult ? `- Kết quả xử lý: ${item.processResult}` : ''}
+${customNote ? `
+📝 CHỈ ĐẠO CỤ THỂ TỪ BAN QUẢN LÝ:
+${customNote}
+` : ''}
+⚡ QUY TRÌNH 3 BƯỚC XỬ LÝ BẮT BUỘC:
+1. Xác minh trong vòng 24 giờ: Liên hệ phụ huynh và giáo viên/cơ sở để lắng nghe và làm rõ nguyên nhân.
+2. Đề xuất giải pháp khắc phục: Đưa ra phương án hỗ trợ chu đáo để tạo sự an tâm và hài lòng cho gia đình.
+3. Cập nhật Bảng theo dõi: Điền phương án & kết quả xử lý vào Sheet sự vụ để Ban Quản lý nghiệm thu.
 
----
-Email được gửi từ Ban Quản Lý Chất Lượng (${SYSTEM_SENDER_EMAIL}).`;
+📊 Link Sheet theo dõi sự vụ:
+https://docs.google.com/spreadsheets/d/1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo/edit?gid=206722729#gid=206722729
+
+----------------------------------------------------------------------
+Ban Quản Lý Chất Lượng Hệ Thống (${SYSTEM_SENDER_EMAIL})
+* Thông tin nội bộ phục vụ công tác chăm sóc và nâng cao chất lượng học viên.`;
 }
 
 export function buildGmailComposeUrl({

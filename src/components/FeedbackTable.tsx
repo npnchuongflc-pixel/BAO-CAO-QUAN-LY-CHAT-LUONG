@@ -14,6 +14,7 @@ import { User } from 'firebase/auth';
 import { 
   sendGmailReminder, 
   generateUrgentFeedbackHtml, 
+  buildUrgentEmailSubject,
   SYSTEM_SENDER_NAME 
 } from '../services/gmailService';
 import { 
@@ -216,7 +217,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
 
     setSendingRowKey(rowKey);
     try {
-      const subject = `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`;
+      const subject = buildUrgentEmailSubject({ item, departmentName: dept.name });
       const htmlBody = generateUrgentFeedbackHtml({
         item,
         departmentName: dept.name,

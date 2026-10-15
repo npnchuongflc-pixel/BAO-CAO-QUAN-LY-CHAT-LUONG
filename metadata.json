@@ -1,6 +1,6 @@
 {
-  "name": "BÁO CÁO QUẢN LÝ CHẤT LƯỢNG",
-  "description": "Dashboard Báo Cáo Quản Lý Chất Lượng - Theo dõi phản hồi phụ huynh, giám sát chất lượng giảng dạy và vệ sinh cơ sở.",
+  "name": "Báo Cáo & Quản Lý Đề Xuất Cơ Sở Vật Chất",
+  "description": "Báo cáo phân tích chuyên sâu các chỉ số đề xuất sửa chữa, bảo trì, phê duyệt và quản lý kinh phí cơ sở vật chất theo từng chi nhánh.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

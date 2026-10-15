@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SheetRowItem } from '../types';
 import { formatDate } from '../services/sheetService';
 import { 
   sendGmailReminder, 
   buildGmailComposeUrl, 
+  generateUrgentFeedbackHtml,
   generateUrgentFeedbackPlainText, 
-  SYSTEM_SENDER_NAME 
+  buildUrgentEmailSubject,
+  SYSTEM_SENDER_NAME,
+  SYSTEM_SENDER_EMAIL
 } from '../services/gmailService';
 import { 
   googleSignIn, 
@@ -26,7 +29,14 @@ import {
   BookOpen, 
   ShieldAlert, 
   Loader2,
-  LogOut
+  LogOut,
+  Eye,
+  Settings,
+  Copy,
+  Check,
+  ExternalLink,
+  Sparkles,
+  FileText
 } from 'lucide-react';
 
 export interface DepartmentOption {
@@ -34,7 +44,7 @@ export interface DepartmentOption {
   name: string;
   defaultEmail: string;
   roleDescription: string;
-  color: string;
+  color: 'emerald' | 'blue' | 'amber' | 'purple';
 }
 
 export const DEPARTMENTS: DepartmentOption[] = [
@@ -94,7 +104,9 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
 
   const [toEmail, setToEmail] = useState<string>(selectedDept.defaultEmail);
   const [customNote, setCustomNote] = useState<string>('');
-  
+  const [activeTab, setActiveTab] = useState<'compose' | 'preview'>('compose');
+  const [copiedType, setCopiedType] = useState<'html' | 'text' | null>(null);
+
   // Auth & Sending State
   const [currentUser, setCurrentUser] = useState<User | null>(getCurrentUser());
   const [hasToken, setHasToken] = useState<boolean>(false);
@@ -138,105 +150,44 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
     setHasToken(false);
   };
 
-  // Build subject and body
-  const subject = `[XỬ LÝ GẤP - RATING ${item.rating || '1'}★] Cảnh báo chất lượng cơ sở ${item.facility} (${item.subject}) - PH bé ${item.student}`;
+  // Standardized subject line using helper
+  const subject = useMemo(() => {
+    return buildUrgentEmailSubject({
+      item,
+      departmentName: selectedDept.name,
+    });
+  }, [item, selectedDept.name]);
 
-  const generateHtmlBody = () => {
-    const feedbackText = item.detail && item.detail.trim().length > 0 
-      ? item.detail 
-      : 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết.';
+  // Generate standardized, executive HTML email body
+  const htmlBody = useMemo(() => {
+    return generateUrgentFeedbackHtml({
+      item,
+      departmentName: selectedDept.name,
+      roleDescription: selectedDept.roleDescription,
+      customNote: customNote.trim() || undefined,
+      senderIdentity: currentUser?.email || TARGET_SENDER_EMAIL,
+    });
+  }, [item, selectedDept, customNote, currentUser]);
 
-    return `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 650px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-        <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: #ffffff; padding: 20px 24px;">
-          <h2 style="margin: 0 0 6px 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">
-            ⚠️ THÔNG BÁO XỬ LÝ GẤP PHẢN HỒI ĐÁNH GIÁ THẤP (${item.rating}★)
-          </h2>
-          <p style="margin: 0; font-size: 13px; opacity: 0.9;">
-            Hệ thống Giám sát & Quản lý Chất lượng Saigon Academy
-          </p>
-        </div>
-        
-        <div style="padding: 24px; background-color: #ffffff;">
-          <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
-            <p style="margin: 0; font-size: 14px; color: #991b1b; font-weight: 700;">
-              Chỉ định bộ phận xử lý: <u>${selectedDept.name}</u>
-            </p>
-            <p style="margin: 4px 0 0 0; font-size: 12px; color: #b91c1c;">
-              Nhiệm vụ: ${selectedDept.roleDescription}
-            </p>
-          </div>
+  // Generate plain text body for fallback / copy
+  const plainTextBody = useMemo(() => {
+    return generateUrgentFeedbackPlainText({
+      item,
+      departmentName: selectedDept.name,
+      roleDescription: selectedDept.roleDescription,
+      customNote: customNote.trim() || undefined,
+    });
+  }, [item, selectedDept, customNote]);
 
-          <h3 style="font-size: 15px; color: #0f172a; margin: 0 0 12px 0; border-bottom: 2px solid #f1f5f9; padding-bottom: 6px;">
-            📌 Chi Tiết Lớp Học & Phản Hồi Từ Phụ Huynh
-          </h3>
-
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
-            <tbody>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; width: 140px; font-weight: 600;">Cơ sở:</td>
-                <td style="padding: 8px 0; color: #0f172a; font-weight: 700;">${item.facility}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Môn học & Khóa:</td>
-                <td style="padding: 8px 0; color: #0f172a;">${item.subject} (${item.course})</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Học viên:</td>
-                <td style="padding: 8px 0; color: #0f172a; font-weight: 700;">${item.student}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Phụ huynh:</td>
-                <td style="padding: 8px 0; color: #0f172a;">${item.customer || 'Theo thông tin học viên'}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Thời gian đánh giá:</td>
-                <td style="padding: 8px 0; color: #0f172a;">${formatDate(item.responseAt, true)}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #f1f5f9;">
-                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Đánh giá (Rating):</td>
-                <td style="padding: 8px 0;">
-                  <span style="display: inline-block; background-color: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 14px; padding: 2px 10px; border-radius: 9999px; border: 1px solid #fca5a5;">
-                    ${item.rating} ★ (Mức báo động)
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
-            <div style="font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 6px;">
-              💬 Nội Dung Phản Ánh Của Phụ Huynh:
-            </div>
-            <div style="font-size: 14px; color: #0f172a; font-style: italic; background-color: #ffffff; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
-              "${feedbackText}"
-            </div>
-          </div>
-
-          ${customNote ? `
-            <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
-              <div style="font-size: 12px; font-weight: 700; color: #b45309; text-transform: uppercase; margin-bottom: 6px;">
-                📝 Ghi Chú Chỉ Đạo Bổ Sung:
-              </div>
-              <div style="font-size: 13px; color: #78350f;">
-                ${customNote.replace(/\n/g, '<br/>')}
-              </div>
-            </div>
-          ` : ''}
-
-          <div style="border-top: 1px dashed #cbd5e1; padding-top: 16px; margin-top: 20px; font-size: 12px; color: #64748b;">
-            <p style="margin: 0 0 4px 0;"><strong>⚠️ Đề nghị hành động:</strong></p>
-            <ul style="margin: 4px 0 12px 20px; padding: 0;">
-              <li>Liên hệ xác minh tình hình với phụ huynh / giáo viên trong vòng <strong>24 giờ</strong>.</li>
-              <li>Đề xuất giải pháp khắc phục và cập nhật trạng thái lên nhóm Quản lý Chất lượng.</li>
-            </ul>
-            <p style="margin: 0; font-size: 11px; color: #94a3b8;">
-              Email được gửi tự động từ Dashboard Quản Lý Chất Lượng theo yêu cầu của <strong>${currentUser?.email || TARGET_SENDER_EMAIL}</strong>.
-            </p>
-          </div>
-        </div>
-      </div>
-    `;
+  const handleCopy = async (type: 'html' | 'text') => {
+    try {
+      const content = type === 'html' ? htmlBody : plainTextBody;
+      await navigator.clipboard.writeText(content);
+      setCopiedType(type);
+      setTimeout(() => setCopiedType(null), 2500);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleSendEmail = async () => {
@@ -267,7 +218,6 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
         setHasToken(true);
       }
 
-      const htmlBody = generateHtmlBody();
       await sendGmailReminder({
         to: toEmail.trim(),
         subject,
@@ -297,17 +247,10 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
       return;
     }
 
-    const bodyText = generateUrgentFeedbackPlainText({
-      item,
-      departmentName: selectedDept.name,
-      roleDescription: selectedDept.roleDescription,
-      customNote: customNote.trim() || undefined,
-    });
-
     const composeUrl = buildGmailComposeUrl({
       to: toEmail.trim(),
       subject,
-      bodyText,
+      bodyText: plainTextBody,
     });
 
     window.open(composeUrl, '_blank', 'noopener,noreferrer');
@@ -320,239 +263,383 @@ export const EmailReminderModal: React.FC<EmailReminderModalProps> = ({
     onClose();
   };
 
+  const rating = item.rating ?? 1;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto">
       <div 
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl my-8 overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-6 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
-        <div className="bg-gradient-to-r from-rose-600 via-rose-700 to-red-700 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shadow-xs">
+        {/* Modal Top Header */}
+        <div className="bg-gradient-to-r from-rose-700 via-red-600 to-rose-800 text-white p-5 flex items-center justify-between shrink-0 shadow-sm">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center shadow-inner shrink-0 border border-white/20">
               <ShieldAlert className="w-6 h-6 text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold tracking-tight">
-                  Gửi Email Thông Báo Xử Lý Gấp (Rating {item.rating}★)
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-extrabold tracking-tight truncate">
+                  Gửi Email Thông Báo Xử Lý Phản Hồi ({rating}★)
                 </h3>
-                <span className="text-[10px] font-black uppercase bg-white/20 text-white px-2 py-0.5 rounded-full">
-                  Khẩn Cấp
+                <span className="text-[10px] font-black uppercase bg-white/20 text-white px-2 py-0.5 rounded-full border border-white/30 shrink-0">
+                  {rating <= 1 ? 'Khẩn Cấp 24H' : 'Cần Xử Lý'}
                 </span>
               </div>
-              <p className="text-xs text-rose-100 mt-0.5">
-                Gửi email trực tiếp qua Gmail API đến bộ phận chuyên trách để hỗ trợ phụ huynh
+              <p className="text-xs text-rose-100 mt-0.5 truncate">
+                Định dạng chuẩn executive gửi đến các bộ phận chuyên trách ({selectedDept.name})
               </p>
             </div>
           </div>
+
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer shrink-0 ml-2"
+            title="Đóng cửa sổ"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
-          {/* Target class info card */}
-          <div className="bg-rose-50/60 border border-rose-200 rounded-xl p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-black text-rose-800 bg-rose-200/70 px-2 py-0.5 rounded">
-                    {item.rating} ★ ĐÁNH GIÁ THẤP
-                  </span>
-                  <span className="text-xs font-bold text-slate-700">
-                    {item.facility} · Môn {item.subject}
-                  </span>
-                </div>
-                <h4 className="text-sm font-extrabold text-slate-900">
-                  Học viên: {item.student} {item.customer ? `(PH: ${item.customer})` : ''}
-                </h4>
-                <div className="text-xs text-slate-600 mt-1 flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    {formatDate(item.responseAt, true)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                    {item.course}
-                  </span>
-                </div>
-              </div>
-            </div>
+        {/* Tab Switcher */}
+        <div className="flex items-center justify-between px-6 bg-slate-100/90 border-b border-slate-200 shrink-0">
+          <div className="flex items-center gap-2 py-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('compose')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'compose'
+                  ? 'bg-white text-rose-700 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Thiết lập &amp; Người nhận</span>
+            </button>
 
-            {/* Content text */}
-            <div className="mt-3 bg-white p-3 rounded-lg border border-rose-200/60 text-xs text-slate-800">
-              <span className="font-bold text-slate-600 block mb-0.5">Nội dung phản ánh:</span>
-              <p className="italic text-slate-900 font-medium">
-                "{item.detail || 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết.'}"
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('preview')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'preview'
+                  ? 'bg-white text-rose-700 shadow-xs border border-slate-200/80'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>👁️ Xem trước nội dung Email</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            </button>
           </div>
 
-          {/* Department selection */}
-          <div className="space-y-2">
-            <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <Building2 className="w-4 h-4 text-rose-600" />
-              1. Chọn bộ phận phụ trách xử lý
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {DEPARTMENTS.map((dept) => {
-                const isSelected = dept.id === selectedDeptId;
-                return (
-                  <button
-                    key={dept.id}
-                    type="button"
-                    onClick={() => setSelectedDeptId(dept.id)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? 'border-rose-600 bg-rose-50/80 ring-2 ring-rose-500/30 shadow-2xs'
-                        : 'border-slate-200 bg-white hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold text-slate-900">
-                        {dept.name}
-                      </span>
-                      {isSelected && (
-                        <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0" />
-                      )}
-                    </div>
-                    <div className="font-mono text-[10.5px] text-rose-700 font-bold mt-1 break-all">
-                      {dept.defaultEmail}
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">
-                      {dept.roleDescription}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Recipient email & Custom note */}
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Địa chỉ email người nhận (Bộ phận {selectedDept.name}):
-              </label>
-              <input
-                type="email"
-                value={toEmail}
-                onChange={(e) => setToEmail(e.target.value)}
-                placeholder="Nhập địa chỉ email nhận thông báo..."
-                className="w-full text-xs font-mono bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Ghi chú / Chỉ đạo bổ sung gửi kèm (tùy chọn):
-              </label>
-              <textarea
-                rows={2}
-                value={customNote}
-                onChange={(e) => setCustomNote(e.target.value)}
-                placeholder="Ví dụ: Đề nghị quản lý cơ sở gọi điện ngay trong sáng nay, kiểm tra camera tiết học và báo cáo lại trước 15h..."
-                className="w-full text-xs bg-white border border-slate-300 rounded-lg p-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-          </div>
-
-          {/* Sender & Google Account Connection */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-            <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-rose-600 shrink-0" />
-                <span className="font-bold text-slate-700">Tài khoản gửi:</span>
-                <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                  {currentUser?.email || TARGET_SENDER_EMAIL}
-                </span>
-              </div>
-
-              {currentUser && hasToken ? (
-                <div className="flex items-center gap-2.5">
-                  <div className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Đã kết nối: <strong>{currentUser.email}</strong></span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleLogoutGoogle}
-                    className="text-xs text-slate-500 hover:text-rose-600 font-semibold flex items-center gap-1 cursor-pointer"
-                    title="Đổi tài khoản Google khác"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Đổi tài khoản</span>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleLoginGoogle}
-                  disabled={isLoggingIn}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-2 shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
-                  title="Đăng nhập tài khoản Google để cấp quyền gửi email qua Gmail API"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                  </svg>
-                  <span>{isLoggingIn ? 'Đang kết nối Google…' : `Đăng nhập ${TARGET_SENDER_EMAIL}`}</span>
-                </button>
-              )}
-            </div>
-
-            {!hasToken && (
-              <p className="text-[11px] text-slate-500 italic">
-                * Nhấn "Đăng nhập {TARGET_SENDER_EMAIL}" để cấp quyền gửi email trực tiếp qua Gmail API.
-              </p>
-            )}
-          </div>
-
-          {errorMsg && (
-            <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
+          {activeTab === 'preview' && (
+            <div className="flex items-center gap-1.5 py-2">
               <button
                 type="button"
-                onClick={handleOpenGmailWeb}
-                className="px-2.5 py-1 bg-white hover:bg-slate-50 text-rose-700 border border-rose-300 rounded text-[11px] font-bold shrink-0 cursor-pointer"
-                title="Mở thư đã soạn sẵn trên web Gmail để gửi thủ công"
+                onClick={() => handleCopy('html')}
+                className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-all flex items-center gap-1 cursor-pointer"
+                title="Sao chép toàn bộ mã HTML của Email"
               >
-                Mở web Gmail
+                {copiedType === 'html' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedType === 'html' ? 'Đã chép HTML' : 'Chép HTML'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCopy('text')}
+                className="px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-white border border-slate-200 rounded-md hover:bg-slate-50 transition-all flex items-center gap-1 cursor-pointer"
+                title="Sao chép nội dung văn bản thuần"
+              >
+                {copiedType === 'text' ? <Check className="w-3 h-3 text-emerald-600" /> : <FileText className="w-3 h-3" />}
+                <span>{copiedType === 'text' ? 'Đã chép văn bản' : 'Chép văn bản'}</span>
               </button>
             </div>
           )}
         </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+        {/* Modal Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-white">
+          {activeTab === 'compose' ? (
+            <>
+              {/* Target Class Info Summary Card */}
+              <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 transition-all">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="text-xs font-black text-rose-800 bg-rose-100 border border-rose-200 px-2 py-0.5 rounded">
+                        {rating} ★ ĐÁNH GIÁ THẤP
+                      </span>
+                      <span className="text-xs font-bold text-slate-800">
+                        {item.facility} · Môn {item.subject}
+                      </span>
+                      {item.processStatus && (
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                          item.processStatus === 'Đã xử lý'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : item.processStatus === 'Đang xử lý'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-rose-50 text-rose-700 border-rose-200'
+                        }`}>
+                          {item.processStatus}
+                        </span>
+                      )}
+                    </div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      Học viên: {item.student} {item.customer ? `(PH: ${item.customer})` : ''}
+                    </h4>
+                    <div className="text-xs text-slate-600 mt-1 flex items-center gap-3 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {formatDate(item.responseAt, true)}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                        {item.course}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Content text */}
+                <div className="mt-3 bg-white p-3 rounded-lg border border-slate-200 text-xs text-slate-800">
+                  <span className="font-bold text-slate-600 block mb-0.5">💬 Phản ánh của Phụ huynh:</span>
+                  <p className="italic text-rose-950 font-medium bg-rose-50/50 p-2 rounded border-l-2 border-rose-500">
+                    "{item.detail || 'Phụ huynh chỉ gửi rating đánh giá, chưa có nội dung chi tiết.'}"
+                  </p>
+                </div>
+
+                {/* Solution on sheet if present */}
+                {item.solutionPlan && (
+                  <div className="mt-2.5 bg-blue-50/70 border border-blue-200 rounded-lg p-2.5 text-xs">
+                    <span className="font-bold text-blue-900 block mb-0.5">📋 Phương án đã ghi nhận trên Sheet:</span>
+                    <p className="text-blue-950 font-medium">✓ {item.solutionPlan}</p>
+                    {item.assignedPerson && (
+                      <span className="text-[11px] text-blue-700 mt-0.5 block">Nhân sự tiếp nhận: <strong>{item.assignedPerson}</strong></span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Department selection */}
+              <div className="space-y-2">
+                <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-rose-600" />
+                  1. Chọn bộ phận phụ trách xử lý
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {DEPARTMENTS.map((dept) => {
+                    const isSelected = dept.id === selectedDeptId;
+                    return (
+                      <button
+                        key={dept.id}
+                        type="button"
+                        onClick={() => setSelectedDeptId(dept.id)}
+                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer relative ${
+                          isSelected
+                            ? 'border-rose-600 bg-rose-50/80 ring-2 ring-rose-500/30 shadow-xs'
+                            : 'border-slate-200 bg-white hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-slate-900">
+                            {dept.name}
+                          </span>
+                          {isSelected && (
+                            <CheckCircle2 className="w-4 h-4 text-rose-600 shrink-0" />
+                          )}
+                        </div>
+                        <div className="font-mono text-[11px] text-rose-700 font-bold mt-1 break-all">
+                          {dept.defaultEmail}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                          {dept.roleDescription}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Recipient email & Custom note */}
+              <div className="space-y-3 pt-1">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Địa chỉ email người nhận (Bộ phận {selectedDept.name}):
+                    </label>
+                    <span className="text-[11px] text-slate-400">Có thể chỉnh sửa hoặc thêm email</span>
+                  </div>
+                  <input
+                    type="email"
+                    value={toEmail}
+                    onChange={(e) => setToEmail(e.target.value)}
+                    placeholder="Nhập địa chỉ email nhận thông báo..."
+                    className="w-full text-xs font-mono bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Chỉ đạo cụ thể / Ghi chú bổ sung gửi kèm (tùy chọn):
+                    </label>
+                    <span className="text-[11px] text-amber-700 font-medium">Sẽ được format trang trọng trong email</span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={customNote}
+                    onChange={(e) => setCustomNote(e.target.value)}
+                    placeholder="Ví dụ: Đề nghị quản lý cơ sở gọi điện ngay trong sáng nay, kiểm tra camera tiết học và cập nhật tiến độ trước 15h..."
+                    className="w-full text-xs bg-white border border-slate-300 rounded-lg p-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+              </div>
+
+              {/* Subject line preview banner */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1">
+                <div className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wide">
+                  Tiêu đề email sẽ gửi:
+                </div>
+                <div className="font-mono text-xs font-bold text-slate-900 break-all bg-white p-2 rounded border border-slate-200">
+                  {subject}
+                </div>
+              </div>
+
+              {/* Sender & Google Account Connection */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span className="font-bold text-slate-700">Hộp thư gửi:</span>
+                    <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                      {currentUser?.email || TARGET_SENDER_EMAIL}
+                    </span>
+                  </div>
+
+                  {currentUser && hasToken ? (
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1.5 text-emerald-800 font-bold bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-full text-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Đã kết nối: <strong>{currentUser.email}</strong></span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleLogoutGoogle}
+                        className="text-xs text-slate-500 hover:text-rose-600 font-semibold flex items-center gap-1 cursor-pointer"
+                        title="Đổi tài khoản Google khác"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Đổi tài khoản</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleLoginGoogle}
+                      disabled={isLoggingIn}
+                      className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 flex items-center gap-2 shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
+                      title="Đăng nhập tài khoản Google để cấp quyền gửi email qua Gmail API"
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                      </svg>
+                      <span>{isLoggingIn ? 'Đang kết nối Google…' : `Đăng nhập ${TARGET_SENDER_EMAIL}`}</span>
+                    </button>
+                  )}
+                </div>
+
+                {!hasToken && (
+                  <p className="text-[11px] text-slate-500 italic">
+                    * Nhấn "Đăng nhập {TARGET_SENDER_EMAIL}" để cấp quyền gửi email trực tiếp qua Gmail API.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            /* Live Email Preview Tab */
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-500">Tiêu đề:</span>
+                    <span className="font-bold text-slate-900">{subject}</span>
+                  </div>
+                  <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    <span>Giao diện chuẩn Gmail Responsive</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 text-slate-600 flex-wrap">
+                  <div>
+                    <span className="text-slate-400">Từ:</span> <strong>{SYSTEM_SENDER_NAME} &lt;{currentUser?.email || TARGET_SENDER_EMAIL}&gt;</strong>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Đến:</span> <strong>{selectedDept.name} &lt;{toEmail}&gt;</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rendered HTML Container */}
+              <div className="border border-slate-300 rounded-xl overflow-hidden shadow-inner bg-slate-100 p-2 sm:p-4">
+                <div 
+                  className="bg-white rounded-xl shadow-xs overflow-hidden mx-auto max-w-[640px]"
+                  dangerouslySetInnerHTML={{ __html: htmlBody }} 
+                />
+              </div>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl text-xs space-y-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1.5 flex-1">
+                  <p className="font-bold text-rose-900 leading-snug">
+                    {errorMsg}
+                  </p>
+                  <p className="text-slate-600 leading-relaxed text-[11.5px]">
+                    💡 <strong>Cách gửi nhanh nhất (Không cần cấu hình):</strong> Bạn chỉ cần nhấn nút <strong>"Mở web Gmail &amp; Gửi ngay"</strong> bên dưới. Trình duyệt sẽ mở sẵn một tab Gmail với đầy đủ người nhận, tiêu đề và chi tiết học viên để bạn bấm Gửi ngay.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-rose-200/80">
+                <button
+                  type="button"
+                  onClick={handleOpenGmailWeb}
+                  className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+                  title="Mở thư đã soạn sẵn trên giao diện web Gmail"
+                >
+                  <Mail className="w-4 h-4 text-white" />
+                  <span>Mở web Gmail &amp; Gửi ngay</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Modal Footer Controls */}
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap shrink-0">
           <button
             type="button"
             onClick={onClose}
             disabled={isSending || isLoggingIn}
             className="px-4 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
-            Hủy bỏ
+            Đóng
           </button>
 
           <div className="flex items-center gap-2.5 flex-wrap">
-            {/* Fallback Gmail web compose (optional button) */}
+            {/* Fallback Gmail web compose button */}
             <button
               type="button"
               onClick={handleOpenGmailWeb}
               className="px-3.5 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
               title="Mở thư đã soạn sẵn trên giao diện web Gmail"
             >
-              <Mail className="w-3.5 h-3.5 text-slate-600" />
+              <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
               <span>Mở bản nháp web Gmail</span>
             </button>
 

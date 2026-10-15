@@ -145,7 +145,8 @@ export const TeacherViolationDetailModal: React.FC<TeacherViolationDetailModalPr
   // Essential summary stats for active period
   const teacherProfile = useMemo(() => {
     if (!teacherAuditsInPeriod.length && !teacherName) return null;
-    const first = teacherAuditsInPeriod[0] || allData.find((i) => i.teacherName?.toLowerCase().trim() === teacherName.toLowerCase().trim());
+    const targetName = teacherName?.toLowerCase().trim() ?? '';
+    const first = teacherAuditsInPeriod[0] || allData.find((i) => (i.teacherName?.toLowerCase().trim() ?? '') === targetName);
     const facilities = Array.from(new Set(teacherAuditsInPeriod.map((i) => i.facility).filter(Boolean)));
     const subject = first?.subject || 'Cờ';
     const rank = first?.teacherRank || 'Bậc GV';

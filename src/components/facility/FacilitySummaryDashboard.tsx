@@ -59,7 +59,7 @@ export const FacilitySummaryDashboard: React.FC<FacilitySummaryDashboardProps> =
     name: s.coSo.replace('Cơ sở ', 'CS').split(' - ')[0] || s.coSo,
     fullName: s.coSo,
     soLan: s.soLanThucHien,
-    rate: mode === 'hygiene' ? parseFloat(s.diemTrungBinh.toFixed(1)) : parseFloat(s.tyLeDaXuLy.toFixed(1)),
+    rate: mode === 'hygiene' ? parseFloat((s.diemTrungBinh ?? 0).toFixed(1)) : parseFloat((s.tyLeDaXuLy ?? 0).toFixed(1)),
   }));
 
   return (
@@ -218,7 +218,7 @@ export const FacilitySummaryDashboard: React.FC<FacilitySummaryDashboardProps> =
                 <div className="text-right flex items-center gap-1.5 shrink-0">
                   <div>
                     <span className="text-xs font-black text-slate-800">
-                      {mode === 'hygiene' ? `${fac.diemTrungBinh.toFixed(0)}đ` : `${fac.tyLeDaXuLy.toFixed(0)}%`}
+                      {mode === 'hygiene' ? `${(fac.diemTrungBinh ?? 0).toFixed(0)}đ` : `${(fac.tyLeDaXuLy ?? 0).toFixed(0)}%`}
                     </span>
                   </div>
                   <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-blue-600 transition-colors" />
@@ -279,28 +279,28 @@ export const FacilitySummaryDashboard: React.FC<FacilitySummaryDashboardProps> =
                   <td className="py-3 px-4 text-center font-bold">
                     {mode === 'hygiene' ? (
                       <span className={`px-2 py-0.5 rounded-md ${
-                        fac.diemTrungBinh >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        fac.diemTrungBinh >= 70 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                        (fac.diemTrungBinh ?? 0) >= 85 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        (fac.diemTrungBinh ?? 0) >= 70 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                         fac.soLanThucHien === 0 ? 'text-slate-400' : 'bg-rose-50 text-rose-700 border border-rose-200'
                       }`}>
-                        {fac.soLanThucHien > 0 ? `${fac.diemTrungBinh.toFixed(1)} đ` : 'Chưa có'}
+                        {fac.soLanThucHien > 0 ? `${(fac.diemTrungBinh ?? 0).toFixed(1)} đ` : 'Chưa có'}
                       </span>
                     ) : (
                       <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md">
-                        {fac.soLanThucHien > 0 ? `${fac.tyLeDaXuLy.toFixed(1)}%` : 'Chưa có'}
+                        {fac.soLanThucHien > 0 ? `${(fac.tyLeDaXuLy ?? 0).toFixed(1)}%` : 'Chưa có'}
                       </span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-center">
                     {mode === 'hygiene' ? (
                       <span className="text-slate-700 font-semibold">
-                        {fac.soLanThucHien > 0 ? `${fac.tyLeDat.toFixed(1)}%` : '-'}
+                        {fac.soLanThucHien > 0 ? `${(fac.tyLeDat ?? 0).toFixed(1)}%` : '-'}
                       </span>
                     ) : (
                       <span className={`px-2 py-0.5 rounded-md font-bold ${
-                        fac.soSuCo > 0 ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'text-slate-400'
+                        (fac.soSuCo ?? 0) > 0 ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'text-slate-400'
                       }`}>
-                        {fac.soSuCo} sự cố
+                        {fac.soSuCo ?? 0} sự cố
                       </span>
                     )}
                   </td>

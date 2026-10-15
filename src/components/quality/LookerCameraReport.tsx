@@ -438,7 +438,7 @@ export const LookerCameraReport: React.FC<LookerCameraReportProps> = ({
 
     const validDates = rawData
       .map((item) => item.date)
-      .filter((date): date is Date => Boolean(date) && !Number.isNaN(date.getTime()));
+      .filter((date): date is Date => date != null && !Number.isNaN(date.getTime()));
     if (validDates.length === 0) return 'Toàn bộ thời gian';
 
     const firstDate = new Date(Math.min(...validDates.map((date) => date.getTime())));

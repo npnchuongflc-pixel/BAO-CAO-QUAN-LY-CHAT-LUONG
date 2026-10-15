@@ -32,6 +32,16 @@ const facilitySheetProxy = {
   },
 };
 
+const proposalsProxy = {
+  target: 'https://docs.google.com',
+  changeOrigin: true,
+  secure: true,
+  followRedirects: true,
+  rewrite: () => {
+    return `/spreadsheets/d/1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY/gviz/tq?tqx=out:json&gid=169229004`;
+  },
+};
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -80,6 +90,7 @@ export default defineConfig(() => {
       // Proxy Google Sheets CSV data in development.
       proxy: {
         '/api/facility-sheet-data': facilitySheetProxy,
+        '/api/proposals-sheet': proposalsProxy,
       },
 
       // Preserve AI Studio HMR configuration.

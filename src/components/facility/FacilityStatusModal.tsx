@@ -131,11 +131,11 @@ export const FacilityStatusModal: React.FC<FacilityStatusModalProps> = ({
 
                         {isHygiene ? (
                           <div className="font-semibold text-slate-700">
-                            Đạt: <span className="text-emerald-700 font-bold">{rate.toFixed(0)}%</span> • TB: <span className="text-amber-800 font-bold font-mono">{item.diemTrungBinh.toFixed(0)} đ</span>
+                            Đạt: <span className="text-emerald-700 font-bold">{rate.toFixed(0)}%</span> • TB: <span className="text-amber-800 font-bold font-mono">{(item.diemTrungBinh ?? 0).toFixed(0)} đ</span>
                           </div>
                         ) : (
                           <div className="font-semibold text-slate-700">
-                            Xử lý: <span className="text-emerald-700 font-bold">{rate.toFixed(0)}%</span> • Sự cố: <span className={item.soSuCo > 0 ? 'text-rose-700 font-bold font-mono' : 'text-slate-500'}>{item.soSuCo}</span>
+                            Xử lý: <span className="text-emerald-700 font-bold">{rate.toFixed(0)}%</span> • Sự cố: <span className={(item.soSuCo ?? 0) > 0 ? 'text-rose-700 font-bold font-mono' : 'text-slate-500'}>{item.soSuCo ?? 0}</span>
                           </div>
                         )}
                       </div>

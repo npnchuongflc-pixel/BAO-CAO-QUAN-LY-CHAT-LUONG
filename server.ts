@@ -37,6 +37,47 @@ app.get('/api/health', (req, res) => {
 });
 
 // Cache for Google Sheet data
+// Cache for Proposals Sheet data (gid=169229004)
+let cachedProposalData: any = null;
+let lastProposalCacheTime = 0;
+
+// Google Sheets Proxy API - Proposals & Facility Repair (gid=169229004)
+app.get('/api/proposals-sheet', async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const now = Date.now();
+    if (!force && cachedProposalData && (now - lastProposalCacheTime < CACHE_TTL_MS)) {
+      return res.json({ success: true, table: cachedProposalData.table, cached: true });
+    }
+
+    const sheetId = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
+    const gid = '169229004';
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gid}`;
+
+    const response = await fetch(targetUrl);
+    if (!response.ok) {
+      if (cachedProposalData) {
+        return res.json({ success: true, table: cachedProposalData.table, cached: true, warning: 'Stale cache' });
+      }
+      return res.status(502).json({ success: false, error: 'Google Sheet returned ' + response.status });
+    }
+
+    const text = await response.text();
+    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    const parsed = JSON.parse(jsonStr);
+
+    cachedProposalData = parsed;
+    lastProposalCacheTime = now;
+
+    res.json({ success: true, table: parsed.table, cached: false });
+  } catch (err: any) {
+    if (cachedProposalData) {
+      return res.json({ success: true, table: cachedProposalData.table, cached: true });
+    }
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 let cachedSheetData: any = null;
 let lastCacheTime = 0;
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
