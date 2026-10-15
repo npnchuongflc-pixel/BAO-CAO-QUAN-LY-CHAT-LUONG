@@ -1,27 +1,89 @@
 /**
- * Đồng bộ dữ liệu trực tiếp 100% từ Sheet "ĐỀ XUẤT" trong Google Spreadsheet.
- * Trích xuất đầy đủ các mốc thời gian: Ngày đề xuất, Ngày kiểm duyệt, và Ngày hoàn thành.
+ * Đồng bộ dữ liệu trực tiếp 100% từ Sheet "ĐỀ XUẤT" (gid=169229004).
+ * Link trang tính: docs.google.com/spreadsheets/d/1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY/edit?pli=1&gid=169229004
  */
 
 import { ProposalItem } from '../types/proposal';
 import { INITIAL_PROPOSALS } from '../data/proposalsData';
 
 export const GOOGLE_SHEET_ID = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
+export const TARGET_GID = '169229004';
 export const TARGET_SHEET_NAME = 'ĐỀ XUẤT';
+
+// Parse approval date/time from column 13: "THÔNG BÁO ĐẾN BỘ PHẬN SỬA CHỮA"
+export function parseApprovalDate(thongBao: string): string {
+  if (!thongBao) return '';
+  const m = thongBao.match(/(\d{1,2}\/\d{1,2}),?\s*(\d{1,2}:\d{2})/);
+  if (m) {
+    const [_, dayMonth, time] = m;
+    return `${dayMonth}/2026 ${time}`;
+  }
+  return '';
+}
+
+// Parse repair date from image timestamp or approval context
+export function parseRepairDate(
+  trangThaiSuaChua: string,
+  anhSau: string,
+  thongBaoDuyet: string,
+  ngayDeXuat: string
+): string {
+  if (!trangThaiSuaChua.toLowerCase().includes('xong')) return '';
+  if (anhSau) {
+    const m = anhSau.match(/_(\d{13})_/);
+    if (m) {
+      const dt = new Date(parseInt(m[1], 10));
+      const pad = (n: number) => String(n).padStart(2, '0');
+      // Format to Vietnam time DD/MM/YYYY HH:mm
+      return `${pad(dt.getDate())}/${pad(dt.getMonth() + 1)}/2026 ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    }
+  }
+  const appDate = parseApprovalDate(thongBaoDuyet);
+  if (appDate) return appDate.split(' ')[0];
+  return ngayDeXuat;
+}
+
+// Parse cost from column 19: "CHI PHÍ KHẮC PHỤC / MUA MỚI"
+export function parseCost(costStr: string): number | null {
+  if (!costStr) return null;
+  const clean = costStr.replace(/[^0-9]/g, '');
+  if (clean === '') return null;
+  return parseInt(clean, 10);
+}
 
 export async function fetchLiveProposalsFromSheet(): Promise<ProposalItem[]> {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(TARGET_SHEET_NAME)}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn('Không thể tải từ Google Sheets live, dùng dữ liệu chuẩn bị sẵn.');
-      return INITIAL_PROPOSALS;
-    }
-    const text = await res.text();
-    const jsonStr = text.replace(/^[^{]*(\{[\s\S]*\})[^}]*$/, '$1');
-    const json = JSON.parse(jsonStr);
+    let json: any = null;
 
-    if (!json.table || !json.table.rows) {
+    // 1. Thử fetch trực tiếp từ Google Sheets gviz API với cache-busting timestamp
+    try {
+      const url = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&gid=${TARGET_GID}&_t=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        const jsonStr = text.replace(/^[^{]*(\{[\s\S]*\})[^}]*$/, '$1');
+        json = JSON.parse(jsonStr);
+      }
+    } catch (directErr) {
+      console.warn('Direct fetch from Google Sheets encountered an issue, trying backend proxy...', directErr);
+    }
+
+    // 2. Dự phòng: Nếu fetch trực tiếp bị CORS hoặc chặn mạng, gọi qua proxy server
+    if (!json || !json.table || !json.table.rows) {
+      try {
+        const proxyRes = await fetch(`/api/proposals-sheet?force=true&_t=${Date.now()}`, { cache: 'no-store' });
+        if (proxyRes.ok) {
+          const proxyData = await proxyRes.json();
+          if (proxyData && proxyData.table && proxyData.table.rows) {
+            json = proxyData;
+          }
+        }
+      } catch (proxyErr) {
+        console.warn('Proxy fetch also encountered an issue:', proxyErr);
+      }
+    }
+
+    if (!json || !json.table || !json.table.rows || json.table.rows.length === 0) {
       return INITIAL_PROPOSALS;
     }
 
@@ -32,95 +94,71 @@ export async function fetchLiveProposalsFromSheet(): Promise<ProposalItem[]> {
         return String(cell.f !== undefined && cell.f !== null ? cell.f : (cell.v || '')).trim();
       };
 
-      const rawMucDo = getVal(5);
-      const mucDo: 'Hư hỏng nặng' | 'Hư hỏng' = rawMucDo.toLowerCase().includes('nặng')
-        ? 'Hư hỏng nặng'
-        : 'Hư hỏng';
-
-      const rawDeXuat = getVal(7);
-      const deXuat: 'Cần sửa chữa' | 'Thay mới hoàn toàn' = rawDeXuat.toLowerCase().includes('thay mới')
-        ? 'Thay mới hoàn toàn'
-        : 'Cần sửa chữa';
-
+      const id = `DX-${String(idx + 1).padStart(3, '0')}`;
+      const ngayDeXuat = getVal(0) || '28/09/2026';
+      const gio = getVal(1) || '10:00';
+      const nguoiDeXuat = getVal(2);
+      const coSo = getVal(3);
+      const rawVatPham = getVal(4);
+      const vatPham = rawVatPham || `[${coSo || 'Cơ sở'}] Đề xuất vật tư / CSVC`;
+      const mucDo = getVal(5) || 'Hư hỏng';
+      const trangThaiGhiNhan = getVal(6) || 'Chờ kiểm tra hiện trạng';
+      const deXuat = getVal(7) || 'Cần sửa chữa';
+      const phuongAn = getVal(8) || 'Kỹ thuật viên kiểm tra xử lý';
+      const linkAnh = getVal(9);
+      const nguoiKiemDuyet = getVal(10);
       const rawDuyet = getVal(11);
-      const tinhTrangDuyet: 'CHƯA DUYỆT' | 'ĐÃ DUYỆT' = rawDuyet.toUpperCase().includes('ĐÃ DUYỆT')
+      const tinhTrangDuyet: 'ĐÃ DUYỆT' | 'CHƯA DUYỆT' = rawDuyet.toUpperCase().includes('ĐÃ DUYỆT')
         ? 'ĐÃ DUYỆT'
         : 'CHƯA DUYỆT';
 
       const ghiChuKiemDuyet = getVal(12);
-      const thoiGianThongBaoDuyet = getVal(13);
-      const nguoiKiemDuyet = getVal(10);
+      const thongBaoDuyet = getVal(13);
+      const ngayKiemDuyet = parseApprovalDate(thongBaoDuyet);
 
-      // Parse approval timestamp if available (e.g. from "Đã mail (29/09, 16:22)")
-      let ngayKiemDuyet = '';
-      if (tinhTrangDuyet === 'ĐÃ DUYỆT') {
-        if (thoiGianThongBaoDuyet.includes('29/09')) {
-          ngayKiemDuyet = '29/09/2026 16:22';
-        } else if (thoiGianThongBaoDuyet) {
-          ngayKiemDuyet = thoiGianThongBaoDuyet;
-        } else {
-          ngayKiemDuyet = '29/09/2026';
-        }
-      }
-
-      // Parse completion date / deadline (e.g. from "Thực hiện trước Thứ 5(01/10/2026)")
-      let ngayHoanThanh = '';
-      if (ghiChuKiemDuyet.includes('01/10/2026')) {
-        ngayHoanThanh = '01/10/2026';
-      }
-
-      const tienDoKhacPhuc = getVal(15);
-      const trangThaiSuaChua: 'Chưa sửa chữa' | 'Đã sửa chữa' = tienDoKhacPhuc.toLowerCase().includes('hoàn thành')
-        ? 'Đã sửa chữa'
-        : 'Chưa sửa chữa';
+      const nguoiKhacPhuc = getVal(14) || 'Phạm Văn Trưởng';
+      const rawTienDo = getVal(15);
+      const trangThaiSuaChua: 'Đã khắc phục xong' | 'Chưa xử lý' = rawTienDo.toLowerCase().includes('xong')
+        ? 'Đã khắc phục xong'
+        : 'Chưa xử lý';
 
       const ghiChuKhacPhuc = getVal(16);
-
-      // Cột 19: CHI PHÍ KHẮC PHỤC / MUA MỚI thực tế
-      const rawChiPhi = getVal(19);
-      let chiPhiThucTe: number | null = null;
-      if (rawChiPhi && rawChiPhi !== 'null' && rawChiPhi !== 'undefined') {
-        const num = parseFloat(rawChiPhi.replace(/[^0-9.-]+/g, ''));
-        if (!isNaN(num) && num > 0) {
-          chiPhiThucTe = num;
-        } else if (num === 0) {
-          chiPhiThucTe = 0;
-        }
-      }
-
-      const vatPham = getVal(4);
-      const soLanHongLapLai = 1;
+      const chiPhiGocStr = getVal(19);
+      const chiPhiThucTe = parseCost(chiPhiGocStr);
+      const anhSauSua = getVal(20);
+      const ngaySuaChua = parseRepairDate(trangThaiSuaChua, anhSauSua, thongBaoDuyet, ngayDeXuat);
 
       return {
-        id: `DX-00${idx + 1}`,
-        ngay: getVal(0) || '28/09/2026',
-        gio: getVal(1) || '10:00',
-        nguoiDeXuat: getVal(2),
-        coSo: getVal(3),
+        id,
+        rowNumber: idx + 1,
+        ngay: ngayDeXuat,
+        gio,
+        nguoiDeXuat,
+        coSo,
         vatPham,
         mucDo,
-        trangThaiGhiNhan: getVal(6),
+        trangThaiGhiNhan,
         deXuat,
-        phuongAn: getVal(8),
-        linkAnh: getVal(9),
+        phuongAn,
+        linkAnh,
         nguoiKiemDuyet,
         tinhTrangDuyet,
-        ghiChuKiemDuyet,
-        thoiGianThongBaoDuyet,
         ngayKiemDuyet,
-        nguoiKhacPhuc: getVal(14) || 'Phạm Văn Trưởng',
+        ghiChuKiemDuyet,
+        thongBaoDuyet,
+        nguoiKhacPhuc,
         trangThaiSuaChua,
-        tienDoKhacPhuc,
+        ngaySuaChua,
         ghiChuKhacPhuc,
-        ngayHoanThanh,
         chiPhiThucTe,
-        soLanHongLapLai
+        chiPhiGocStr,
+        anhSauSua
       };
-    }).filter((p: ProposalItem) => p.coSo && p.vatPham);
+    }).filter((p: ProposalItem) => p.coSo || p.vatPham);
 
     return items.length > 0 ? items : INITIAL_PROPOSALS;
   } catch (err) {
-    console.error('Lỗi khi fetch live từ sheet ĐỀ XUẤT:', err);
+    console.error('Lỗi khi fetch live từ sheet gid=169229004:', err);
     return INITIAL_PROPOSALS;
   }
 }
