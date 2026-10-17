@@ -56,11 +56,11 @@ export const PhotoGalleryView: React.FC<PhotoGalleryViewProps> = ({
                 className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group"
               >
                 {/* Image header */}
-                <div 
+                <div
                   className="relative h-44 bg-slate-900 overflow-hidden cursor-pointer"
                   onClick={() => onOpenImageModal(img, `${title} - ${area}`)}
                 >
-                  <img
+                  <img loading="lazy" decoding="async"
                     src={img}
                     alt={title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -69,7 +69,7 @@ export const PhotoGalleryView: React.FC<PhotoGalleryViewProps> = ({
                     }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent" />
-                  
+
                   {/* Status Overlay Badge */}
                   <div className="absolute top-3 left-3">
                     {isHyg ? (

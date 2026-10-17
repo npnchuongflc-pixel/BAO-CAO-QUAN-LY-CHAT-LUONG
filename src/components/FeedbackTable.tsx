@@ -1,28 +1,29 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { SheetRowItem } from '../types';
 import { formatDate, INCIDENT_SHEET_URL } from '../services/sheetService';
 import { EmailReminderModal, DEPARTMENTS, getDefaultDepartmentId } from './EmailReminderModal';
-import { 
-  TARGET_SENDER_EMAIL, 
-  googleSignIn, 
-  getAccessToken, 
-  getCurrentUser, 
+import {
+  TARGET_SENDER_EMAIL,
+  googleSignIn,
+  getAccessToken,
+  getCurrentUser,
   purgeOldSenderAccount,
-  initAuth 
+  initAuth
 } from '../services/workspaceAuth';
 import { User } from 'firebase/auth';
-import { 
-  sendGmailReminder, 
-  generateUrgentFeedbackHtml, 
+import {
+  sendGmailReminder,
+  generateUrgentFeedbackHtml,
   buildUrgentEmailSubject,
-  SYSTEM_SENDER_NAME 
+  SYSTEM_SENDER_NAME
 } from '../services/gmailService';
-import { 
-  Send, 
-  CheckCircle2, 
-  AlertOctagon, 
-  Loader2, 
-  Eye, 
+import {
+  Send,
+  CheckCircle2,
+  AlertOctagon,
+  Loader2,
+  Eye,
   AlertTriangle,
   AlertCircle,
   Mail,
@@ -42,6 +43,19 @@ interface FeedbackTableProps {
 export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExportCsv, onRefresh }) => {
   // Filter mode: 'all' | 'urgent' | 'unprocessed' | 'resolved' | 'sent'
   const [filterMode, setFilterMode] = useState<'all' | 'urgent' | 'unprocessed' | 'resolved' | 'sent'>('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const [isPrinting, setIsPrinting] = useState(false);
+  useEffect(() => {
+    const beforePrint = () => flushSync(() => setIsPrinting(true));
+    const afterPrint = () => setIsPrinting(false);
+    window.addEventListener('beforeprint', beforePrint);
+    window.addEventListener('afterprint', afterPrint);
+    return () => {
+      window.removeEventListener('beforeprint', beforePrint);
+      window.removeEventListener('afterprint', afterPrint);
+    };
+  }, []);
 
   // Selected department per row key: rowKey -> departmentId
   const [rowDepartments, setRowDepartments] = useState<Record<string, string>>({});
@@ -120,8 +134,8 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
     const facility = (item.facility || '').trim().toLowerCase();
     const course = (item.course || '').trim().toLowerCase();
     const subject = (item.subject || '').trim().toLowerCase();
-    const time = item.responseAt 
-      ? item.responseAt.toISOString() 
+    const time = item.responseAt
+      ? item.responseAt.toISOString()
       : (item.sentAt ? item.sentAt.toISOString() : '');
     const detailSnippet = (item.detail || '').slice(0, 30).trim().toLowerCase();
     return `${student}|${customer}|${facility}|${course}|${subject}|${time}|${detailSnippet}`;
@@ -158,6 +172,11 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
     }
     return feedback;
   }, [feedback, filterMode, sentRecords]);
+
+  useEffect(() => { setPage(1); }, [feedback, filterMode]);
+  const totalPages = Math.max(1, Math.ceil(displayedFeedback.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageFeedback = isPrinting ? displayedFeedback : displayedFeedback.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const handleDepartmentChange = (rowKey: string, deptId: string) => {
     setRowDepartments((prev) => ({
@@ -277,8 +296,8 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
             )}
             <span>{toastMessage}</span>
           </div>
-          <button 
-            type="button" 
+          <button
+            type="button"
             onClick={() => setToastMessage('')}
             className="text-white/80 hover:text-white text-xs px-2 py-0.5 rounded cursor-pointer"
           >
@@ -489,7 +508,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
               </tr>
             </thead>
             <tbody>
-              {displayedFeedback.slice(0, 100).map((item) => {
+              {pageFeedback.map((item) => {
                 const rowKey = getRowKey(item);
                 const isUrgent = item.rating === 1 || item.rating === 2;
                 const sentInfo = sentRecords[rowKey];
@@ -497,13 +516,13 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                 const currentDeptId = rowDepartments[rowKey] || defaultDeptId;
 
                 return (
-                  <tr 
+                  <tr
                     key={rowKey}
                     className={`transition-colors ${
                       sentInfo
                         ? 'bg-emerald-50/50 hover:bg-emerald-50/80 border-l-4 border-l-emerald-500'
-                        : isUrgent 
-                          ? 'bg-rose-50/30 hover:bg-rose-50/60' 
+                        : isUrgent
+                          ? 'bg-rose-50/30 hover:bg-rose-50/60'
                           : 'hover:bg-slate-50/50'
                     }`}
                   >
@@ -649,7 +668,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                       {sentInfo ? (
                         <div className="space-y-1.5 select-none">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <div 
+                            <div
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-extrabold text-xs shadow-xs shrink-0"
                               title={`Email đã được gửi đến ${sentInfo.departmentName} (${sentInfo.toEmail}) lúc ${formatDate(new Date(sentInfo.sentAt), true)}.`}
                             >
@@ -692,8 +711,8 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                               disabled={sendingRowKey === rowKey}
                               onClick={() => handleDirectSend(item, rowKey)}
                               className={`px-3 py-1.5 text-xs font-black text-white rounded-lg shadow-2xs hover:shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
-                                sendingRowKey === rowKey 
-                                  ? 'bg-rose-400 opacity-80 cursor-wait' 
+                                sendingRowKey === rowKey
+                                  ? 'bg-rose-400 opacity-80 cursor-wait'
                                   : isUrgent
                                     ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700'
                                     : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
@@ -736,6 +755,15 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
           <span>Không có đánh giá phù hợp trong khoảng đã chọn.</span>
         </div>
       )}
+
+      {displayedFeedback.length > pageSize && <nav className="feedback-pagination" aria-label="Phân trang phản hồi">
+        <span>Hiển thị {(currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, displayedFeedback.length)} / {displayedFeedback.length} phản hồi</span>
+        <div>
+          <button type="button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Trước</button>
+          <span aria-live="polite">Trang {currentPage} / {totalPages}</span>
+          <button type="button" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}>Sau</button>
+        </div>
+      </nav>}
 
       {/* Confirmation & Email Sending Modal */}
       {activeModalItem && (

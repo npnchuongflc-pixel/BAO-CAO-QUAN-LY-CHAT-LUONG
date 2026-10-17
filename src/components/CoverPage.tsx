@@ -24,8 +24,8 @@ interface CoverPageProps {
 
 export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
   return (
-    <div className="min-h-[calc(100vh-60px)] bg-slate-100/70 pb-20">
-      
+    <div className="cover-page min-h-[calc(100vh-60px)] bg-slate-100/70 pb-20">
+
       {/* HERO COVER HEADER - TRÀN VIỀN EXPANSIVE BANNER */}
       <section className="relative w-full overflow-hidden bg-linear-to-br from-[#0c233c] via-[#153456] to-[#0a1b2e] text-white shadow-xl border-b border-slate-700/50 py-10 sm:py-14 lg:py-16 px-4 sm:px-8 lg:px-12">
         {/* Subtle Ambient Decorative Gradients & Grid Pattern */}
@@ -34,14 +34,14 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
         <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-[#F9C846]/15 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 max-w-6xl mx-auto flex flex-col items-center text-center space-y-6 sm:space-y-8">
-          
+
           {/* BRAND LOGO CLUSTER (CỜ VUA SÀI GÒN & SÀI GÒN ART) - ENLARGED LOGOS */}
           <div className="flex items-center justify-center gap-4 sm:gap-6 bg-white/10 backdrop-blur-md px-6 sm:px-8 py-3.5 sm:py-4 rounded-3xl border border-white/20 shadow-xl transition-transform hover:scale-[1.02] duration-300">
             {/* Chess Logo Card - Enlarged */}
             <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-22 lg:h-22 bg-white rounded-2xl p-2 sm:p-2.5 shadow-md flex items-center justify-center flex-shrink-0 group">
-              <img 
-                src={chessLogo} 
-                alt="Logo Cờ Vua Sài Gòn" 
+              <img
+                src={chessLogo}
+                alt="Logo Cờ Vua Sài Gòn"
                 className="w-full h-full object-contain filter drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
               />
             </div>
@@ -51,9 +51,9 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
 
             {/* Art Logo Card - Enlarged */}
             <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-22 lg:h-22 bg-white rounded-2xl p-2 sm:p-2.5 shadow-md flex items-center justify-center flex-shrink-0 group">
-              <img 
-                src={artLogo} 
-                alt="Logo Sài Gòn Art" 
+              <img
+                src={artLogo}
+                alt="Logo Sài Gòn Art"
                 className="w-full h-full object-contain filter drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
               />
             </div>
@@ -65,15 +65,15 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
             <p className="text-xs sm:text-sm font-bold tracking-[0.15em] sm:tracking-[0.2em] text-[#F9C846] uppercase whitespace-normal sm:whitespace-nowrap drop-shadow-xs">
               HỆ THỐNG TRUNG TÂM CỜ VUA SÀI GÒN & SÀI GÒN ART
             </p>
-            
+
             {/* Main Institutional Header */}
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase font-display whitespace-nowrap drop-shadow-sm">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase font-display whitespace-normal drop-shadow-sm">
               PHÒNG QUẢN LÝ CHẤT LƯỢNG
             </h1>
-            
+
             {/* Main Subtitle Requested by User - ĐẢM BẢO KHÔNG BỊ RỚT XUỐNG HÀNG */}
             <div className="w-full flex items-center justify-center pt-1 overflow-x-auto no-scrollbar">
-              <p className="text-xs sm:text-sm md:text-base lg:text-lg font-bold tracking-wider text-slate-100 uppercase whitespace-nowrap bg-white/10 backdrop-blur-xs px-4 sm:px-6 py-1.5 rounded-full border border-white/15 shadow-inner">
+              <p className="text-xs sm:text-sm md:text-base lg:text-lg font-bold tracking-wider text-slate-100 uppercase whitespace-normal bg-white/10 backdrop-blur-xs px-4 sm:px-6 py-1.5 rounded-full border border-white/15 shadow-inner">
                 TỔNG HỢP BÁO CÁO CÁC TIÊU CHÍ ĐÁNH GIÁ VẬN HÀNH
               </p>
             </div>
@@ -127,7 +127,7 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
 
           {/* CARD 1: VỆ SINH & CƠ SỞ VẬT CHẤT */}
           <div
-            onClick={() => onNavigate('integrated-quality-report')}
+            role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onNavigate('integrated-quality-report'); } }} onClick={() => onNavigate('integrated-quality-report')}
             className="group bg-white rounded-2xl shadow-md hover:shadow-2xl border border-slate-200/90 hover:border-[#1B5EA6] overflow-hidden transition-all duration-300 flex flex-col justify-between cursor-pointer transform hover:-translate-y-1.5"
           >
             {/* KHUNG TRÀN VIỀN HEADER (Full-Bleed Header) */}
@@ -218,7 +218,7 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
 
           {/* CARD 2: GIÁM SÁT QUA CAMERA (Chất lượng giảng dạy) */}
           <div
-            onClick={() => onNavigate('teaching-quality')}
+            role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onNavigate('teaching-quality'); } }} onClick={() => onNavigate('teaching-quality')}
             className="group bg-white rounded-2xl shadow-md hover:shadow-2xl border border-slate-200/90 hover:border-emerald-600 overflow-hidden transition-all duration-300 flex flex-col justify-between cursor-pointer transform hover:-translate-y-1.5"
           >
             {/* KHUNG TRÀN VIỀN HEADER (Full-Bleed Header) */}
@@ -309,7 +309,7 @@ export const CoverPage: React.FC<CoverPageProps> = ({ onNavigate }) => {
 
           {/* CARD 3: ZALO OA (Khảo sát phụ huynh) */}
           <div
-            onClick={() => onNavigate('survey')}
+            role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onNavigate('survey'); } }} onClick={() => onNavigate('survey')}
             className="group bg-white rounded-2xl shadow-md hover:shadow-2xl border border-slate-200/90 hover:border-amber-500 overflow-hidden transition-all duration-300 flex flex-col justify-between cursor-pointer transform hover:-translate-y-1.5 md:col-span-2 lg:col-span-1"
           >
             {/* KHUNG TRÀN VIỀN HEADER (Full-Bleed Header) */}

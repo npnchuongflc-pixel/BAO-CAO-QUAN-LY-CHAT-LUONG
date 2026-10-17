@@ -40,7 +40,7 @@ export function InspectionGalleryView({ proposals, onZoomImage, onSelectProposal
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {repairedWithPhotos.map((item) => (
-          <div 
+          <div
             key={item.id}
             className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:border-slate-300 transition-all p-4 space-y-3.5"
           >
@@ -71,7 +71,7 @@ export function InspectionGalleryView({ proposals, onZoomImage, onSelectProposal
             {/* Side-by-side Before/After Photos */}
             <div className="grid grid-cols-2 gap-3">
               {/* Before Photo */}
-              <div 
+              <div
                 onClick={() => item.linkAnh && onZoomImage(item.linkAnh, `Trước khi sửa - ${item.vatPham}`, `Cơ sở ${item.coSo} · Gửi ngày: ${item.ngay}`)}
                 className="space-y-1 group cursor-zoom-in"
               >
@@ -81,11 +81,11 @@ export function InspectionGalleryView({ proposals, onZoomImage, onSelectProposal
                 </div>
                 <div className="h-40 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden relative">
                   {item.linkAnh ? (
-                    <img 
-                      src={item.linkAnh} 
+                    <img loading="lazy" decoding="async"
+                      src={item.linkAnh}
                       alt="Trước sửa"
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">
@@ -96,7 +96,7 @@ export function InspectionGalleryView({ proposals, onZoomImage, onSelectProposal
               </div>
 
               {/* After Photo */}
-              <div 
+              <div
                 onClick={() => item.anhSauSua && onZoomImage(item.anhSauSua, `Nghiệm thu sau sửa - ${item.vatPham}`, `Ngày sửa: ${item.ngaySuaChua} · KTV: ${item.nguoiKhacPhuc}`)}
                 className="space-y-1 group cursor-zoom-in"
               >
@@ -105,11 +105,11 @@ export function InspectionGalleryView({ proposals, onZoomImage, onSelectProposal
                   <Eye className="w-3 h-3 text-emerald-600 group-hover:text-emerald-800" />
                 </div>
                 <div className="h-40 rounded-lg bg-emerald-50 border border-emerald-300 overflow-hidden relative">
-                  <img 
-                    src={item.anhSauSua} 
+                  <img loading="lazy" decoding="async"
+                    src={item.anhSauSua}
                     alt="Sau sửa"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
                 </div>
               </div>

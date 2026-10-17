@@ -3,7 +3,10 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import fs from 'node:fs';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+
+const projectDir = path.dirname(fileURLToPath(import.meta.url));
 
 const FACILITY_SHEET_ID = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
 
@@ -56,7 +59,7 @@ export default defineConfig(() => {
 
         closeBundle() {
           const redirectsPath = path.resolve(
-            __dirname,
+            projectDir,
             'dist',
             '_redirects'
           );
@@ -78,7 +81,7 @@ export default defineConfig(() => {
 
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(projectDir, '.'),
       },
     },
 

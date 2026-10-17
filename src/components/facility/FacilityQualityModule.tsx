@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { 
-  ReportMode, 
-  HygieneReport, 
-  FacilityQualityReport, 
-  FilterState, 
-  FacilitySummary 
+import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import {
+  ReportMode,
+  HygieneReport,
+  FacilityQualityReport,
+  FilterState,
+  FacilitySummary
 } from './facilityTypes';
 import { OFFICIAL_FACILITIES, normalizeFacilityName } from '../../utils/facilityUtils';
 import { fetchHygieneFromSheet, fetchQualityFromSheet } from '../../services/googleSheetsService';
@@ -22,10 +22,10 @@ import { ImageLightBoxModal } from './ImageLightBoxModal';
 import { FacilityDetailReportsModal } from './FacilityDetailReportsModal';
 import { PrintReportHeader } from '../PrintReportHeader';
 import { PrintReportFooter } from '../PrintReportFooter';
-import { RepairManagementModule } from '../../repair/RepairManagementModule';
+const RepairManagementModule = lazy(() => import('../../repair/RepairManagementModule').then(m => ({ default: m.RepairManagementModule })));
 import { Building2, Sparkles, CheckCircle2, AlertTriangle, Wrench, Layers } from 'lucide-react';
 
-export const FacilityQualityModule: React.FC = () => {
+export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [mode, setMode] = useState<ReportMode>('hygiene');
   const [activeSubTab, setActiveSubTab] = useState<'hygiene-quality' | 'repair'>('hygiene-quality');
 
@@ -89,8 +89,8 @@ export const FacilityQualityModule: React.FC = () => {
         fetchQualityFromSheet(),
       ]);
 
-      setHygieneReports(hygRes.data);
-      setQualityReports(qualRes.data);
+      if (!hygRes.error) setHygieneReports(hygRes.data);
+      if (!qualRes.error) setQualityReports(qualRes.data);
       setSyncErrors({
         hygiene: hygRes.error || null,
         quality: qualRes.error || null,
@@ -104,9 +104,14 @@ export const FacilityQualityModule: React.FC = () => {
 
   useEffect(() => {
     loadData();
-    const refreshTimer = window.setInterval(loadData, 5000);
-    return () => window.clearInterval(refreshTimer);
-  }, [loadData]);
+    const refreshVisible = () => { if (!document.hidden) void loadData(); };
+    const refreshTimer = window.setInterval(refreshVisible, 60_000);
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', refreshVisible);
+    };
+  }, [loadData, refreshKey]);
 
   // Extract Month string helper from date string
   const getMonthLabel = (dateStr: string): string => {
@@ -253,10 +258,10 @@ export const FacilityQualityModule: React.FC = () => {
 
       if (!matchAreaFilter(r.khuVuc, filters.khuVuc)) return false;
       if (!matchHygieneStatus(r, filters.trangThai)) return false;
-      
+
       if (filters.searchQuery.trim()) {
         const q = filters.searchQuery.toLowerCase();
-        const matches = 
+        const matches =
           r.coSo.toLowerCase().includes(q) ||
           r.khuVuc.toLowerCase().includes(q) ||
           r.nguoiKiemTra.toLowerCase().includes(q) ||
@@ -289,7 +294,7 @@ export const FacilityQualityModule: React.FC = () => {
 
       if (filters.searchQuery.trim()) {
         const q = filters.searchQuery.toLowerCase();
-        const matches = 
+        const matches =
           r.coSo.toLowerCase().includes(q) ||
           r.khuVuc.toLowerCase().includes(q) ||
           r.ten.toLowerCase().includes(q) ||
@@ -353,7 +358,7 @@ export const FacilityQualityModule: React.FC = () => {
         if (r.trangThai === 'Đạt') existing.passCount += 1;
         if (r.trangThai === 'Cần khắc phục' || r.trangThai === 'Không đạt') existing.issuesCount += 1;
         existing.totalScore += r.diemSo || 0;
-        
+
         if (!existing.latestDate || `${r.ngay} ${r.gio}` > existing.latestDate) {
           existing.latestDate = `${r.ngay} ${r.gio}`;
         }
@@ -403,7 +408,7 @@ export const FacilityQualityModule: React.FC = () => {
 
   const totalFilteredRecords = mode === 'hygiene' ? filteredHygiene.length : filteredQuality.length;
   const activeFacilityCount = facilitySummaries.filter(s => s.soLanThucHien > 0).length;
-  
+
   const overallScoreOrRate = useMemo(() => {
     if (totalFilteredRecords === 0) return 0;
     if (mode === 'hygiene') {
@@ -523,20 +528,20 @@ export const FacilityQualityModule: React.FC = () => {
                 }`}
                 title="Xem Sheet Báo Cáo Vệ Sinh"
               >
-                <CheckCircle2 
+                <CheckCircle2
                   strokeWidth={2.6}
                   className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
                     activeSubTab === 'hygiene-quality' && mode === 'hygiene' ? 'text-white' : 'text-blue-600'
-                  }`} 
+                  }`}
                 />
                 <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
                   Báo Cáo Vệ Sinh
                 </span>
-                <span 
+                <span
                   style={{ fontWeight: 900 }}
                   className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
-                    activeSubTab === 'hygiene-quality' && mode === 'hygiene' 
-                      ? 'bg-white/25 text-white' 
+                    activeSubTab === 'hygiene-quality' && mode === 'hygiene'
+                      ? 'bg-white/25 text-white'
                       : 'bg-blue-100 text-blue-900 border border-blue-200'
                   }`}
                 >
@@ -559,20 +564,20 @@ export const FacilityQualityModule: React.FC = () => {
                 }`}
                 title="Xem Sheet Báo Cáo Chất Lượng Cơ Sở"
               >
-                <AlertTriangle 
+                <AlertTriangle
                   strokeWidth={2.6}
                   className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
                     activeSubTab === 'hygiene-quality' && mode === 'quality' ? 'text-white' : 'text-indigo-600'
-                  }`} 
+                  }`}
                 />
                 <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
                   Chất Lượng Cơ Sở
                 </span>
-                <span 
+                <span
                   style={{ fontWeight: 900 }}
                   className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
-                    activeSubTab === 'hygiene-quality' && mode === 'quality' 
-                      ? 'bg-white/25 text-white' 
+                    activeSubTab === 'hygiene-quality' && mode === 'quality'
+                      ? 'bg-white/25 text-white'
                       : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
                   }`}
                 >
@@ -592,20 +597,20 @@ export const FacilityQualityModule: React.FC = () => {
                 }`}
                 title="Xem Báo Cáo Sửa Chữa & Đề Xuất Cơ Sở Vật Chất (Sheet Đề Xuất)"
               >
-                <Wrench 
+                <Wrench
                   strokeWidth={2.6}
                   className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
                     activeSubTab === 'repair' ? 'text-white' : 'text-amber-600'
-                  }`} 
+                  }`}
                 />
                 <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
                   Báo Cáo Sửa Chữa
                 </span>
-                <span 
+                <span
                   style={{ fontWeight: 900 }}
                   className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
-                    activeSubTab === 'repair' 
-                      ? 'bg-white/25 text-white' 
+                    activeSubTab === 'repair'
+                      ? 'bg-white/25 text-white'
                       : 'bg-amber-100 text-amber-950 border border-amber-200'
                   }`}
                 >
@@ -619,7 +624,7 @@ export const FacilityQualityModule: React.FC = () => {
 
       {/* RENDER VIEW: REPAIR REPORT OR HYGIENE / QUALITY DASHBOARD */}
       {activeSubTab === 'repair' ? (
-        <RepairManagementModule onBack={() => setActiveSubTab('hygiene-quality')} />
+        <Suspense fallback={<div className="report-loading" role="status">Đang mở báo cáo sửa chữa…</div>}><RepairManagementModule onBack={() => setActiveSubTab('hygiene-quality')} /></Suspense>
       ) : (
         <main className={`flex-1 w-full max-w-none py-0 ${detailModalFacility !== null ? 'print:hidden' : ''}`}>
           {syncErrors[mode] && (

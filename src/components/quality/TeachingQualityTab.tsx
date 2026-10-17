@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import {
   Sparkles,
   RotateCcw,
@@ -36,10 +36,10 @@ import { TeacherLeaderboard } from './TeacherLeaderboard';
 import { TeachingTable } from './TeachingTable';
 import { AuditDetailModal } from './AuditDetailModal';
 import { EvidenceModal } from './EvidenceModal';
-import { TeachingAiModal } from './TeachingAiModal';
-import { TeacherViolationDetailModal } from './TeacherViolationDetailModal';
-import { CameraStatusReportModule } from '../../camera/CameraStatusReportModule';
-import { ClassroomReportModule } from '../../classroom/ClassroomReportModule';
+const TeachingAiModal = lazy(() => import('./TeachingAiModal').then(m => ({ default: m.TeachingAiModal })));
+const TeacherViolationDetailModal = lazy(() => import('./TeacherViolationDetailModal').then(m => ({ default: m.TeacherViolationDetailModal })));
+const CameraStatusReportModule = lazy(() => import('../../camera/CameraStatusReportModule').then(m => ({ default: m.CameraStatusReportModule })));
+const ClassroomReportModule = lazy(() => import('../../classroom/ClassroomReportModule').then(m => ({ default: m.ClassroomReportModule })));
 import { getCurrentMonthKey } from '../../utils/dateUtils';
 
 const INITIAL_FILTERS: TeachingFilterState = {
@@ -59,11 +59,13 @@ const INITIAL_FILTERS: TeachingFilterState = {
 type ReportViewMode = 'looker-camera' | 'camera-status' | 'classroom-report' | 'audit-log' | 'standards-6' | 'ranking';
 
 interface TeachingQualityTabProps {
+  refreshKey?: number;
   onUpdateTotalShifts?: (count: number) => void;
 }
 
 export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
   onUpdateTotalShifts,
+  refreshKey = 0,
 }) => {
   const [rawData, setRawData] = useState<TeachingAuditItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -107,7 +109,7 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     const refreshCalendarMonth = () => {
@@ -156,6 +158,7 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
   };
 
   return (
+    <Suspense fallback={<div className="report-loading" role="status">Đang mở báo cáo…</div>}>
     <div className="tab-view-wrapper min-h-screen bg-slate-50/60 pb-16">
       {/* Loading & Error States */}
       {loading && rawData.length === 0 && (
@@ -266,7 +269,7 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
 
       {/* MODALS */}
       {/* 1. Teacher Violation Detail Modal (Lỗi chi tiết của GV theo khoảng thời gian) */}
-      <TeacherViolationDetailModal
+      {selectedTeacherNameForModal && <TeacherViolationDetailModal
         teacherName={selectedTeacherNameForModal}
         allData={rawData}
         currentFilters={filters}
@@ -274,7 +277,7 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
         onClose={() => setSelectedTeacherNameForModal(null)}
         onOpenEvidence={handleOpenEvidence}
         onOpenSingleAuditDetail={(item) => setSelectedAuditItem(item)}
-      />
+      />}
 
       {/* 2. Single Audit Detail Modal */}
       <AuditDetailModal
@@ -291,11 +294,12 @@ export const TeachingQualityTab: React.FC<TeachingQualityTabProps> = ({
       />
 
       {/* 4. AI Pedagogical Advisor Modal (Gemini 3.7 Flash) */}
-      <TeachingAiModal
+      {isAiModalOpen && <TeachingAiModal
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
         summary={summary}
-      />
+      />}
     </div>
+    </Suspense>
   );
 };

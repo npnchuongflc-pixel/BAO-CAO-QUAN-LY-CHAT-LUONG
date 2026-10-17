@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ClipboardCheck,
   GraduationCap,
@@ -86,7 +86,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
-  isCollapsed,
+  isCollapsed: desktopCollapsed,
   onToggleCollapse,
   isMobileOpen,
   onCloseMobile,
@@ -95,6 +95,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   loading = false,
   teachingShiftsCount,
 }) => {
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 960px)').matches);
+  const isCollapsed = desktopCollapsed && !isMobile;
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 960px)');
+    const update = () => setIsMobile(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const sidebarRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!isMobileOpen || !isMobile) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const controls = () => Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], [tabindex="0"]') ?? []).filter(el => el.getClientRects().length > 0);
+    controls()[0]?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseMobile();
+      if (event.key !== 'Tab') return;
+      const items = controls();
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, [isMobileOpen, isMobile]);
   return (
     <>
       {/* Mobile Backdrop Overlay */}
@@ -107,6 +138,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
+        ref={sidebarRef}
+        inert={isMobile && !isMobileOpen ? true : undefined}
+        aria-hidden={isMobile && !isMobileOpen ? true : undefined}
         className={`app-sidebar ${isCollapsed ? 'collapsed' : ''} ${
           isMobileOpen ? 'mobile-open' : ''
         }`}
@@ -204,6 +238,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <button
                         type="button"
                         className={`sidebar-item ${isActive ? 'active' : ''}`}
+                        aria-current={isActive ? 'page' : undefined}
                         onClick={() => {
                           onSelectTab(item.id);
                           onCloseMobile();
@@ -256,7 +291,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           hour: '2-digit',
                           minute: '2-digit',
                         })}`
-                      : 'Đang tải...'}
+                      : 'Sẵn sàng'}
                   </span>
                 </div>
                 {onRefreshData && (

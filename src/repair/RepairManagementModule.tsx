@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ProposalItem } from './types/proposal';
 import { INITIAL_PROPOSALS } from './data/proposalsData';
 import { fetchLiveProposalsFromSheet } from './services/sheetsService';
@@ -11,20 +11,20 @@ import { TimelineLeadTimeChart } from './components/TimelineLeadTimeChart';
 import { CostAnalysisView } from './components/CostAnalysisView';
 import { InspectionGalleryView } from './components/InspectionGalleryView';
 import { ProposalDetailModal } from './components/ProposalDetailModal';
-import { 
-  Building, 
-  Wrench, 
-  RefreshCw, 
-  Database, 
-  Search, 
-  Printer, 
-  Download, 
-  Check, 
-  Clock, 
-  DollarSign, 
-  Eye, 
-  Table as TableIcon, 
-  LayoutGrid, 
+import {
+  Building,
+  Wrench,
+  RefreshCw,
+  Database,
+  Search,
+  Printer,
+  Download,
+  Check,
+  Clock,
+  DollarSign,
+  Eye,
+  Table as TableIcon,
+  LayoutGrid,
   ChevronRight,
   RotateCcw,
   Image as ImageIcon,
@@ -68,8 +68,12 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(num);
   };
 
+  const syncingRef = useRef(false);
+
   // Sync with Google Sheet
   const loadSheetData = async (showNotification = false) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setIsLoading(true);
     try {
       const data = await fetchLiveProposalsFromSheet();
@@ -81,6 +85,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
     } catch {
       showToast('Đang hiển thị dữ liệu lưu sẵn từ Sheet "ĐỀ XUẤT"');
     } finally {
+      syncingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -90,7 +95,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
     // Tự động làm mới dữ liệu thời gian thực mỗi 60 giây
     const interval = setInterval(() => {
-      loadSheetData(false);
+      if (!document.hidden) loadSheetData(false);
     }, 60000);
 
     return () => clearInterval(interval);
@@ -239,7 +244,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 pb-20 antialiased font-sans">
-      
+
       {/* 1. Executive Top Header */}
       <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -312,10 +317,10 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
       {/* 2. Main Executive Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
-        
+
         {/* 4 Golden Executive KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          
+
           {/* Card 1: Tổng đề xuất */}
           <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-2xs flex items-center justify-between">
             <div>
@@ -402,7 +407,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
         {/* 3. Executive Tab Navigation Bar */}
         <div className="bg-white rounded-xl border border-slate-200 p-2 shadow-2xs flex flex-wrap items-center justify-between gap-3">
-          
+
           {/* Main Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
             <button
@@ -464,11 +469,11 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
         {/* 4. Active Tab Render Area */}
         {activeTab === 'table' && (
           <div className="space-y-4">
-            
+
             {/* Filter Toolbar */}
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
               <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 text-xs">
-                
+
                 {/* Search Box */}
                 <div className="relative flex-1 min-w-[220px]">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -586,7 +591,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
               <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <span className="text-slate-500 font-semibold">Lọc ngày đề xuất:</span>
-                  
+
                   <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1">
                     <span className="text-slate-500">Từ:</span>
                     <input
@@ -641,7 +646,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                   </button>
                 </div>
               ) : viewStyle === 'table' ? (
-                
+
                 /* MASTER EXECUTIVE DATA TABLE */
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
@@ -664,8 +669,8 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                         const isRepaired = item.trangThaiSuaChua.includes('xong');
 
                         return (
-                          <tr 
-                            key={item.id} 
+                          <tr
+                            key={item.id}
                             onClick={() => setSelectedProposal(item)}
                             className="hover:bg-amber-50/40 transition-colors cursor-pointer group"
                           >
@@ -795,7 +800,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                 </div>
 
               ) : (
-                
+
                 /* CARDS VIEW */
                 <div className="divide-y divide-slate-100">
                   {filteredProposals.map((item) => {
@@ -803,19 +808,19 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
                     const isRepaired = item.trangThaiSuaChua.includes('xong');
 
                     return (
-                      <div 
-                        key={item.id} 
+                      <div
+                        key={item.id}
                         className="p-5 hover:bg-slate-50/80 transition-colors flex flex-col lg:flex-row items-start justify-between gap-5"
                       >
                         {/* Left: Thumbnail & Details */}
                         <div className="flex items-start gap-4 flex-1 min-w-0">
                           {/* Thumbnail */}
-                          <div 
+                          <div
                             onClick={() => item.linkAnh && setZoomImage({ url: item.linkAnh, title: item.vatPham, subtitle: item.coSo })}
                             className="w-20 h-20 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 cursor-zoom-in relative group"
                           >
                             {item.linkAnh ? (
-                              <img src={item.linkAnh} alt={item.vatPham} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                              <img loading="lazy" decoding="async" src={item.linkAnh} alt={item.vatPham} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs">Không ảnh</div>
                             )}
@@ -909,7 +914,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
         {/* Tab 2: Timeline Lead Time Chart */}
         {activeTab === 'timeline' && (
-          <TimelineLeadTimeChart 
+          <TimelineLeadTimeChart
             proposals={filteredProposals}
             onOpenImage={(url, title) => setZoomImage({ url, title })}
           />
@@ -917,7 +922,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
         {/* Tab 3: Cost Analysis */}
         {activeTab === 'cost' && (
-          <CostAnalysisView 
+          <CostAnalysisView
             proposals={filteredProposals}
             onSelectProposal={(item) => setSelectedProposal(item)}
           />
@@ -925,7 +930,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
         {/* Tab 4: Inspection Gallery Before/After */}
         {activeTab === 'gallery' && (
-          <InspectionGalleryView 
+          <InspectionGalleryView
             proposals={filteredProposals}
             onZoomImage={(url, title, subtitle) => setZoomImage({ url, title, subtitle })}
             onSelectProposal={(item) => setSelectedProposal(item)}
@@ -943,11 +948,11 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
 
       {/* Image Viewer Fullscreen Modal */}
       {zoomImage && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={() => setZoomImage(null)}
         >
-          <div 
+          <div
             className="max-w-4xl max-h-[90vh] bg-slate-950 rounded-2xl overflow-hidden flex flex-col shadow-2xl border border-slate-800"
             onClick={(e) => e.stopPropagation()}
           >
@@ -966,7 +971,7 @@ export const RepairManagementModule: React.FC<RepairManagementModuleProps> = ({ 
               </button>
             </div>
             <div className="p-3 flex items-center justify-center bg-black/40 overflow-auto">
-              <img
+              <img loading="lazy" decoding="async"
                 src={zoomImage.url}
                 alt={zoomImage.title}
                 referrerPolicy="no-referrer"

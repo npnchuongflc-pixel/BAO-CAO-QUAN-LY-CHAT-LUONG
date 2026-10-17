@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { HygieneReport, FacilityQualityReport, ReportMode } from './facilityTypes';
-import { 
-  Building2, 
-  User, 
-  MapPin, 
-  Eye, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
+import {
+  Building2,
+  User,
+  MapPin,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
   ExternalLink,
   ChevronLeft,
   ChevronRight,
@@ -266,8 +266,8 @@ export const DetailTable: React.FC<DetailTableProps> = ({
             <tbody className="divide-y divide-slate-200 text-slate-800">
               {isHygiene ? (
                 paginatedHygiene.map((row) => (
-                  <tr 
-                    key={row.id} 
+                  <tr
+                    key={row.id}
                     className="hover:bg-slate-50/90 transition-colors group"
                   >
                     {/* Ngày giờ */}
@@ -299,10 +299,10 @@ export const DetailTable: React.FC<DetailTableProps> = ({
                     {/* Điểm số */}
                     <td className="py-3.5 px-4 text-center whitespace-nowrap">
                       <span className={`inline-block font-black text-sm px-2.5 py-0.5 rounded-lg ${
-                        row.diemSo >= 85 
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                          : row.diemSo >= 70 
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                        row.diemSo >= 85
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : row.diemSo >= 70
+                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'bg-rose-50 text-rose-700 border border-rose-200'
                       }`}>
                         {row.diemSo} <span className="text-[10px] font-normal text-slate-500">pt</span>
@@ -346,7 +346,7 @@ export const DetailTable: React.FC<DetailTableProps> = ({
                           onClick={() => onOpenImageModal(row.linkAnh, `Ảnh Vệ Sinh - ${row.coSo} (${row.ngay})`)}
                           className="relative group/img inline-block overflow-hidden rounded-lg border border-slate-200 hover:border-blue-500 transition-all shadow-xs"
                         >
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={row.linkAnh}
                             alt="Ảnh kiểm tra"
                             className="w-12 h-12 object-cover group-hover/img:scale-110 transition-transform duration-300"
@@ -378,8 +378,8 @@ export const DetailTable: React.FC<DetailTableProps> = ({
                 ))
               ) : (
                 paginatedQuality.map((row) => (
-                  <tr 
-                    key={row.id} 
+                  <tr
+                    key={row.id}
                     className="hover:bg-slate-50/90 transition-colors group"
                   >
                     {/* Ngày giờ */}
@@ -432,7 +432,7 @@ export const DetailTable: React.FC<DetailTableProps> = ({
                           onClick={() => onOpenImageModal(row.linkAnh, `Sự cố cơ sở - ${row.coSo} (${row.ngay})`)}
                           className="relative group/img inline-block overflow-hidden rounded-lg border border-slate-200 hover:border-indigo-500 transition-all shadow-xs"
                         >
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={row.linkAnh}
                             alt="Ảnh sự cố cơ sở"
                             className="w-12 h-12 object-cover group-hover/img:scale-110 transition-transform duration-300"
@@ -488,8 +488,8 @@ export const DetailTable: React.FC<DetailTableProps> = ({
             {Array.from({ length: totalPages }).map((_, idx) => {
               const pNum = idx + 1;
               if (
-                pNum === 1 || 
-                pNum === totalPages || 
+                pNum === 1 ||
+                pNum === totalPages ||
                 (pNum >= safeCurrentPage - 1 && pNum <= safeCurrentPage + 1)
               ) {
                 return (
@@ -507,7 +507,7 @@ export const DetailTable: React.FC<DetailTableProps> = ({
                 );
               }
               if (
-                pNum === safeCurrentPage - 2 || 
+                pNum === safeCurrentPage - 2 ||
                 pNum === safeCurrentPage + 2
               ) {
                 return <span key={pNum} className="px-1 text-slate-400">...</span>;

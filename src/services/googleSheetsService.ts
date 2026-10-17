@@ -59,19 +59,25 @@ async function readCsvResponse(response: Response): Promise<string> {
   return body;
 }
 
-async function fetchCompleteSheetCsv(gid: string): Promise<string> {
+const pendingCsv = new Map<string, Promise<string>>();
+function fetchCompleteSheetCsv(gid: string): Promise<string> {
+  const existing = pendingCsv.get(gid);
+  if (existing) return existing;
+  const request = loadCompleteSheetCsv(gid).finally(() => pendingCsv.delete(gid));
+  pendingCsv.set(gid, request);
+  return request;
+}
+
+async function loadCompleteSheetCsv(gid: string): Promise<string> {
   const sources = [
-    `/api/facility-sheet-data?gid=${encodeURIComponent(gid)}&force=true`,
+    `/api/facility-sheet-data?gid=${encodeURIComponent(gid)}`,
     getCompleteCsvExportUrl(gid),
   ];
   let lastError: unknown;
 
   for (const source of sources) {
     try {
-      const separator = source.includes('?') ? '&' : '?';
-      const response = await fetch(`${source}${separator}_=${Date.now()}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(source, { signal: AbortSignal.timeout(20_000) });
       return await readCsvResponse(response);
     } catch (error) {
       lastError = error;
@@ -112,7 +118,7 @@ export async function fetchHygieneFromSheet(): Promise<{ data: HygieneReport[]; 
     }
 
     const parsed = Papa.parse<Record<string, any>>(csvText, { header: true, skipEmptyLines: true });
-    
+
     if (!parsed.data || parsed.data.length === 0) {
       throw new Error('Sheet Kiểm tra vệ sinh chưa có dòng dữ liệu nào');
     }
@@ -185,7 +191,7 @@ export async function fetchQualityFromSheet(): Promise<{ data: FacilityQualityRe
     }
 
     const parsed = Papa.parse<Record<string, any>>(csvText, { header: true, skipEmptyLines: true });
-    
+
     if (!parsed.data || parsed.data.length === 0) {
       throw new Error('Sheet Chất lượng cơ sở chưa có dòng dữ liệu nào');
     }

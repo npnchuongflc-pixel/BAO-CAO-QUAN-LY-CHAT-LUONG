@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { FilterOptions, CameraAggregate, RawCheckRow } from './types/camera';
 import {
   computeDashboardData,
@@ -50,8 +50,12 @@ export function CameraStatusReportModule({ onBack, initialScrollToStorage }: Cam
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  const syncingRef = useRef(false);
+
   // Sync Google Sheets on startup and upon user refresh
   const syncWithSheet = useCallback(async (forceRefresh = false) => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
     setIsSyncing(true);
     setSyncError(null);
     try {
@@ -85,6 +89,7 @@ export function CameraStatusReportModule({ onBack, initialScrollToStorage }: Cam
       const msg = err instanceof Error ? err.message : 'Lỗi kết nối';
       setSyncError(msg);
     } finally {
+      syncingRef.current = false;
       setIsSyncing(false);
     }
   }, []);
@@ -96,7 +101,7 @@ export function CameraStatusReportModule({ onBack, initialScrollToStorage }: Cam
 
     // 2. Continuous background sync every 30 seconds
     const interval = setInterval(() => {
-      syncWithSheet(true);
+      if (!document.hidden) syncWithSheet(true);
     }, 30000);
 
     // 3. Instant sync whenever user switches back to this tab
