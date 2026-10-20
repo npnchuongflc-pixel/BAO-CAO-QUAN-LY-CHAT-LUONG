@@ -110,6 +110,16 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const isHygiene = mode === 'hygiene';
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showRankingRules, setShowRankingRules] = useState(false);
+  const [isRankingTableCollapsed, setIsRankingTableCollapsed] = useState(true);
+  const [rowLimit, setRowLimit] = useState<'all' | number>('all');
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Tự động mở rộng bảng nếu người dùng chọn lọc một cơ sở cụ thể
+  useEffect(() => {
+    if (selectedFacilityFilter && selectedFacilityFilter !== 'all') {
+      setIsRankingTableCollapsed(false);
+    }
+  }, [selectedFacilityFilter]);
 
   // 1. Phân tích tính liên tục: Thống kê số ngày có kiểm tra của từng cơ sở trong kỳ đánh giá
   const continuityData = useMemo(() => {
@@ -1462,6 +1472,19 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                 </p>
               </div>
             </div>
+
+            {/* Nút thu gọn lại ở cuối quy tắc */}
+            <div className="pt-2 border-t border-slate-200 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowRankingRules(false)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 font-bold text-xs cursor-pointer transition-colors shadow-2xs"
+                title="Thu gọn quy tắc xếp hạng lại"
+              >
+                <ChevronUp className="w-3.5 h-3.5 text-slate-600" />
+                <span>Thu gọn lại</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -1495,32 +1518,80 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         </div>
 
         {/* AGGREGATED FACILITIES TABLE & PROGRESS BARS */}
-        <div className="mt-6 print:mt-0 bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-2xs print:border-none print:shadow-none print:rounded-none">
+        <div ref={tableContainerRef} className="mt-6 print:mt-0 bg-white rounded-xl border border-slate-200/90 overflow-hidden shadow-2xs print:border-none print:shadow-none print:rounded-none">
           <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3 print:hidden">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#1B5EA6]" />
-            <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A3A5C]">
-                Bảng Xếp Hạng (BXH) & Danh Sách Các Cơ Sở
-              </h3>
-              <p className="text-[11px] text-slate-500 font-normal">
-                Xếp hạng tổng điểm 100đ theo 3 tiêu chí: Điểm TB (30%) • Tiến độ tháng (30%) • Tính liên tục (40%)
-              </p>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-[#1B5EA6]" />
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A3A5C]">
+                  Bảng Xếp Hạng (BXH) & Danh Sách Các Cơ Sở
+                </h3>
+                <p className="text-[11px] text-slate-500 font-normal">
+                  Xếp hạng tổng điểm 100đ theo 3 tiêu chí: Điểm TB (30%) • Tiến độ tháng (30%) • Tính liên tục (40%)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* RANKING BADGE - CHỈ GIỮ LẠI BXH TỔNG ĐIỂM (100đ) */}
+              <div className="flex items-center gap-1.5 bg-[#1B5EA6] text-white px-3.5 py-1.5 rounded-lg shadow-xs font-bold text-xs print:hidden">
+                <Award className="w-3.5 h-3.5 text-amber-300" />
+                <span>BXH Tổng Điểm (100đ)</span>
+              </div>
+
+              {/* NÚT THU GỌN / MỞ RỘNG BẢNG XẾP HẠNG */}
+              <button
+                type="button"
+                onClick={() => setIsRankingTableCollapsed(!isRankingTableCollapsed)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-xs font-bold transition-all shadow-2xs cursor-pointer print:hidden"
+                title={isRankingTableCollapsed ? "Mở rộng bảng xếp hạng" : "Thu gọn bảng xếp hạng lại"}
+              >
+                {isRankingTableCollapsed ? (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 text-[#1B5EA6]" />
+                    <span>Mở rộng bảng ({sortedSummaries.length} cơ sở)</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Thu gọn lại</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* RANKING BADGE - CHỈ GIỮ LẠI BXH TỔNG ĐIỂM (100đ) */}
-          <div className="flex items-center gap-1.5 bg-[#1B5EA6] text-white px-3.5 py-1.5 rounded-lg shadow-xs font-bold text-xs print:hidden">
-            <Award className="w-3.5 h-3.5 text-amber-300" />
-            <span>BXH Tổng Điểm (100đ)</span>
-          </div>
-        </div>
+          {/* DÒNG TỔNG HỢP KHI BẢNG ĐƯỢC THU GỌN */}
+          {isRankingTableCollapsed && (
+            <div className="p-3.5 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 print:hidden">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-700">
+                  Đang thu gọn bảng xếp hạng ({sortedSummaries.length} cơ sở).
+                </span>
+                {sortedSummaries.length >= 3 && (
+                  <span className="text-[11px] text-slate-600 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                    Top 3: 🥇 <strong className="text-slate-900">{sortedSummaries[0]?.coSo}</strong> ({facilityScoreMap.get(sortedSummaries[0]?.coSo)?.totalScore.toFixed(1)}đ) • 🥈 <strong className="text-slate-900">{sortedSummaries[1]?.coSo}</strong> ({facilityScoreMap.get(sortedSummaries[1]?.coSo)?.totalScore.toFixed(1)}đ) • 🥉 <strong className="text-slate-900">{sortedSummaries[2]?.coSo}</strong> ({facilityScoreMap.get(sortedSummaries[2]?.coSo)?.totalScore.toFixed(1)}đ)
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRankingTableCollapsed(false)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1B5EA6] text-white hover:bg-[#164e8a] font-bold text-xs transition-colors shadow-2xs cursor-pointer shrink-0"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+                <span>Mở rộng xem chi tiết</span>
+              </button>
+            </div>
+          )}
 
-        {sortedSummaries.length === 0 ? (
-          <div className="p-8 text-center text-slate-500 text-sm">
-            Không tìm thấy dữ liệu cơ sở nào phù hợp với bộ lọc hiện tại.
-          </div>
-        ) : (
+          {/* NỘI DUNG BẢNG XẾP HẠNG (ẨN KHI THU GỌN TRÊN WEB, LUÔN HIỂN THỊ KHI IN) */}
+          <div className={isRankingTableCollapsed ? 'hidden print:block' : 'block'}>
+            {sortedSummaries.length === 0 ? (
+              <div className="p-8 text-center text-slate-500 text-sm">
+                Không tìm thấy dữ liệu cơ sở nào phù hợp với bộ lọc hiện tại.
+              </div>
+            ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 text-slate-600 uppercase font-semibold text-[11px] border-b border-slate-200">
@@ -1591,6 +1662,8 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                     else if (index === 2) rankBadge = <span className="text-base" title="Hạng 3">🥉</span>;
                   }
 
+                  const isHiddenByLimit = rowLimit !== 'all' && index >= rowLimit;
+
                   return (
                     <tr
                       key={item.coSo}
@@ -1600,7 +1673,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
                       }}
                       className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
                         isSelected ? 'bg-[#3EA8E0]/10 border-l-4 border-l-[#1B5EA6] font-medium' : ''
-                      }`}
+                      } ${isHiddenByLimit ? 'hidden print:table-row' : ''}`}
                     >
                       {/* HẠNG / STT */}
                       <td className="py-3 px-3 text-center font-bold">
@@ -1839,6 +1912,75 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             </table>
           </div>
         )}
+
+        {/* FOOTER BAR VỚI NÚT THU GỌN VÀ TÙY CHỌN HIỂN THỊ */}
+        {sortedSummaries.length > 0 && (
+          <div className="p-3.5 bg-slate-50/80 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 print:hidden">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-slate-500">
+                Hiển thị: <strong className="text-slate-800">{rowLimit === 'all' ? sortedSummaries.length : Math.min(rowLimit, sortedSummaries.length)}</strong> / {sortedSummaries.length} cơ sở
+              </span>
+              {sortedSummaries.length > 5 && (
+                <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-[11px] shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setRowLimit(5)}
+                    className={`px-2.5 py-0.5 rounded-md font-bold transition-colors cursor-pointer ${
+                      rowLimit === 5 ? 'bg-[#1B5EA6] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Top 5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRowLimit(10)}
+                    className={`px-2.5 py-0.5 rounded-md font-bold transition-colors cursor-pointer ${
+                      rowLimit === 10 ? 'bg-[#1B5EA6] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Top 10
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRowLimit('all')}
+                    className={`px-2.5 py-0.5 rounded-md font-bold transition-colors cursor-pointer ${
+                      rowLimit === 'all' ? 'bg-[#1B5EA6] text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Tất cả ({sortedSummaries.length})
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {rowLimit !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setRowLimit('all')}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 hover:bg-sky-100 font-bold text-xs cursor-pointer shadow-2xs transition-colors"
+                >
+                  <span>Xem tất cả {sortedSummaries.length} cơ sở</span>
+                </button>
+              )}
+
+              {/* NÚT THU GỌN LẠI Ở CUỐI BẢNG */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRankingTableCollapsed(true);
+                  tableContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold text-xs cursor-pointer shadow-2xs transition-colors"
+                title="Thu gọn bảng xếp hạng lại"
+              >
+                <ChevronUp className="w-3.5 h-3.5 text-slate-600" />
+                <span>Thu gọn lại</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       </div>
 
         {/* Print only footer for Page 2 (Signatures) */}
