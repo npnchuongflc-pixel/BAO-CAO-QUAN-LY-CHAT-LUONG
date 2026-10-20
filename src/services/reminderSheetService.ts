@@ -281,6 +281,27 @@ export async function loadReminderReportData(): Promise<ReminderReportSummary> {
   };
 }
 
+/**
+ * Rút gọn chuỗi ngày: Bỏ năm 2026 (ví dụ: "29/09/2026" -> "29/09")
+ */
+export function formatShortDate(dateStr?: string): string {
+  if (!dateStr) return '';
+  const str = dateStr.trim();
+  const dmyMatch = str.match(/^(\d{1,2})[/.-](\d{1,2})[/.-]202\d$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    return `${day}/${month}`;
+  }
+  const ymdMatch = str.match(/^202\d[/.-](\d{1,2})[/.-](\d{1,2})$/);
+  if (ymdMatch) {
+    const month = ymdMatch[1].padStart(2, '0');
+    const day = ymdMatch[2].padStart(2, '0');
+    return `${day}/${month}`;
+  }
+  return str.replace(/[/.-]202\d\b/g, '').trim();
+}
+
 export interface GroupedViolationReason {
   name: string;
   count: number;
@@ -316,7 +337,7 @@ export function parseAndGroupViolationReasons(
     const g = groups.get(category)!;
     g.count += 1;
     if (date && date.trim()) {
-      g.dates.add(date.trim());
+      g.dates.add(formatShortDate(date));
     }
   };
 
@@ -433,7 +454,7 @@ export function generateTeamLeaderEscalationMessage(summary: ReminderReportSumma
       const icon = item.remindedCount >= 4 ? '🔴' : '🟠';
       message += `${idx + 1}. ${icon} ${item.coSo.toUpperCase()}: ${item.remindedCount} LẦN NHẮC NHỞ\n`;
       if (item.remindedRecords.length > 0) {
-        message += `   • Các ngày nhắc nhở: ${item.remindedRecords.map(r => r.ngay).join(', ')}\n`;
+        message += `   • Các ngày nhắc nhở: ${item.remindedRecords.map(r => formatShortDate(r.ngay)).join(', ')}\n`;
       }
       const grouped = parseAndGroupViolationReasons(item.remindedRecords, item.latestReason, item.latestRemindedDate);
       if (grouped.length > 0) {
