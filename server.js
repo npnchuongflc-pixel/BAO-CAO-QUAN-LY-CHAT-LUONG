@@ -187,6 +187,36 @@ app.get("/api/facility-sheet-data", async (req, res) => {
     });
   }
 });
+var cachedWarningRemindersCsv = "";
+var lastWarningRemindersCacheTime = 0;
+app.get("/api/warning-reminders-data", async (req, res) => {
+  try {
+    const force = req.query.force === "true";
+    const now = Date.now();
+    if (!force && cachedWarningRemindersCsv && now - lastWarningRemindersCacheTime < 3e4) {
+      return res.json({ success: true, data: { csv: cachedWarningRemindersCsv }, cached: true });
+    }
+    const sheetId = "1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E";
+    const gid = "1091093608";
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const response = await fetch(targetUrl, { cache: "no-store", signal: AbortSignal.timeout(15e3) });
+    if (!response.ok) {
+      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
+    }
+    const csv = await response.text();
+    if (!csv || csv.includes("<!DOCTYPE html>") || csv.includes("accounts.google.com")) {
+      throw new Error("Google Sheets CSV kh\xF4ng kh\u1EA3 d\u1EE5ng ho\u1EB7c c\u1EA7n quy\u1EC1n truy c\u1EADp");
+    }
+    cachedWarningRemindersCsv = csv;
+    lastWarningRemindersCacheTime = now;
+    res.json({ success: true, data: { csv }, cached: false });
+  } catch (err) {
+    if (cachedWarningRemindersCsv) {
+      return res.json({ success: true, data: { csv: cachedWarningRemindersCsv }, cached: true, warning: "Stale cache" });
+    }
+    res.status(500).json({ success: false, error: err.message || "Kh\xF4ng th\u1EC3 t\u1EA3i d\u1EEF li\u1EC7u sheet nh\u1EAFc nh\u1EDF" });
+  }
+});
 var CLASSROOM_SPREADSHEET_ID = "1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE";
 app.get("/api/all-sheets", (req, res) => {
   const jsonPath = path.resolve(process.cwd(), "public/data/all_sheets.json");

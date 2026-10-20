@@ -23,7 +23,7 @@ import { FacilityDetailReportsModal } from './FacilityDetailReportsModal';
 import { PrintReportHeader } from '../PrintReportHeader';
 import { PrintReportFooter } from '../PrintReportFooter';
 const RepairManagementModule = lazy(() => import('../../repair/RepairManagementModule').then(m => ({ default: m.RepairManagementModule })));
-import { Building2, Sparkles, CheckCircle2, AlertTriangle, Wrench, Layers } from 'lucide-react';
+import { Building2, CheckCircle2, ShieldCheck, Wrench, RefreshCw, AlertTriangle, Layers } from 'lucide-react';
 
 export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [mode, setMode] = useState<ReportMode>('hygiene');
@@ -487,135 +487,136 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
   return (
     <div className="tab-view-wrapper min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
       {/* Top Module Sub-Navigation Bar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex flex-wrap items-center justify-between gap-3">
-          {/* Left branding */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
-                  Hệ Thống Giám Sát Cơ Sở &amp; 5S
-                </h1>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
-                  Live Sync
-                </span>
+      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+            {/* Left branding */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1B5EA6] to-[#0D3866] text-white flex items-center justify-center shadow-xs shrink-0 ring-1 ring-black/5">
+                <Building2 className="w-5 h-5 text-white" />
               </div>
-              <p className="text-[11px] text-slate-500 hidden md:block">
-                Theo dõi chất lượng vệ sinh &amp; bảo trì cơ sở vật chất toàn hệ thống 19 cơ sở
-              </p>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                    Hệ Thống Giám Sát Cơ Sở &amp; 5S
+                  </h1>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Live Sync
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5 truncate hidden sm:block">
+                  Theo dõi chất lượng vệ sinh &amp; bảo trì 19 cơ sở toàn hệ thống
+                </p>
+              </div>
             </div>
-          </div>
 
-          {/* Mode Switcher Tabs - Sheet Navigation Bolder & Prominent */}
-          <div className="flex items-center gap-2">
-            <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-1.5 shadow-2xs">
-              {/* Sheet 1: Báo Cáo Vệ Sinh */}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('hygiene');
-                  setActiveSubTab('hygiene-quality');
-                }}
-                style={{ fontWeight: 900 }}
-                className={`group px-4 py-2 sm:py-2.5 rounded-xl text-sm sm:text-base font-black transition-all duration-150 flex items-center gap-2 cursor-pointer ${
-                  activeSubTab === 'hygiene-quality' && mode === 'hygiene'
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30 ring-2 ring-blue-500/40'
-                    : 'bg-white text-slate-950 hover:text-blue-700 hover:bg-blue-50/70 border-2 border-slate-200 shadow-2xs hover:border-blue-300'
-                }`}
-                title="Xem Sheet Báo Cáo Vệ Sinh"
+            {/* Right: Modern Segmented Navigation Bar */}
+            <div className="flex items-center gap-2 self-stretch lg:self-auto">
+              <nav
+                aria-label="Phân hệ báo cáo cơ sở"
+                className="inline-flex w-full sm:w-auto p-1 bg-slate-100 rounded-xl border border-slate-200/80 shadow-2xs gap-1 overflow-x-auto custom-scrollbar"
               >
-                <CheckCircle2
-                  strokeWidth={2.6}
-                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
-                    activeSubTab === 'hygiene-quality' && mode === 'hygiene' ? 'text-white' : 'text-blue-600'
-                  }`}
-                />
-                <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
-                  Báo Cáo Vệ Sinh
-                </span>
-                <span
-                  style={{ fontWeight: 900 }}
-                  className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
+                {/* Sheet 1: Báo Cáo Vệ Sinh */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('hygiene');
+                    setActiveSubTab('hygiene-quality');
+                  }}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none whitespace-nowrap ${
                     activeSubTab === 'hygiene-quality' && mode === 'hygiene'
-                      ? 'bg-white/25 text-white'
-                      : 'bg-blue-100 text-blue-900 border border-blue-200'
+                      ? 'bg-white text-[#1B5EA6] shadow-xs border border-slate-200/80 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
                   }`}
+                  title="Xem Báo Cáo Kiểm Tra Vệ Sinh Hằng Ngày"
                 >
-                  {hygieneReports.length}
-                </span>
-              </button>
+                  <CheckCircle2
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      activeSubTab === 'hygiene-quality' && mode === 'hygiene' ? 'text-[#1B5EA6]' : 'text-slate-400'
+                    }`}
+                  />
+                  <span>Báo Cáo Vệ Sinh</span>
+                  <span
+                    className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md ${
+                      activeSubTab === 'hygiene-quality' && mode === 'hygiene'
+                        ? 'bg-sky-50 text-[#1B5EA6] border border-sky-100'
+                        : 'bg-slate-200/70 text-slate-600'
+                    }`}
+                  >
+                    {hygieneReports.length.toLocaleString('vi-VN')}
+                  </span>
+                </button>
 
-              {/* Sheet 2: Chất Lượng Cơ Sở */}
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('quality');
-                  setActiveSubTab('hygiene-quality');
-                }}
-                style={{ fontWeight: 900 }}
-                className={`group px-4 py-2 sm:py-2.5 rounded-xl text-sm sm:text-base font-black transition-all duration-150 flex items-center gap-2 cursor-pointer ${
-                  activeSubTab === 'hygiene-quality' && mode === 'quality'
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 ring-2 ring-indigo-500/40'
-                    : 'bg-white text-slate-950 hover:text-indigo-700 hover:bg-indigo-50/70 border-2 border-slate-200 shadow-2xs hover:border-indigo-300'
-                }`}
-                title="Xem Sheet Báo Cáo Chất Lượng Cơ Sở"
-              >
-                <AlertTriangle
-                  strokeWidth={2.6}
-                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
-                    activeSubTab === 'hygiene-quality' && mode === 'quality' ? 'text-white' : 'text-indigo-600'
-                  }`}
-                />
-                <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
-                  Chất Lượng Cơ Sở
-                </span>
-                <span
-                  style={{ fontWeight: 900 }}
-                  className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
+                {/* Sheet 2: Chất Lượng Cơ Sở */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('quality');
+                    setActiveSubTab('hygiene-quality');
+                  }}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none whitespace-nowrap ${
                     activeSubTab === 'hygiene-quality' && mode === 'quality'
-                      ? 'bg-white/25 text-white'
-                      : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
                   }`}
+                  title="Xem Báo Cáo Đánh Giá Chất Lượng Cơ Sở Vật Chất"
                 >
-                  {qualityReports.length}
-                </span>
-              </button>
+                  <ShieldCheck
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      activeSubTab === 'hygiene-quality' && mode === 'quality' ? 'text-indigo-600' : 'text-slate-400'
+                    }`}
+                  />
+                  <span>Chất Lượng Cơ Sở</span>
+                  <span
+                    className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md ${
+                      activeSubTab === 'hygiene-quality' && mode === 'quality'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                        : 'bg-slate-200/70 text-slate-600'
+                    }`}
+                  >
+                    {qualityReports.length.toLocaleString('vi-VN')}
+                  </span>
+                </button>
 
-              {/* Sheet 3: Báo Cáo Sửa Chữa */}
+                {/* Sheet 3: Báo Cáo Sửa Chữa */}
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('repair')}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none whitespace-nowrap ${
+                    activeSubTab === 'repair'
+                      ? 'bg-white text-amber-800 shadow-xs border border-slate-200/80 font-bold'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+                  }`}
+                  title="Xem Báo Cáo Đề Xuất Sửa Chữa & Bảo Trì Thiết Bị"
+                >
+                  <Wrench
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      activeSubTab === 'repair' ? 'text-amber-600' : 'text-slate-400'
+                    }`}
+                  />
+                  <span>Báo Cáo Sửa Chữa</span>
+                  <span
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                      activeSubTab === 'repair'
+                        ? 'bg-amber-50 text-amber-800 border border-amber-200/80'
+                        : 'bg-slate-200/70 text-slate-600'
+                    }`}
+                  >
+                    Đề xuất
+                  </span>
+                </button>
+              </nav>
+
+              {/* Quick Sync Button */}
               <button
                 type="button"
-                onClick={() => setActiveSubTab('repair')}
-                style={{ fontWeight: 900 }}
-                className={`group px-4 py-2 sm:py-2.5 rounded-xl text-sm sm:text-base font-black transition-all duration-150 flex items-center gap-2 cursor-pointer ${
-                  activeSubTab === 'repair'
-                    ? 'bg-amber-600 text-white shadow-md shadow-amber-500/30 ring-2 ring-amber-500/40'
-                    : 'bg-white text-slate-950 hover:text-amber-800 hover:bg-amber-50/70 border-2 border-slate-200 shadow-2xs hover:border-amber-300'
-                }`}
-                title="Xem Báo Cáo Sửa Chữa & Đề Xuất Cơ Sở Vật Chất (Sheet Đề Xuất)"
+                onClick={() => void loadData()}
+                disabled={isSyncing}
+                className="p-2 text-slate-500 hover:text-[#1B5EA6] hover:bg-slate-100 rounded-xl border border-slate-200/80 transition-colors shadow-2xs disabled:opacity-50 cursor-pointer hidden md:inline-flex"
+                title="Đồng bộ / Tải lại dữ liệu Google Sheet mới nhất"
               >
-                <Wrench
-                  strokeWidth={2.6}
-                  className={`w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0 transition-transform group-hover:scale-110 ${
-                    activeSubTab === 'repair' ? 'text-white' : 'text-amber-600'
-                  }`}
-                />
-                <span className="font-black tracking-tight" style={{ fontWeight: 900 }}>
-                  Báo Cáo Sửa Chữa
-                </span>
-                <span
-                  style={{ fontWeight: 900 }}
-                  className={`text-xs font-black px-2 py-0.5 rounded-lg font-mono ${
-                    activeSubTab === 'repair'
-                      ? 'bg-white/25 text-white'
-                      : 'bg-amber-100 text-amber-950 border border-amber-200'
-                  }`}
-                >
-                  Đề xuất
-                </span>
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[#1B5EA6]' : ''}`} />
               </button>
             </div>
           </div>

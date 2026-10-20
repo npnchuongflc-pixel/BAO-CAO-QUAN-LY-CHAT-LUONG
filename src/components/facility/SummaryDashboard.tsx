@@ -57,6 +57,7 @@ import {
   syncWarningsToGoogleSheet
 } from '../../services/warningAuditService';
 import { YesterdayHygieneReview } from './YesterdayHygieneReview';
+import { ReminderEscalationReport } from './ReminderEscalationReport';
 import { 
   PieChart, 
   Pie, 
@@ -1991,12 +1992,15 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       {/* END OF PAGE 2 IN PRINT */}
 
       {isHygiene && (
-        <div className="print:hidden">
+        <div className="print:hidden space-y-6">
           <YesterdayHygieneReview
             dateIso={yesterdayInfo.isoStr}
             dateDisplay={yesterdayInfo.displayStr}
             reports={rawHygieneReports}
           />
+
+          {/* BÁO CÁO CẢNH BÁO TRƯỞNG NHÓM (CƠ SỞ BỊ NHẮC NHỞ TỪ 2 LẦN TRỞ LÊN TỪ SHEET NHẮC NHỞ) */}
+          <ReminderEscalationReport />
         </div>
       )}
 

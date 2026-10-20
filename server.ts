@@ -241,6 +241,42 @@ app.get('/api/facility-sheet-data', async (req, res) => {
   }
 });
 
+// Cache for Warning Reminders Sheet ("nhắc nhở" tab)
+let cachedWarningRemindersCsv = '';
+let lastWarningRemindersCacheTime = 0;
+
+app.get('/api/warning-reminders-data', async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const now = Date.now();
+    if (!force && cachedWarningRemindersCsv && (now - lastWarningRemindersCacheTime < 30_000)) {
+      return res.json({ success: true, data: { csv: cachedWarningRemindersCsv }, cached: true });
+    }
+
+    const sheetId = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
+    const gid = '1091093608';
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    const response = await fetch(targetUrl, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) {
+      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
+    }
+
+    const csv = await response.text();
+    if (!csv || csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+      throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
+    }
+
+    cachedWarningRemindersCsv = csv;
+    lastWarningRemindersCacheTime = now;
+    res.json({ success: true, data: { csv }, cached: false });
+  } catch (err: any) {
+    if (cachedWarningRemindersCsv) {
+      return res.json({ success: true, data: { csv: cachedWarningRemindersCsv }, cached: true, warning: 'Stale cache' });
+    }
+    res.status(500).json({ success: false, error: err.message || 'Không thể tải dữ liệu sheet nhắc nhở' });
+  }
+});
+
 // ============================================================================
 // Classroom Report APIs (BAO-CAO-LOP-HOC)
 // Spreadsheet ID: 1wmBYcZCjOCWWvcv2mxeATVxphawbpkUaPIRICj3XgsE
