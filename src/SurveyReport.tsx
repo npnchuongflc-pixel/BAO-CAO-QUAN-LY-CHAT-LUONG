@@ -17,6 +17,8 @@ import { KpiGrid } from './components/KpiGrid';
 import { InsightStrip } from './components/InsightStrip';
 import { DashboardGrid } from './components/DashboardGrid';
 import { FacilityTable } from './components/FacilityTable';
+import { LowStarFacilitiesReport } from './components/LowStarFacilitiesReport';
+import { CommentSentimentPieReport } from './components/CommentSentimentPieReport';
 import { FeedbackTable } from './components/FeedbackTable';
 
 function getCurrentMonthRange(referenceDate = new Date()) {
@@ -454,6 +456,14 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
     const medianDelay = delays.length ? delays[Math.floor((delays.length - 1) / 2)] : null;
     const within24 = delays.length ? delays.filter((h) => h <= 24).length / delays.length : null;
 
+    // Phân loại lượt phản hồi theo kỳ: Giữa kỳ (Giữa khóa) và Cuối kỳ (Cuối khóa)
+    const midTermRepliesCount = repliesInPeriod.filter((e) =>
+      (e.course || '').toLowerCase().includes('giữa')
+    ).length;
+    const finalTermRepliesCount = repliesInPeriod.filter((e) =>
+      (e.course || '').toLowerCase().includes('cuối')
+    ).length;
+
     return {
       start: startDate,
       end: endDate,
@@ -472,6 +482,8 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
       feedback: feedbackList,
       medianDelay,
       within24,
+      midTermRepliesCount,
+      finalTermRepliesCount,
       delta: {
         sent: calculateDelta(sentInPeriod.length, prevSent.length),
         replies: calculateDelta(repliesInPeriod.length, prevReplies.length),
@@ -564,10 +576,19 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
                       months={reportData.months}
                       totalReplies={reportData.replies.length}
                     />
+                    <CommentSentimentPieReport
+                      replies={reportData.replies}
+                      feedback={reportData.feedback}
+                    />
                     <FacilityTable
                       facilities={reportData.facilities}
                       sortField={sortField}
                       onSortChange={setSortField}
+                    />
+                    <LowStarFacilitiesReport
+                      facilities={reportData.facilities}
+                      feedback={reportData.feedback}
+                      lowFeedback={reportData.low}
                     />
                     <FeedbackTable
                       feedback={reportData.feedback}

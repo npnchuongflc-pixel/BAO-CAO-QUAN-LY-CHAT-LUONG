@@ -80,6 +80,8 @@ export interface PeriodReportData {
   feedback: SheetRowItem[];
   medianDelay: number | null;
   within24: number | null;
+  midTermRepliesCount: number;
+  finalTermRepliesCount: number;
   delta: {
     sent: number | null;
     replies: number | null;

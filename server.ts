@@ -11,10 +11,10 @@ dotenv.config();
 const app = express();
 
 const isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION);
-const isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT && !isCloudRun);
-const PORT = isDevWorkspace
-  ? parseInt(process.env.DEFAULT_APP_PORT!, 10)
-  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 8080);
+const isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT);
+const PORT = process.env.DEFAULT_APP_PORT
+  ? parseInt(process.env.DEFAULT_APP_PORT, 10)
+  : (process.env.PORT ? parseInt(process.env.PORT, 10) : 3000);
 
 app.use(express.json({ limit: '10mb' }));
 

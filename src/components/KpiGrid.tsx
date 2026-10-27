@@ -15,9 +15,10 @@ interface KpiCardProps {
   label: string;
   value: string;
   note: string;
-  icon: 'send' | 'reply' | 'rate' | 'star' | 'alert' | 'clock';
+  icon: 'send' | 'reply' | 'rate' | 'star' | 'alert' | 'clock' | 'layers';
   color: string;
   delta?: number | null;
+  customContent?: React.ReactNode;
 }
 
 const renderIcon = (icon: KpiCardProps['icon']) => {
@@ -63,17 +64,29 @@ const renderIcon = (icon: KpiCardProps['icon']) => {
           <polyline points="12 6 12 12 16 14" />
         </svg>
       );
+    case 'layers':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+      );
   }
 };
 
-export const KpiCard: React.FC<KpiCardProps> = ({ label, value, note, icon, color, delta }) => {
+export const KpiCard: React.FC<KpiCardProps> = ({ label, value, note, icon, color, delta, customContent }) => {
   return (
     <article className="kpi-card" style={{ ['--accent' as any]: color }}>
       <div className="kpi-top">
         <span className="kpi-label">{label}</span>
         <span className="kpi-icon">{renderIcon(icon)}</span>
       </div>
-      <div className="kpi-value">{value}</div>
+      {customContent ? (
+        customContent
+      ) : (
+        <div className="kpi-value">{value}</div>
+      )}
       <p className="kpi-note">{note}</p>
       {delta != null && (
         <span
@@ -151,11 +164,33 @@ export const KpiGrid: React.FC<KpiGridProps> = ({ data }) => {
           color={COLORS.coral}
         />
         <KpiCard
-          label="Phản hồi trong 24 giờ"
-          value={formatPercent(data.within24)}
-          note={`Trung vị ${medianStr}`}
-          icon="clock"
+          label="Phản hồi Giữa kỳ & Cuối kỳ"
+          value={`${formatNumber(data.finalTermRepliesCount)} / ${formatNumber(data.midTermRepliesCount)}`}
+          note={`Cuối kỳ: ${formatNumber(data.finalTermRepliesCount)} lượt • Giữa kỳ: ${formatNumber(data.midTermRepliesCount)} lượt`}
+          icon="layers"
           color={COLORS.purple}
+          customContent={
+            <div className="my-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600 inline-block shadow-2xs" />
+                  Cuối kỳ:
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight">
+                  {formatNumber(data.finalTermRepliesCount)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 pt-1.5">
+                <span className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block shadow-2xs" />
+                  Giữa kỳ:
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tight">
+                  {formatNumber(data.midTermRepliesCount)}
+                </span>
+              </div>
+            </div>
+          }
         />
       </div>
     </section>

@@ -45,6 +45,16 @@ const proposalsProxy = {
   },
 };
 
+const warningRemindersProxy = {
+  target: 'https://docs.google.com',
+  changeOrigin: true,
+  secure: true,
+  followRedirects: true,
+  rewrite: () => {
+    return `/spreadsheets/d/1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E/export?format=csv&gid=1091093608`;
+  },
+};
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -86,6 +96,7 @@ export default defineConfig(() => {
     },
 
     server: {
+      port: 3000,
       host: '0.0.0.0',
 
       allowedHosts: ['terminal.local'],
@@ -94,6 +105,7 @@ export default defineConfig(() => {
       proxy: {
         '/api/facility-sheet-data': facilitySheetProxy,
         '/api/proposals-sheet': proposalsProxy,
+        '/api/warning-reminders-data': warningRemindersProxy,
       },
 
       // Preserve AI Studio HMR configuration.

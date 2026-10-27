@@ -36,7 +36,7 @@ export interface FacilityReminderAggregation {
   remindedCount: number;
   appErrorCount: number;
   pendingCount: number;
-  isEscalated: boolean; // remindedCount >= 2
+  isEscalated: boolean; // remindedCount >= 3
   severity: 'critical' | 'high' | 'watch' | 'clean';
   latestRemindedDate: string;
   latestRemindedDateIso: string;
@@ -48,8 +48,8 @@ export interface FacilityReminderAggregation {
 export interface ReminderReportSummary {
   totalRecords: number;
   totalRemindedCount: number;
-  escalatedFacilitiesCount: number; // >= 2 reminders
-  watchFacilitiesCount: number; // 1 reminder
+  escalatedFacilitiesCount: number; // >= 3 reminders (Báo Trưởng Nhóm)
+  watchFacilitiesCount: number; // 1-2 reminders (Nhắc nhở 1-2 lần)
   cleanFacilitiesCount: number; // 0 reminders
   minDate: string;
   maxDate: string;
@@ -240,15 +240,16 @@ export async function loadReminderReportData(): Promise<ReminderReportSummary> {
       agg.latestRemindedDate = agg.remindedRecords[0].ngay;
     }
 
-    agg.isEscalated = agg.remindedCount >= 2;
+    agg.isEscalated = agg.remindedCount >= 3;
 
     if (agg.remindedCount >= 4) {
       agg.severity = 'critical';
       escalatedCount += 1;
-    } else if (agg.remindedCount >= 2) {
+    } else if (agg.remindedCount === 3) {
       agg.severity = 'high';
       escalatedCount += 1;
-    } else if (agg.remindedCount === 1) {
+    } else if (agg.remindedCount >= 1) {
+      // Nhóm nhắc nhở 1-2 lần
       agg.severity = 'watch';
       watchCount += 1;
     } else {
@@ -441,14 +442,14 @@ export function generateTeamLeaderEscalationMessage(summary: ReminderReportSumma
     minute: '2-digit',
   });
 
-  let message = `🚨 [CẢNH BÁO VẬN HÀNH] BÁO CÁO CÁC CƠ SỞ BỊ NHẮC NHỞ TỪ 2 LẦN TRỞ LÊN\n`;
+  let message = `🚨 [CẢNH BÁO VẬN HÀNH] BÁO CÁO CÁC CƠ SỞ BỊ NHẮC NHỞ TRÊN 3 LẦN\n`;
   message += `⏱️ Thời gian xuất báo cáo: ${timeStr} ngày ${dateStr}\n`;
   message += `📊 Nguồn dữ liệu: Google Sheet "nhắc nhở" (Tổng ${summary.totalRemindedCount} lượt nhắc nhở)\n`;
   message += `⚠️ Số cơ sở cần Trưởng nhóm xử lý: ${escalated.length} cơ sở\n`;
   message += `------------------------------------\n\n`;
 
   if (escalated.length === 0) {
-    message += `✅ Hiện tại không có cơ sở nào bị nhắc nhở từ 2 lần trở lên.\n`;
+    message += `✅ Hiện tại không có cơ sở nào bị nhắc nhở trên 3 lần.\n`;
   } else {
     escalated.forEach((item, idx) => {
       const icon = item.remindedCount >= 4 ? '🔴' : '🟠';

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { DayPoint, FacilityMetrics, MonthPoint } from '../types';
 import { formatNumber, formatPercent } from '../services/sheetService';
 import { COLORS } from './KpiGrid';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 function buildSmoothPath(points: [number, number][]): string {
   if (!points.length) return '';
@@ -450,61 +451,125 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
   months,
   totalReplies
 }) => {
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
+
   return (
-    <section className="dashboard-grid">
-      {/* Comparison row: daily and 12-month trends */}
-      <article className="panel comparison-chart-panel">
-        <div className="panel-head">
-          <div>
-            <span>DIỄN BIẾN THEO NGÀY</span>
-            <h2>Lượt gửi và phản hồi</h2>
-            <p className="chart-method-note">Combo chart · Cột: lượt gửi · Đường: phản hồi · Hai trục số lượng độc lập</p>
-          </div>
-          <div className="legend">
-            <span className="sent">Lượt gửi</span>
-            <span className="reply">Phản hồi</span>
-          </div>
+    <section className="panel dashboard-grid-panel bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden my-6">
+      {/* Header bar */}
+      <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
+        <div>
+          <span className="text-xs font-bold text-sky-700 uppercase tracking-wider block">
+            XU HƯỚNG &amp; PHÂN BỐ ĐÁNH GIÁ
+          </span>
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
+            Biểu đồ diễn biến theo ngày, xu hướng 12 tháng &amp; cơ cấu rating
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Theo dõi trực quan nhịp gửi tin, tỷ lệ phản hồi thực tế và so sánh khối lượng giữa các cơ sở.
+          </p>
         </div>
-        <DayTimelineChart points={dayPoints} />
-      </article>
 
-      <article className="panel comparison-chart-panel">
-        <div className="panel-head">
-          <div>
-            <span>XU HƯỚNG 12 THÁNG</span>
-            <h2>Lượt phản hồi và tỷ lệ phản hồi</h2>
-          </div>
-          <div className="legend">
-            <span className="month-reply">Lượt phản hồi</span>
-            <span className="month-rate">Tỷ lệ phản hồi</span>
-          </div>
-        </div>
-        <MonthlyTrendChart points={months} />
-      </article>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer self-start sm:self-center shrink-0"
+          title={isCollapsed ? 'Mở rộng biểu đồ xu hướng' : 'Thu gọn biểu đồ xu hướng'}
+        >
+          {isCollapsed ? (
+            <>
+              <ChevronDown className="w-4 h-4 text-sky-600" />
+              <span>Mở rộng</span>
+            </>
+          ) : (
+            <>
+              <ChevronUp className="w-4 h-4 text-slate-600" />
+              <span>Thu gọn lại</span>
+            </>
+          )}
+        </button>
+      </div>
 
-      {/* Supporting analysis row */}
-      <article className="panel">
-        <div className="panel-head">
-          <div>
-            <span>CHẤT LƯỢNG PHẢN HỒI</span>
-            <h2>Phân bố rating</h2>
+      {/* Dạng thu gọn (Mini Banner) */}
+      {isCollapsed && (
+        <div
+          onClick={() => setIsCollapsed(false)}
+          className="p-4 bg-slate-50/80 flex items-center justify-between gap-3 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/80 transition-colors"
+          title="Bấm để mở rộng xem biểu đồ"
+        >
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="font-bold text-slate-900 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+              📈 {dayPoints.length} ngày theo dõi
+            </span>
+            <span className="font-bold text-blue-900 bg-blue-100/80 px-2.5 py-1 rounded-md border border-blue-200">
+              ⭐ {formatNumber(totalReplies)} lượt phản hồi đã ghi nhận
+            </span>
+            <span className="text-slate-600">
+              • {facilities.length} cơ sở đối chiếu &amp; xu hướng 12 tháng
+            </span>
           </div>
-          <b>{formatNumber(totalReplies)} lượt</b>
         </div>
-        <RatingDistribution counts={ratingCounts} />
-      </article>
+      )}
 
-      {/* Panel 3: Facility comparison */}
-      <article className="panel">
-        <div className="panel-head">
-          <div>
-            <span>SO SÁNH CƠ SỞ</span>
-            <h2>Cơ sở có nhiều phản hồi</h2>
+      {/* Dạng mở rộng: 4 khối biểu đồ */}
+      {!isCollapsed && (
+        <div className="p-4 sm:p-5 bg-slate-50/40">
+          <div className="dashboard-grid">
+            {/* Comparison row: daily and 12-month trends */}
+            <article className="panel comparison-chart-panel">
+              <div className="panel-head">
+                <div>
+                  <span>DIỄN BIẾN THEO NGÀY</span>
+                  <h2>Lượt gửi và phản hồi</h2>
+                  <p className="chart-method-note">Combo chart · Cột: lượt gửi · Đường: phản hồi · Hai trục số lượng độc lập</p>
+                </div>
+                <div className="legend">
+                  <span className="sent">Lượt gửi</span>
+                  <span className="reply">Phản hồi</span>
+                </div>
+              </div>
+              <DayTimelineChart points={dayPoints} />
+            </article>
+
+            <article className="panel comparison-chart-panel">
+              <div className="panel-head">
+                <div>
+                  <span>XU HƯỚNG 12 THÁNG</span>
+                  <h2>Lượt phản hồi và tỷ lệ phản hồi</h2>
+                </div>
+                <div className="legend">
+                  <span className="month-reply">Lượt phản hồi</span>
+                  <span className="month-rate">Tỷ lệ phản hồi</span>
+                </div>
+              </div>
+              <MonthlyTrendChart points={months} />
+            </article>
+
+            {/* Supporting analysis row */}
+            <article className="panel">
+              <div className="panel-head">
+                <div>
+                  <span>CHẤT LƯỢNG PHẢN HỒI</span>
+                  <h2>Phân bố rating</h2>
+                </div>
+                <b>{formatNumber(totalReplies)} lượt</b>
+              </div>
+              <RatingDistribution counts={ratingCounts} />
+            </article>
+
+            {/* Panel 3: Facility comparison */}
+            <article className="panel">
+              <div className="panel-head">
+                <div>
+                  <span>SO SÁNH CƠ SỞ</span>
+                  <h2>Cơ sở có nhiều phản hồi</h2>
+                </div>
+                <b>Top 10</b>
+              </div>
+              <TopFacilitiesList rows={facilities} />
+            </article>
           </div>
-          <b>Top 10</b>
         </div>
-        <TopFacilitiesList rows={facilities} />
-      </article>
+      )}
     </section>
   );
 };

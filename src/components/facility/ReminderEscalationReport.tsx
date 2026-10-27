@@ -64,9 +64,9 @@ export const ReminderEscalationReport: React.FC<ReminderEscalationReportProps> =
   const filteredFacilities = useMemo(() => {
     if (!data) return [];
     return data.facilities.filter(fac => {
-      // Tab filter
+      // Tab filter: Báo Trưởng Nhóm (>= 3 lần), Nhắc nhở 1-2 lần, Chưa vi phạm (0 lần)
       if (activeTab === 'escalated' && !fac.isEscalated) return false;
-      if (activeTab === 'watch' && fac.remindedCount !== 1) return false;
+      if (activeTab === 'watch' && !(fac.remindedCount >= 1 && fac.remindedCount <= 2)) return false;
       if (activeTab === 'clean' && fac.remindedCount !== 0) return false;
 
       // Search filter
@@ -142,7 +142,7 @@ ${reasons}
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                  Báo Cáo Cảnh Báo Trưởng Nhóm: Cơ Sở Bị Nhắc Nhở ≥ 2 Lần
+                  Báo Cáo Cảnh Báo Trưởng Nhóm: Cơ Sở Bị Nhắc Nhở Trên 3 Lần
                 </h2>
                 <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-full border border-rose-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-600 animate-pulse" />
@@ -155,7 +155,7 @@ ${reasons}
                 )}
               </div>
               <p className="text-xs text-slate-600 mt-0.5">
-                Tự động tổng hợp và cảnh báo các cơ sở có từ 2 lần bị nhắc nhở để báo cáo trực tiếp về cho Trưởng nhóm
+                Tự động tổng hợp và cảnh báo các cơ sở có từ 3 lần bị nhắc nhở để báo cáo trực tiếp về cho Trưởng nhóm (nhóm theo dõi: nhắc nhở 1 - 2 lần)
               </p>
             </div>
           </div>
@@ -181,7 +181,7 @@ ${reasons}
         <div className="p-4 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 print:hidden">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
-              🚨 {data.escalatedFacilitiesCount} cơ sở bị nhắc nhở ≥ 2 lần
+              🚨 {data.escalatedFacilitiesCount} cơ sở bị nhắc nhở trên 3 lần
             </span>
             <span className="text-slate-600">
               (Tổng cộng {data.totalRemindedCount} lượt nhắc nhở trên toàn hệ thống).
@@ -240,7 +240,7 @@ ${reasons}
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span>🚨 Báo Trưởng Nhóm</span>
+                  <span>🚨 Báo Trưởng Nhóm (≥ 3 lần)</span>
                   <span className="px-1.5 py-0.2 rounded-md bg-rose-100 text-rose-800 text-[10px] font-mono">
                     {data.escalatedFacilitiesCount}
                   </span>
@@ -255,7 +255,7 @@ ${reasons}
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span>⚠️ Nhắc nhở 1 lần</span>
+                  <span>⚠️ Nhắc nhở 1 - 2 lần</span>
                   <span className="px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-800 text-[10px] font-mono">
                     {data.watchFacilitiesCount}
                   </span>
