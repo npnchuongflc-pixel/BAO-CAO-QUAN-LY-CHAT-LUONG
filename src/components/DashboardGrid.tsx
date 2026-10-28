@@ -454,7 +454,7 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
   const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
 
   return (
-    <section className="panel dashboard-grid-panel bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden my-6">
+    <section className="panel table-panel dashboard-grid-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar */}
       <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
         <div>

@@ -14,7 +14,6 @@ import {
 import { FilterPanel } from './components/FilterPanel';
 import { SourceProof } from './components/SourceProof';
 import { KpiGrid } from './components/KpiGrid';
-import { InsightStrip } from './components/InsightStrip';
 import { DashboardGrid } from './components/DashboardGrid';
 import { FacilityTable } from './components/FacilityTable';
 import { LowStarFacilitiesReport } from './components/LowStarFacilitiesReport';
@@ -568,7 +567,6 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
                 reportData && (
                   <>
                     <KpiGrid data={reportData} />
-                    <InsightStrip data={reportData} />
                     <DashboardGrid
                       dayPoints={reportData.dayPoints}
                       ratingCounts={reportData.ratingCounts}

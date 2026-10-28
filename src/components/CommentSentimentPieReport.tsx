@@ -419,7 +419,7 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
   }, [hoveredCategory, selectedCategory]);
 
   return (
-    <section className="panel comment-sentiment-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden my-6">
+    <section className="panel table-panel comment-sentiment-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar */}
       <div className="panel-head p-4 sm:p-5 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-white border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="min-w-0">
@@ -435,10 +435,6 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
             Biểu đồ phân loại nhận xét khen ngợi & các nhóm lỗi phàn nàn
           </h2>
-          <p className="text-xs text-slate-600 mt-1 max-w-3xl">
-            Tự động đọc nội dung phản hồi của phụ huynh: <strong>Toàn bộ lời khen ngợi được gom vào 1 miếng quạt màu xanh</strong>,
-            đồng thời bóc tách chi tiết các nhóm vấn đề phụ huynh phàn nàn để quản lý dễ dàng kiểm tra và cải tiến chất lượng.
-          </p>
         </div>
 
         {/* Nút thu gọn / mở rộng */}
@@ -478,11 +474,6 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
             <span className="font-bold text-rose-900 bg-rose-100/90 px-2.5 py-1 rounded-md border border-rose-200">
               ⚠️ {categoryStats.complaintCount} Phàn nàn ({categoryStats.complaintPercent.toFixed(1)}%)
             </span>
-            {categoryStats.topComplaint && (
-              <span className="text-slate-600">
-                • Vấn đề phàn nàn nhiều nhất: <strong className="text-rose-700">{categoryStats.topComplaint.name}</strong> ({categoryStats.topComplaint.count} lượt)
-              </span>
-            )}
           </div>
         </div>
       )}

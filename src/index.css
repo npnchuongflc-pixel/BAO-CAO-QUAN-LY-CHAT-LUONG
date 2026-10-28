@@ -2393,7 +2393,13 @@ main {
   background: #f8fbfd;
 }
 
-.zalo-dashboard .table-panel {
+.zalo-dashboard .table-panel,
+.zalo-dashboard .dashboard-grid-panel,
+.zalo-dashboard .comment-sentiment-panel,
+.zalo-dashboard .facility-table-panel,
+.zalo-dashboard .low-star-report-panel,
+.zalo-dashboard .feedback-panel {
+  margin: 0 var(--page-gutter) 20px;
   overflow: hidden;
 }
 
@@ -2649,6 +2655,11 @@ main {
   .zalo-dashboard .insight-strip,
   .zalo-dashboard .dashboard-grid,
   .zalo-dashboard .table-panel,
+  .zalo-dashboard .dashboard-grid-panel,
+  .zalo-dashboard .comment-sentiment-panel,
+  .zalo-dashboard .facility-table-panel,
+  .zalo-dashboard .low-star-report-panel,
+  .zalo-dashboard .feedback-panel,
   .zalo-metric-section {
     margin-left: 12px;
     margin-right: 12px;

@@ -97,17 +97,13 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
   };
 
   return (
-    <section className="panel low-star-report-panel bg-white rounded-2xl border border-rose-200/90 shadow-sm overflow-hidden my-6">
+    <section className="panel table-panel low-star-report-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar (Clean - No Collapse Button) */}
       <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-50/90 via-amber-50/40 to-white border-b border-rose-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            Thống kê phân loại nhận xét theo cơ sở
+            Thống kê; phân loại phản hồi chưa tốt theo cơ sở
           </h2>
-          <p className="text-xs text-slate-600 mt-1 max-w-3xl">
-            Hệ thống tự động phân tích toàn bộ dữ liệu phản hồi: thống kê riêng <strong>Bình luận tốt</strong> (khen ngợi)
-            và tự động xếp các <strong>Bình luận chưa tốt</strong> vào các nhóm vấn đề (Giảng dạy, Chăm sóc, Cơ sở vật chất, Chương trình, Góp ý khác).
-          </p>
         </div>
 
         {/* Nút thu gọn / mở rộng */}
@@ -144,9 +140,6 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
             <span className="font-bold text-rose-900 bg-rose-100/80 px-2.5 py-1 rounded-md border border-rose-200">
               ⚠️ {activeRows.filter((r) => r.summary.badCount > 0).length} / {facilities.length} cơ sở có nhận xét cần lưu ý
             </span>
-            <span className="text-slate-600">
-              Tổng <strong>{activeRows.reduce((s, r) => s + r.summary.badCount, 0)}</strong> phản hồi chưa tốt cần cải thiện
-            </span>
           </div>
         </div>
       )}
@@ -179,19 +172,7 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
                   <th className="py-2.5 px-2 text-center whitespace-nowrap" rowSpan={2}>
                     Tổng phản hồi
                   </th>
-                  {/* Single column for Good Comments */}
-                  <th
-                    className="py-2 px-2 text-center whitespace-nowrap bg-emerald-50/90 text-emerald-900 border-x border-emerald-200/80"
-                    rowSpan={2}
-                  >
-                    <div className="flex items-center justify-center gap-1 font-bold">
-                      <ThumbsUp className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Bình luận Tốt</span>
-                    </div>
-                    <span className="text-[10px] font-normal text-emerald-700 block">
-                      (Khen / Hài lòng)
-                    </span>
-                  </th>
+
                   {/* Group header for Bad Comments */}
                   <th
                     className="py-1.5 px-2 text-center whitespace-nowrap bg-rose-50/80 text-rose-900 border-b border-rose-200"
@@ -306,18 +287,7 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
                           {row.summary.totalReplies}
                         </td>
 
-                        {/* Bình luận Tốt */}
-                        <td className="py-3 px-2 text-center whitespace-nowrap bg-emerald-50/30 border-x border-emerald-100">
-                          <span
-                            className={`inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-full text-xs font-black ${
-                              row.summary.goodCount > 0
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                                : 'bg-slate-100 text-slate-400'
-                            }`}
-                          >
-                            {row.summary.goodCount}
-                          </span>
-                        </td>
+
 
                         {/* Nhóm: Giảng dạy & GV */}
                         <td className="py-3 px-2 text-center whitespace-nowrap">
@@ -426,7 +396,7 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
                       {/* Expanded Section: Drilldown of Good and Bad comments */}
                       {isExpanded && (
                         <tr className="bg-rose-50/20">
-                          <td colSpan={12} className="p-4 sm:p-5">
+                          <td colSpan={11} className="p-4 sm:p-5">
                             <div className="bg-white rounded-xl border border-rose-200/80 p-4 shadow-sm space-y-4">
                               {/* Header & Tabs */}
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">

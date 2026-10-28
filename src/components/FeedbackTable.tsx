@@ -283,7 +283,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
   };
 
   return (
-    <section className="panel table-panel feedback-panel relative">
+    <section className="panel table-panel feedback-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden relative">
       {/* Toast Notification */}
       {toastMessage && (
         <div className={`mb-4 p-3.5 rounded-xl shadow-lg flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200 ${
