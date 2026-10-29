@@ -37,6 +37,13 @@ import {
   ImageReviewRecord,
   saveImageReview,
 } from '../../services/imageReviewService';
+import { initAuth, googleSignIn, logout, getCurrentUser } from '../../services/workspaceAuth';
+import { User as FirebaseUser } from 'firebase/auth';
+import {
+  DEFAULT_MASTER_SPREADSHEET_ID,
+  getTargetSpreadsheetId,
+  setTargetSpreadsheetId,
+} from '../../services/googleSheetsDirectReviewService';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
 type ImageFilter = 'all' | ReviewStatus;
@@ -122,6 +129,46 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
   const [isTriggeringAutoSync, setIsTriggeringAutoSync] = useState(false);
+
+  // Google Sheets Workspace OAuth integration state
+  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(() => getCurrentUser());
+  const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
+  const [targetSpreadsheetId, setTargetSpreadsheetState] = useState(() => getTargetSpreadsheetId());
+
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      user => {
+        setGoogleUser(user);
+      },
+      () => {
+        setGoogleUser(null);
+      }
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleSigningIn(true);
+    try {
+      const res = await googleSignIn();
+      if (res?.user) {
+        setGoogleUser(res.user);
+        setSyncNotice({
+          tone: 'success',
+          message: `✓ Đã kết nối Google Sheets (${res.user.email}). Tích kiểm duyệt sẽ lưu trực tiếp vào Sheet!`,
+        });
+      }
+    } catch (err: any) {
+      setSyncNotice({
+        tone: 'error',
+        message: err?.message || 'Không thể đăng nhập Google.',
+      });
+    } finally {
+      setIsGoogleSigningIn(false);
+    }
+  };
   const [autoSyncInfo, setAutoSyncInfo] = useState<{
     enabled: boolean;
     configuredUrl: string;
@@ -348,6 +395,12 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       setReviewerError(true);
       return;
     }
+
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn duyệt đạt toàn bộ ${selectedRow.images.length} ảnh của cơ sở "${selectedRow.coSo}" và cập nhật vào Google Sheet không?`
+    );
+    if (!confirmed) return;
+
     setReviewerError(false);
     setSyncNotice(null);
     setIsBatchSaving(true);
@@ -409,6 +462,11 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   const handleBatchResetFacility = async () => {
     if (!selectedRow || !selectedRow.images.length) return;
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn đặt lại (chưa duyệt) toàn bộ ${selectedRow.images.length} ảnh của cơ sở "${selectedRow.coSo}" không?`
+    );
+    if (!confirmed) return;
+
     setSyncNotice(null);
     setIsBatchSaving(true);
 
@@ -661,6 +719,12 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu kiểm tra vệ sinh nào trong ngày này để ghi.' });
       return;
     }
+
+    const confirmed = window.confirm(
+      `Hành động này sẽ cập nhật ${preparedDateRecords.length} dòng dữ liệu kiểm duyệt ngày ${dateDisplay} vào bảng tính Google Sheets của bạn. Bạn có muốn tiếp tục không?`
+    );
+    if (!confirmed) return;
+
     setIsSyncingAll(true);
     setSyncAllStatus(null);
     try {
@@ -871,20 +935,31 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
         <div className="flex items-center gap-2">
           {isExpanded && (
-            <button
-              type="button"
-              onClick={handleSyncAllToNewSheet}
-              disabled={isSyncingAll || !preparedDateRecords.length}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-xs transition hover:bg-emerald-100 disabled:opacity-50"
-              title="Thay thế và đồng bộ lại toàn bộ dữ liệu ngày hôm nay sang Sheet mới"
-            >
-              {isSyncingAll ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" />
-              ) : (
-                <CloudUpload className="h-3.5 w-3.5 text-emerald-700" />
-              )}
-              {isSyncingAll ? 'Đang đồng bộ...' : 'Đồng bộ lại Sheet'}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+                title="Cài đặt kết nối Sheet & Hướng dẫn phục hồi Apps Script"
+              >
+                <Settings className="h-3.5 w-3.5 text-slate-500" />
+                Cài đặt Sheet
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncAllToNewSheet}
+                disabled={isSyncingAll || !preparedDateRecords.length}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-xs transition hover:bg-emerald-100 disabled:opacity-50"
+                title="Thay thế và đồng bộ lại toàn bộ dữ liệu ngày hôm nay sang Sheet mới"
+              >
+                {isSyncingAll ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" />
+                ) : (
+                  <CloudUpload className="h-3.5 w-3.5 text-emerald-700" />
+                )}
+                {isSyncingAll ? 'Đang đồng bộ...' : 'Đồng bộ lại Sheet'}
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -905,6 +980,103 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
       {isExpanded && (
         <>
+          {/* Google Sheets Workspace OAuth Status / Connect Bar */}
+          <div className={`border-b px-4 py-2.5 text-xs ${
+            googleUser ? 'border-emerald-200 bg-emerald-50/70' : 'border-sky-200 bg-sky-50/70'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                {googleUser ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4 text-sky-700 shrink-0" />
+                )}
+                <div>
+                  {googleUser ? (
+                    <div className="text-emerald-950">
+                      <span className="font-bold">Đã kết nối Google Sheets:</span>{' '}
+                      <span className="font-medium text-emerald-800">{googleUser.email}</span>.
+                      <span className="ml-1 text-slate-600">
+                        Mỗi lượt tích duyệt ảnh sẽ tự động ghi trực tiếp vào Google Sheet{' '}
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit?gid=0#gid=0`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold underline text-emerald-800 hover:text-emerald-950 inline-flex items-center gap-0.5"
+                        >
+                          {targetSpreadsheetId.slice(0, 15)}...
+                          <ExternalLink className="h-3 w-3 inline" />
+                        </a>{' '}
+                        qua Google Sheets API chính thức!
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-slate-800">
+                      <span className="font-bold text-sky-900">Đồng bộ tự động vào Google Sheet:</span>{' '}
+                      <span className="text-slate-600">
+                        Đăng nhập bằng tài khoản Google để hệ thống tự ghi nhận duyệt vào file{' '}
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit?gid=0#gid=0`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold underline text-sky-800 hover:text-sky-950 inline-flex items-center gap-0.5"
+                        >
+                          {targetSpreadsheetId.slice(0, 15)}...
+                          <ExternalLink className="h-3 w-3 inline" />
+                        </a>{' '}
+                        mà không cần Google Apps Script.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!googleUser ? (
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={isGoogleSigningIn}
+                    className="gsi-material-button shadow-2xs"
+                  >
+                    <div className="gsi-material-button-state"></div>
+                    <div className="gsi-material-button-content-wrapper">
+                      <div className="gsi-material-button-icon">
+                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                          <path fill="none" d="M0 0h48v48H0z" />
+                        </svg>
+                      </div>
+                      <span className="gsi-material-button-contents">
+                        {isGoogleSigningIn ? 'Đang kết nối...' : 'Đăng nhập Google để đồng bộ'}
+                      </span>
+                    </div>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await logout();
+                      setGoogleUser(null);
+                    }}
+                    className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Đăng xuất
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(true)}
+                  className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cài đặt & Hướng dẫn
+                </button>
+              </div>
+            </div>
+          </div>
           {syncAllStatus && (
             <div className={`flex items-center justify-between border-b px-4 py-2 text-xs font-medium ${
               syncAllStatus.type === 'success'
@@ -1248,7 +1420,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3.5">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                <h4 className="text-sm font-bold text-slate-800">Cấu hình Google Sheet Mới độc lập</h4>
+                <h4 className="text-sm font-bold text-slate-800">Cài đặt kết nối & Đồng bộ dữ liệu Google Sheet</h4>
               </div>
               <button
                 type="button"
@@ -1260,98 +1432,161 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             </div>
 
             <div className="overflow-y-auto p-5 space-y-4 text-xs text-slate-600">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2">
-                <div className="flex items-center gap-2 text-emerald-900 font-bold">
-                  <Zap className="h-4 w-4 text-emerald-600" />
-                  <span>Cơ chế tự động đổ dữ liệu hằng ngày (Daily Auto-Sync)</span>
+              {/* Giải thích nguyên nhân không đổ về được */}
+              <div className="rounded-xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-rose-900">
+                  <span className="text-base">⚠️</span>
+                  <span>Nguyên nhân dữ liệu không tự đổ về khi bạn tích ảnh:</span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-emerald-800">
-                  Hệ thống tự động kiểm tra Sheet gốc và đổ toàn bộ dữ liệu kiểm tra vệ sinh của ngày hôm trước (kèm 2 cột <em>Đã duyệt</em> & <em>Không đạt</em>) sang Google Sheet mới vào lúc <strong>01:00 AM mỗi sáng (Giờ Việt Nam)</strong>.
-                </p>
-                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                  <span className="font-semibold text-slate-700">Trạng thái hiện tại:</span>
-                  <span className={`rounded-full px-2 py-0.5 font-bold ${
-                    autoSyncInfo?.enabled || newSheetScriptUrl
-                      ? 'bg-emerald-200 text-emerald-900'
-                      : 'bg-amber-100 text-amber-900'
-                  }`}>
-                    {autoSyncInfo?.enabled || newSheetScriptUrl ? '✓ Đang bật (Chạy tự động lúc 01:00 AM)' : 'Chưa kích hoạt (Cần dán link bên dưới)'}
-                  </span>
-                  {autoSyncInfo?.lastAutoSyncDate && (
-                    <span className="text-slate-500">· Ngày hoàn thành gần nhất: <strong>{autoSyncInfo.lastAutoSyncDate}</strong></span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Đường dẫn Web App (Apps Script URL) của Sheet Mới:
-                </label>
-                <input
-                  type="url"
-                  value={newSheetScriptUrl}
-                  onChange={e => setNewSheetScriptUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Dán URL Web App của Sheet mới vào đây để kích hoạt cơ chế tự động đổ dữ liệu.
+                <p className="text-[11px] leading-relaxed text-rose-800">
+                  Do bạn vừa xóa đoạn script trong file tổng Google Sheet (<code>{targetSpreadsheetId}</code>). Khi script bị xóa, URL triển khai Web App cũ của Google đã bị hủy trên máy chủ Google (báo lỗi 404 / script deleted), khiến các yêu cầu gửi dữ liệu từ hệ thống trước đây không thể kết nối tới Sheet.
                 </p>
               </div>
 
-              {autoSyncInfo?.recentLogs && autoSyncInfo.recentLogs.length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5 font-bold text-slate-800">
-                    <History className="h-3.5 w-3.5 text-slate-600" />
-                    <span>Nhật ký tự động đổ dữ liệu gần nhất:</span>
+              {/* Cách 1: Đồng bộ trực tiếp qua Google Workspace OAuth (Khuyên dùng) */}
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50/80 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-emerald-950">
+                    <Sparkles className="h-4 w-4 text-emerald-600" />
+                    <span>Cách 1 (Khuyên dùng): Đồng bộ trực tiếp qua tài khoản Google - Không cần Apps Script</span>
                   </div>
-                  <div className="max-h-32 overflow-y-auto space-y-1.5 text-[11px]">
-                    {autoSyncInfo.recentLogs.map(log => (
-                      <div
-                        key={log.id}
-                        className={`flex items-center justify-between rounded-md px-2.5 py-1.5 ${
-                          log.status === 'success' ? 'bg-emerald-100/60 text-emerald-900' : 'bg-rose-100/60 text-rose-900'
-                        }`}
-                      >
-                        <span className="font-semibold">{log.date}: {log.message}</span>
-                        <span className="text-[10px] text-slate-500 shrink-0 ml-2">
-                          {new Date(log.timestamp).toLocaleTimeString('vi-VN')} {new Date(log.timestamp).toLocaleDateString('vi-VN')}
+                  <span className="rounded-full bg-emerald-200/80 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                    Chính thức từ Google
+                  </span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-emerald-900">
+                  Hệ thống đã tích hợp <strong>Google Sheets API</strong> chính thức. Bạn chỉ cần đăng nhập bằng tài khoản Google có quyền chỉnh sửa file Sheet, mọi thao tác tích duyệt ảnh sẽ được lưu thẳng vào Google Sheet ngay lập tức mà <strong>không cần phải tạo hay bảo trì bất kỳ đoạn code Apps Script nào!</strong>
+                </p>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-3 border border-emerald-200">
+                  <div>
+                    <span className="block text-[11px] font-bold text-slate-700">Trạng thái kết nối Google:</span>
+                    <span className="text-xs text-slate-600">
+                      {googleUser ? (
+                        <span className="text-emerald-700 font-semibold">✓ Đã đăng nhập: {googleUser.email}</span>
+                      ) : (
+                        <span className="text-amber-700">Chưa đăng nhập tài khoản Google</span>
+                      )}
+                    </span>
+                  </div>
+
+                  {!googleUser ? (
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={isGoogleSigningIn}
+                      className="gsi-material-button shadow-2xs"
+                    >
+                      <div className="gsi-material-button-state"></div>
+                      <div className="gsi-material-button-content-wrapper">
+                        <div className="gsi-material-button-icon">
+                          <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
+                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 1589-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                            <path fill="none" d="M0 0h48v48H0z" />
+                          </svg>
+                        </div>
+                        <span className="gsi-material-button-contents">
+                          {isGoogleSigningIn ? 'Đang kết nối...' : 'Đăng nhập Google'}
                         </span>
                       </div>
-                    ))}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await logout();
+                        setGoogleUser(null);
+                      }}
+                      className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Đăng xuất tài khoản
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    ID File Google Sheet đích (Master Spreadsheet ID):
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={targetSpreadsheetId}
+                      onChange={e => {
+                        setTargetSpreadsheetState(e.target.value);
+                        setTargetSpreadsheetId(e.target.value);
+                      }}
+                      placeholder="1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
+                    />
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit?gid=0#gid=0`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                    >
+                      Mở Sheet
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                   </div>
                 </div>
-              )}
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800">Mã Google Apps Script để dán vào Sheet Mới:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE);
-                      setCopiedScript(true);
-                      setTimeout(() => setCopiedScript(false), 2500);
-                    }}
-                    className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 shadow-xs"
-                  >
-                    {copiedScript ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    {copiedScript ? 'Đã sao chép!' : 'Sao chép mã script'}
-                  </button>
-                </div>
-                <pre className="max-h-48 overflow-x-auto rounded-lg bg-slate-900 p-3 font-mono text-[10px] text-emerald-300 leading-relaxed">
-                  {APPS_SCRIPT_TEMPLATE}
-                </pre>
               </div>
 
-              <div className="space-y-1.5 text-[11px] text-slate-600 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
-                <strong className="text-slate-800 block text-xs">2 cách tự động đổ dữ liệu hàng ngày:</strong>
-                <p>
-                  <strong>Cách 1 (Khuyên dùng - Tự động qua hệ thống web):</strong> Dán link Web App vào ô trên và nhấn <em>"Lưu & Kích hoạt tự động"</em>. Máy chủ sẽ tự động chạy hàng ngày lúc 01:00 AM.
-                </p>
-                <p>
-                  <strong>Cách 2 (Chạy độc lập trên Google Cloud):</strong> Trong trình soạn thảo Apps Script của Google Sheet mới, ở menu dropdown chọn hàm <code>taoLichTuDongHangNgay</code> rồi nhấn nút <strong>Chạy (Run)</strong> một lần. Google sẽ tự động kích hoạt hẹn giờ kéo dữ liệu mỗi sáng vĩnh viễn mà không phụ thuộc vào bất cứ đâu!
-                </p>
+              {/* Cách 2: Khôi phục lại Google Apps Script Web App */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-slate-800">
+                    <Code2 className="h-4 w-4 text-sky-600" />
+                    <span>Cách 2: Khôi phục lại mã Google Apps Script trong Sheet</span>
+                  </div>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                    Web App URL
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 text-[11px] text-slate-600">
+                  <p><strong>Bước 1:</strong> Mở file Google Sheet của bạn (nhấn nút "Mở Sheet" ở trên).</p>
+                  <p><strong>Bước 2:</strong> Vào menu <strong>Tiện ích mở rộng (Extensions)</strong> &gt; <strong>Apps Script</strong>.</p>
+                  <p><strong>Bước 3:</strong> Nhấn nút <strong>"Sao chép mã script"</strong> bên dưới rồi dán toàn bộ vào file <code>Code.gs</code>.</p>
+                  <p><strong>Bước 4:</strong> Bấm <strong>Triển khai (Deploy)</strong> &gt; <strong>Triển khai mới (New deployment)</strong> &gt; chọn biểu tượng bánh răng <strong>Ứng dụng web (Web App)</strong> &gt; mục <em>'Ai có quyền truy cập'</em> chọn <strong>Bất kỳ ai (Anyone)</strong> &gt; Triển khai &gt; Sao chép link URL Web App và dán vào ô bên dưới.</p>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Đường dẫn Web App (Apps Script URL) sau khi triển khai:
+                  </label>
+                  <input
+                    type="url"
+                    value={newSheetScriptUrl}
+                    onChange={e => setNewSheetScriptUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 outline-none"
+                  />
+                </div>
+
+                <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-[11px]">Toàn bộ mã Google Apps Script chuẩn:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE);
+                        setCopiedScript(true);
+                        setTimeout(() => setCopiedScript(false), 2500);
+                      }}
+                      className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 shadow-xs"
+                    >
+                      {copiedScript ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {copiedScript ? 'Đã sao chép!' : 'Sao chép mã script'}
+                    </button>
+                  </div>
+                  <pre className="max-h-40 overflow-x-auto rounded-lg bg-slate-900 p-2.5 font-mono text-[10px] text-emerald-300 leading-relaxed">
+                    {APPS_SCRIPT_TEMPLATE}
+                  </pre>
+                </div>
               </div>
             </div>
 
@@ -1369,9 +1604,9 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                   }
                   setShowSettingsModal(false);
                 }}
-                className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700"
               >
-                Lưu & Kích hoạt tự động
+                Lưu cấu hình & Đóng
               </button>
             </div>
           </div>

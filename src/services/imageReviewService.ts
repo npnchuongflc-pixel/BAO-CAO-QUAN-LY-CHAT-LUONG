@@ -98,6 +98,8 @@ export async function fetchImageReviews(date: string): Promise<ImageReviewRecord
   return Object.values(localMap).filter(r => r.ngay === date);
 }
 
+import { syncReviewDirectToSheet } from './googleSheetsDirectReviewService';
+
 export async function saveImageReview(record: ImageReviewRecord, scriptUrl?: string): Promise<{
   record: ImageReviewRecord;
   warning?: string;
@@ -105,6 +107,20 @@ export async function saveImageReview(record: ImageReviewRecord, scriptUrl?: str
   // Luôn lưu local trước
   saveLocalImageReview(record);
 
+  // 1. Thử đồng bộ trực tiếp Google Sheets API v4 (khi người dùng đã đăng nhập Google)
+  try {
+    const directResult = await syncReviewDirectToSheet(record);
+    if (directResult.success) {
+      record.syncedToSheet = true;
+      delete record.syncError;
+      saveLocalImageReview(record);
+      return { record };
+    }
+  } catch (e) {
+    console.warn('Google Sheets API direct sync fallback:', e);
+  }
+
+  // 2. Fallback: Gửi qua backend / Apps Script Web App
   try {
     const response = await fetch('/api/image-reviews', {
       method: 'POST',
@@ -130,6 +146,25 @@ export async function batchSaveImageReviews(records: ImageReviewRecord[], script
 }> {
   records.forEach(r => saveLocalImageReview(r));
 
+  // 1. Thử đồng bộ từng bản ghi qua Google Sheets API v4 trực tiếp
+  let directSuccess = 0;
+  for (const r of records) {
+    try {
+      const res = await syncReviewDirectToSheet(r);
+      if (res.success) {
+        r.syncedToSheet = true;
+        delete r.syncError;
+        saveLocalImageReview(r);
+        directSuccess++;
+      }
+    } catch {}
+  }
+
+  if (directSuccess === records.length && records.length > 0) {
+    return { records };
+  }
+
+  // 2. Fallback: Gửi qua backend / Apps Script Web App
   try {
     const response = await fetch('/api/image-reviews', {
       method: 'POST',
@@ -148,3 +183,4 @@ export async function batchSaveImageReviews(records: ImageReviewRecord[], script
 
   return { records };
 }
+

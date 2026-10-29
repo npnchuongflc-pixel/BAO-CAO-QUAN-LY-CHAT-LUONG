@@ -30,6 +30,7 @@ const effectiveConfig = (firebaseConfig && (firebaseConfig as any).apiKey)
 // Registered Workspace scopes per application integration
 export const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/spreadsheets',
 ];
 
 const STORAGE_KEY_TOKEN = 'workspace_gmail_access_token';
