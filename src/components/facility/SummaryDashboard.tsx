@@ -586,10 +586,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
       .then(records => {
         if (!isActive) return;
         setWarningAudits(previous => {
-          const next: Record<string, WarningAuditRecord> = {};
-          (Object.entries(previous) as Array<[string, WarningAuditRecord]>).forEach(([key, record]) => {
-            if (record.ngay !== activeWarningDateIso) next[key] = record;
-          });
+          const next: Record<string, WarningAuditRecord> = { ...previous };
           records.forEach(record => {
             next[record.id] = record;
           });
@@ -629,26 +626,23 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     syncWarningFacilitiesForDate(
       activeWarningDateIso,
       warningFacilities.map(({ coSo, reasons }) => ({ coSo, reasons })),
+      warningAudits,
     )
       .then(async ({ records, warning }) => {
         if (!isActive) return;
-        let mergedAudits: Record<string, WarningAuditRecord> = {};
         setWarningAudits(previous => {
           const next = { ...previous };
           records.forEach(record => {
+            const prev = next[record.id];
+            // TUYỆT ĐỐI BẢO VỆ TRẠNG THÁI ĐÃ NHẮC NHỞ HOẶC LỖI APP, KHÔNG ĐÈ TRẠNG THÁI RỖNG
+            if (prev && prev.loaiTrangThai && prev.loaiTrangThai !== 'chua_xu_ly') {
+              return;
+            }
             next[record.id] = record;
           });
           replaceLocalWarningAudits(next);
-          mergedAudits = next;
           return next;
         });
-
-        // Tự động đổ dữ liệu cảnh báo hằng ngày vào Google Sheet mà không cần bấm nút
-        // Ban đầu 2 cột "Đã nhắc nhở" và "Lỗi app" sẽ hoàn toàn trống
-        if (!hasAutoSyncedInitialForDate.current[activeWarningDateIso]) {
-          hasAutoSyncedInitialForDate.current[activeWarningDateIso] = true;
-          await autoSyncToGoogleSheet(mergedAudits, undefined, true);
-        }
 
         if (warning) {
           setSyncFeedback({
@@ -669,7 +663,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     return () => {
       isActive = false;
     };
-  }, [activeWarningDateIso, isDataReady, warningFacilities, warningSyncFingerprint]);
+  }, [activeWarningDateIso, isDataReady, warningFacilities, warningSyncFingerprint, warningAudits]);
 
   // Hủy tất cả nhận định đã chọn và tự động cập nhật trống vào Google Sheet
   const handleClearAllWarningChecks = async () => {

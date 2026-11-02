@@ -43,6 +43,7 @@ import {
   DEFAULT_MASTER_SPREADSHEET_ID,
   getTargetSpreadsheetId,
   setTargetSpreadsheetId,
+  cleanDuplicateReviewsInSheet,
 } from '../../services/googleSheetsDirectReviewService';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
@@ -56,7 +57,7 @@ interface YesterdayHygieneReviewProps {
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
 const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v2';
-const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxmPSQdqrO2UCdWl6O_s6B9ALfqMboeyo3qBhu1EMqdUZ7FpW6opiVSkmbgGB8Uc2OQ/exec';
+const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
 
 import { APPS_SCRIPT_TEMPLATE } from "./hygieneAppsScriptTemplate";
@@ -115,7 +116,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     try {
       if (typeof window === 'undefined') return DEFAULT_NEW_SHEET_URL;
       const saved = window.localStorage.getItem(NEW_SHEET_STORAGE_KEY);
-      if (!saved || saved.includes('AKfycbz0Kalu')) {
+      if (!saved || saved.includes('AKfycbz0Kalu') || saved.includes('AKfycbxmPSQ')) {
         window.localStorage.setItem(NEW_SHEET_STORAGE_KEY, DEFAULT_NEW_SHEET_URL);
         return DEFAULT_NEW_SHEET_URL;
       }
@@ -326,15 +327,14 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   const setImageReviewStatus = async (report: HygieneReport, requestedStatus: ReviewStatus) => {
     const reviewId = getImageReviewId(report);
-    const cleanReviewer = reviewerName.trim();
+    let cleanReviewer = reviewerName.trim();
+    if (!cleanReviewer) {
+      cleanReviewer = (googleUser?.displayName ? googleUser.displayName.split(' ')[0] : '') || 'Chương';
+      setReviewerName(cleanReviewer);
+    }
     const previousRecord = imageReviews[reviewId];
     const currentStatus = getReviewStatus(previousRecord, report);
     const nextStatus: ReviewStatus = currentStatus === requestedStatus ? 'pending' : requestedStatus;
-
-    if (nextStatus !== 'pending' && !cleanReviewer) {
-      setReviewerError(true);
-      return;
-    }
 
     setReviewerError(false);
     setSyncNotice(null);
@@ -369,7 +369,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       setImageReviews(current => ({ ...current, [reviewId]: result.record }));
       setSyncNotice(result.warning
         ? { tone: 'warning', message: `Đã lưu trên hệ thống; Google Sheet: ${result.warning}` }
-        : { tone: 'success', message: '✓ Đã cập nhật trực tiếp hàng tương ứng trong Google Sheet!' });
+        : { tone: 'success', message: '✓ Đã tự động đổ về Google Sheet & xóa kết quả cũ!' });
     } catch (error) {
       setImageReviews(current => {
         const next = { ...current };
@@ -522,6 +522,31 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       });
     } finally {
       setIsBatchSaving(false);
+    }
+  };
+
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const handleCleanDuplicateReviews = async () => {
+    setIsCleaningDuplicates(true);
+    setSyncNotice(null);
+    try {
+      const res = await cleanDuplicateReviewsInSheet(dateIso, targetSpreadsheetId);
+      setSyncNotice({
+        tone: res.success ? 'success' : 'warning',
+        message: res.message,
+      });
+      if (res.success && res.cleanedCount > 0) {
+        fetchImageReviews(dateIso).then(records => {
+          setImageReviews(Object.fromEntries(records.map(record => [record.id, record])));
+        });
+      }
+    } catch (err: any) {
+      setSyncNotice({
+        tone: 'error',
+        message: err.message || 'Lỗi khi dọn dẹp hàng trùng',
+      });
+    } finally {
+      setIsCleaningDuplicates(false);
     }
   };
 
@@ -1067,6 +1092,18 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                     Đăng xuất
                   </button>
                 )}
+                {googleUser && (
+                  <button
+                    type="button"
+                    onClick={handleCleanDuplicateReviews}
+                    disabled={isCleaningDuplicates}
+                    className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                    title="Quét và xóa bỏ kết quả cũ nếu dòng nào trong Sheet bị 2 kết quả (Đã duyệt & Không đạt)"
+                  >
+                    {isCleaningDuplicates ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-amber-600" />}
+                    Xóa kết quả trùng cũ trong Sheet
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowSettingsModal(true)}
@@ -1291,6 +1328,18 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                       <RotateCcw className="h-3 w-3" />
                       Bỏ chọn tất cả
                     </button>
+                    {googleUser && (
+                      <button
+                        type="button"
+                        onClick={handleCleanDuplicateReviews}
+                        disabled={isCleaningDuplicates}
+                        className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"
+                        title="Quét và xóa bỏ kết quả cũ nếu các hàng trong Sheet bị 2 kết quả"
+                      >
+                        {isCleaningDuplicates ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-amber-600" />}
+                        Xóa kết quả cũ
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

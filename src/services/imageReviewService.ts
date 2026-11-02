@@ -98,7 +98,7 @@ export async function fetchImageReviews(date: string): Promise<ImageReviewRecord
   return Object.values(localMap).filter(r => r.ngay === date);
 }
 
-import { syncReviewDirectToSheet } from './googleSheetsDirectReviewService';
+import { syncReviewDirectToSheet, batchSyncReviewsDirectToSheet } from './googleSheetsDirectReviewService';
 
 export async function saveImageReview(record: ImageReviewRecord, scriptUrl?: string): Promise<{
   record: ImageReviewRecord;
@@ -146,22 +146,19 @@ export async function batchSaveImageReviews(records: ImageReviewRecord[], script
 }> {
   records.forEach(r => saveLocalImageReview(r));
 
-  // 1. Thử đồng bộ từng bản ghi qua Google Sheets API v4 trực tiếp
-  let directSuccess = 0;
-  for (const r of records) {
-    try {
-      const res = await syncReviewDirectToSheet(r);
-      if (res.success) {
+  // 1. Thử đồng bộ batch qua Google Sheets API v4 trực tiếp
+  try {
+    const batchRes = await batchSyncReviewsDirectToSheet(records);
+    if (batchRes.success && batchRes.updatedCount > 0) {
+      records.forEach(r => {
         r.syncedToSheet = true;
         delete r.syncError;
         saveLocalImageReview(r);
-        directSuccess++;
-      }
-    } catch {}
-  }
-
-  if (directSuccess === records.length && records.length > 0) {
-    return { records };
+      });
+      return { records };
+    }
+  } catch (e) {
+    console.warn('Direct batch sync fallback:', e);
   }
 
   // 2. Fallback: Gửi qua backend / Apps Script Web App

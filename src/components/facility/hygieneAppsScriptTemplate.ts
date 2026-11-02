@@ -213,6 +213,13 @@ function doPost(e) {
 
       var daDuyetVal = payload.daDuyet !== undefined ? payload.daDuyet : (payload.reviewStatus === "approved" ? (payload.reviewer || "Đã duyệt") : "");
       var khongDatVal = payload.khongDat !== undefined ? payload.khongDat : (payload.reviewStatus === "rejected" ? (payload.reviewer || "Không đạt") : "");
+
+      // TUYỆT ĐỐI LOẠI TRỪ LẪN NHAU - KHÔNG ĐỂ 2 KẾT QUẢ TỒN TẠI CÙNG LÚC
+      if (daDuyetVal) {
+        khongDatVal = "";
+      } else if (khongDatVal) {
+        daDuyetVal = "";
+      }
       var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
 
       var foundRow = -1;
@@ -476,6 +483,15 @@ function doPost(e) {
               finalKhongDat = preservedReviewsByFacArea[kFac].khongDat;
             }
           }
+        }
+      }
+
+      // NẾU CÓ CẢ 2 KẾT QUẢ: LOẠI BỎ KẾT QUẢ CŨ, CHỈ GIỮ 1 KẾT QUẢ DUY NHẤT
+      if (finalDaDuyet && finalKhongDat) {
+        if (r.reviewStatus === "rejected" || (r.khongDat && !r.daDuyet)) {
+          finalDaDuyet = "";
+        } else {
+          finalKhongDat = "";
         }
       }
 

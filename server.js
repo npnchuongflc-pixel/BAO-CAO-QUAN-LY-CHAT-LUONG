@@ -9,8 +9,8 @@ import Papa from "papaparse";
 dotenv.config();
 var app = express();
 var isCloudRun = Boolean(process.env.K_SERVICE || process.env.K_REVISION);
-var isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT && !isCloudRun);
-var PORT = isDevWorkspace ? parseInt(process.env.DEFAULT_APP_PORT, 10) : process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
+var isDevWorkspace = Boolean(process.env.DEFAULT_APP_PORT);
+var PORT = process.env.DEFAULT_APP_PORT ? parseInt(process.env.DEFAULT_APP_PORT, 10) : process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
 app.use(express.json({ limit: "10mb" }));
 var genAIClient = null;
 function getGeminiClient() {
@@ -355,7 +355,7 @@ app.get("/api/image-reviews", (req, res) => {
   records.sort((a, b) => String(a.coSo).localeCompare(String(b.coSo), "vi"));
   res.json({ success: true, date, records, count: records.length });
 });
-var DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxmPSQdqrO2UCdWl6O_s6B9ALfqMboeyo3qBhu1EMqdUZ7FpW6opiVSkmbgGB8Uc2OQ/exec";
+var DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec";
 var configuredNewSheetScriptUrl = process.env.NEW_SHEET_APPS_SCRIPT_URL || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
 app.post("/api/image-reviews", async (req, res) => {
   try {
