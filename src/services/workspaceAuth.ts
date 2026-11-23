@@ -31,10 +31,9 @@ const effectiveConfig = (firebaseConfig && (firebaseConfig as any).apiKey)
 export const SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
 ];
 
-const STORAGE_KEY_TOKEN = 'workspace_gmail_access_token';
-const STORAGE_KEY_TOKEN_EXP = 'workspace_gmail_token_exp';
 const STORAGE_KEY_USER_EMAIL = 'workspace_gmail_user_email';
 const STORAGE_KEY_AUTH_SAVED = 'workspace_sender_saved';
 
@@ -49,56 +48,31 @@ export const saveSenderAccount = (email: string = TARGET_SENDER_EMAIL) => {
   } catch (e) {}
 };
 
-// Auto-seed default sender email in localStorage on module load
-try {
-  if (!localStorage.getItem(STORAGE_KEY_USER_EMAIL)) {
-    localStorage.setItem(STORAGE_KEY_USER_EMAIL, TARGET_SENDER_EMAIL);
-    localStorage.setItem(STORAGE_KEY_AUTH_SAVED, 'true');
-  }
-} catch (e) {}
-
 const app = getApps().length > 0 ? getApp() : initializeApp(effectiveConfig);
 export const auth = getAuth(app);
 
 const provider = new GoogleAuthProvider();
 SCOPES.forEach((scope) => provider.addScope(scope));
 
-// Pre-fill target email quanlychatluongcvsg@gmail.com on Google sign-in popup
+// Allow user to pick the appropriate Google account (Team Leader / QLCL / Admin)
 provider.setCustomParameters({
-  login_hint: TARGET_SENDER_EMAIL,
   prompt: 'select_account',
 });
 
 let isSigningIn = false;
+// Store OAuth access token strictly in memory (never in localStorage/sessionStorage)
 let cachedAccessToken: string | null = null;
-
-// Initialize cachedAccessToken from localStorage if available and not expired
-try {
-  const savedToken = localStorage.getItem(STORAGE_KEY_TOKEN);
-  const savedExp = localStorage.getItem(STORAGE_KEY_TOKEN_EXP);
-  if (savedToken) {
-    if (!savedExp || Date.now() < parseInt(savedExp, 10)) {
-      cachedAccessToken = savedToken;
-    } else {
-      localStorage.removeItem(STORAGE_KEY_TOKEN);
-      localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
-    }
-  }
-} catch (e) {
-  // localStorage not available
-}
+let cachedTokenExpiresAt = 0;
 
 export const purgeOldSenderAccount = async () => {
   try {
     await signOut(auth);
   } catch (e) {}
   cachedAccessToken = null;
+  cachedTokenExpiresAt = 0;
   try {
-    localStorage.removeItem(STORAGE_KEY_TOKEN);
-    localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
-    // Keep TARGET_SENDER_EMAIL as default
-    localStorage.setItem(STORAGE_KEY_USER_EMAIL, TARGET_SENDER_EMAIL);
-    localStorage.setItem(STORAGE_KEY_AUTH_SAVED, 'true');
+    localStorage.removeItem(STORAGE_KEY_USER_EMAIL);
+    localStorage.removeItem(STORAGE_KEY_AUTH_SAVED);
   } catch (e) {}
 };
 
@@ -115,6 +89,8 @@ export const initAuth = (
         if (onAuthFailure) onAuthFailure();
       }
     } else {
+      cachedAccessToken = null;
+      cachedTokenExpiresAt = 0;
       if (!isSigningIn) {
         if (onAuthFailure) onAuthFailure();
       }
@@ -128,19 +104,14 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
-      throw new Error('Không nhận được Access Token gửi email từ Google. Vui lòng thử lại và cấp quyền gửi email.');
+      throw new Error('Không nhận được Access Token từ Google. Vui lòng thử lại và cấp quyền truy cập.');
     }
 
     cachedAccessToken = credential.accessToken;
-    
-    // Save token to localStorage with expiration timestamp (55 minutes safe buffer for Google OAuth)
-    try {
-      const expiresInMs = 55 * 60 * 1000;
-      localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
-      localStorage.setItem(STORAGE_KEY_TOKEN_EXP, (Date.now() + expiresInMs).toString());
-      saveSenderAccount(result.user.email || TARGET_SENDER_EMAIL);
-    } catch (e) {
-      console.warn('Could not save token to localStorage:', e);
+    cachedTokenExpiresAt = Date.now() + 55 * 60 * 1000;
+
+    if (result.user?.email) {
+      saveSenderAccount(result.user.email);
     }
 
     return { user: result.user, accessToken: cachedAccessToken };
@@ -150,7 +121,6 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       error?.code === 'auth/cancelled-popup-request' ||
       error?.message?.includes('popup-closed-by-user')
     ) {
-      // User closed the popup before finishing Google sign-in
       return null;
     }
 
@@ -172,30 +142,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
-  if (cachedAccessToken && cachedAccessToken !== 'saved') {
+  if (cachedAccessToken && (!cachedTokenExpiresAt || Date.now() < cachedTokenExpiresAt)) {
     return cachedAccessToken;
   }
-
-  try {
-    const savedToken = localStorage.getItem(STORAGE_KEY_TOKEN);
-    const savedExp = localStorage.getItem(STORAGE_KEY_TOKEN_EXP);
-    if (savedToken && savedToken !== 'saved') {
-      if (!savedExp || Date.now() < parseInt(savedExp, 10)) {
-        cachedAccessToken = savedToken;
-        return cachedAccessToken;
-      } else {
-        localStorage.removeItem(STORAGE_KEY_TOKEN);
-        localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
-      }
-    }
-  } catch (e) {
-    console.error(e);
-  }
-
+  cachedAccessToken = null;
+  cachedTokenExpiresAt = 0;
   return null;
 };
 
 export const getSavedUserEmail = (): string => {
+  if (auth.currentUser?.email) return auth.currentUser.email;
   try {
     return localStorage.getItem(STORAGE_KEY_USER_EMAIL) || TARGET_SENDER_EMAIL;
   } catch {
@@ -203,15 +159,17 @@ export const getSavedUserEmail = (): string => {
   }
 };
 
+export const getCurrentUserProfile = (): { email: string; displayName: string; label: string } => {
+  const user = auth.currentUser;
+  const email = user?.email?.trim() || '';
+  const displayName = user?.displayName?.trim() || '';
+  const label = displayName && email ? `${displayName} (${email})` : email || displayName || '';
+  return { email, displayName, label };
+};
+
 export const clearCachedToken = () => {
   cachedAccessToken = null;
-  try {
-    localStorage.removeItem(STORAGE_KEY_TOKEN);
-    localStorage.removeItem(STORAGE_KEY_TOKEN_EXP);
-    // Keep TARGET_SENDER_EMAIL permanently saved
-    localStorage.setItem(STORAGE_KEY_USER_EMAIL, TARGET_SENDER_EMAIL);
-    localStorage.setItem(STORAGE_KEY_AUTH_SAVED, 'true');
-  } catch (e) {}
+  cachedTokenExpiresAt = 0;
 };
 
 export const getCurrentUser = (): User | null => {

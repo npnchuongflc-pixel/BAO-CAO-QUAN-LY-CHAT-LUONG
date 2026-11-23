@@ -456,37 +456,36 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
   return (
     <section className="panel table-panel dashboard-grid-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar */}
-      <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100">
-        <div>
+      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+        <div className="min-w-0">
           <span className="text-xs font-bold text-sky-700 uppercase tracking-wider block">
             XU HƯỚNG &amp; PHÂN BỐ ĐÁNH GIÁ
           </span>
           <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
             Biểu đồ diễn biến theo ngày, xu hướng 12 tháng &amp; cơ cấu rating
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Theo dõi trực quan nhịp gửi tin, tỷ lệ phản hồi thực tế và so sánh khối lượng giữa các cơ sở.
-          </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer self-start sm:self-center shrink-0"
-          title={isCollapsed ? 'Mở rộng biểu đồ xu hướng' : 'Thu gọn biểu đồ xu hướng'}
-        >
-          {isCollapsed ? (
-            <>
-              <ChevronDown className="w-4 h-4 text-sky-600" />
-              <span>Mở rộng</span>
-            </>
-          ) : (
-            <>
-              <ChevronUp className="w-4 h-4 text-slate-600" />
-              <span>Thu gọn lại</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
+            title={isCollapsed ? 'Mở rộng biểu đồ xu hướng' : 'Thu gọn biểu đồ xu hướng'}
+          >
+            {isCollapsed ? (
+              <>
+                <ChevronDown className="w-4 h-4 text-sky-600 shrink-0" />
+                <span>Mở rộng</span>
+              </>
+            ) : (
+              <>
+                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
+                <span>Thu gọn lại</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Dạng thu gọn (Mini Banner) */}
@@ -502,9 +501,6 @@ export const DashboardGrid: React.FC<DashboardGridProps> = ({
             </span>
             <span className="font-bold text-blue-900 bg-blue-100/80 px-2.5 py-1 rounded-md border border-blue-200">
               ⭐ {formatNumber(totalReplies)} lượt phản hồi đã ghi nhận
-            </span>
-            <span className="text-slate-600">
-              • {facilities.length} cơ sở đối chiếu &amp; xu hướng 12 tháng
             </span>
           </div>
         </div>

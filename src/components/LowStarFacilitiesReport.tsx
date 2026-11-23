@@ -101,7 +101,7 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
       {/* Header bar (Clean - No Collapse Button) */}
       <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-50/90 via-amber-50/40 to-white border-b border-rose-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             Thống kê; phân loại phản hồi chưa tốt theo cơ sở
           </h2>
         </div>
@@ -111,17 +111,17 @@ export const LowStarFacilitiesReport: React.FC<LowStarFacilitiesReportProps> = (
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
             title={isCollapsed ? 'Mở rộng báo cáo theo cơ sở' : 'Thu gọn báo cáo'}
           >
             {isCollapsed ? (
               <>
-                <ChevronDown className="w-4 h-4 text-rose-600" />
+                <ChevronDown className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>Mở rộng</span>
               </>
             ) : (
               <>
-                <ChevronUp className="w-4 h-4 text-slate-600" />
+                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
                 <span>Thu gọn lại</span>
               </>
             )}

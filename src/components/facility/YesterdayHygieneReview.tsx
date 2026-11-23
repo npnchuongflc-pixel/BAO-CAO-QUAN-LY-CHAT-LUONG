@@ -53,6 +53,7 @@ interface YesterdayHygieneReviewProps {
   dateIso: string;
   dateDisplay: string;
   reports: HygieneReport[];
+  selectedFacilityFilter?: string;
 }
 
 const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
@@ -90,6 +91,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   dateIso,
   dateDisplay,
   reports,
+  selectedFacilityFilter = 'all',
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedFacility, setSelectedFacility] = useState<string | null>(null);
@@ -259,12 +261,25 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     }
   }, [reviewerName]);
 
+  const targetFacilities = useMemo(() => {
+    if (!selectedFacilityFilter || selectedFacilityFilter === 'all') {
+      return OFFICIAL_FACILITIES;
+    }
+    return [normalizeFacilityName(selectedFacilityFilter) || selectedFacilityFilter];
+  }, [selectedFacilityFilter]);
+
+  useEffect(() => {
+    if (selectedFacility && selectedFacilityFilter !== 'all' && selectedFacility !== (normalizeFacilityName(selectedFacilityFilter) || selectedFacilityFilter)) {
+      setSelectedFacility(null);
+    }
+  }, [selectedFacility, selectedFacilityFilter]);
+
   const facilityRows = useMemo(() => {
     const reportsForDate = reports.filter(
       report => normalizeDateToIso(report.ngay) === dateIso,
     );
 
-    return OFFICIAL_FACILITIES.map(coSo => {
+    return targetFacilities.map(coSo => {
       const facilityReports = reportsForDate.filter(
         report => normalizeFacilityName(report.coSo) === coSo,
       );
@@ -289,7 +304,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
         averageScore,
       };
     }).sort((left, right) => left.coSo.localeCompare(right.coSo, 'vi'));
-  }, [dateIso, reports]);
+  }, [dateIso, reports, targetFacilities]);
 
   const selectedRow = useMemo(
     () => facilityRows.find(row => row.coSo === selectedFacility) || null,
@@ -586,8 +601,15 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   }, [newSheetScriptUrl]);
 
   const reportsForDate = useMemo(() => {
-    return reports.filter(report => normalizeDateToIso(report.ngay) === dateIso);
-  }, [reports, dateIso]);
+    return reports.filter(report => {
+      if (normalizeDateToIso(report.ngay) !== dateIso) return false;
+      if (selectedFacilityFilter && selectedFacilityFilter !== 'all') {
+        const normTarget = normalizeFacilityName(selectedFacilityFilter) || selectedFacilityFilter;
+        return (normalizeFacilityName(report.coSo) || report.coSo) === normTarget;
+      }
+      return true;
+    });
+  }, [reports, dateIso, selectedFacilityFilter]);
 
   const preparedDateRecords = useMemo(() => {
     return reportsForDate.map(report => {

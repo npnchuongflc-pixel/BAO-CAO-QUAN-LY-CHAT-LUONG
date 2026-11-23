@@ -108,33 +108,33 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
       areaPhotos: Record<string, { photos: number; reports: number }>;
     }>();
 
-    // Pre-populate date range if tuNgay and denNgay are set and <= 31 days apart
-    const startIso = filters.tuNgay ? normalizeDateToIso(filters.tuNgay) : null;
-    const endIso = filters.denNgay ? normalizeDateToIso(filters.denNgay) : null;
+    // Helper matching active filters.thang (MM/YYYY)
+    const monthMatch = filters.thang && filters.thang !== 'all'
+      ? filters.thang.match(/(\d{1,2})[\/\-](\d{4})/)
+      : null;
+    const filterYear = monthMatch ? parseInt(monthMatch[2], 10) : null;
+    const filterMonthNum = monthMatch ? parseInt(monthMatch[1], 10) : null;
+    const filterPrefix = filterYear && filterMonthNum
+      ? `${filterYear}-${String(filterMonthNum).padStart(2, '0')}-`
+      : null;
 
-    if (startIso && endIso) {
-      const dStart = new Date(startIso);
-      const dEnd = new Date(endIso);
-      const diffDays = Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 3600 * 24));
-
-      if (diffDays >= 0 && diffDays <= 31) {
-        const curr = new Date(dStart);
-        while (curr <= dEnd) {
-          const iso = curr.toISOString().split('T')[0];
-          const label = formatDateToShortDdMm(iso);
-          dateMap.set(iso, {
-            rawDate: iso,
-            dateLabel: label,
-            reportsCount: 0,
-            photosCount: 0,
-            totalScore: 0,
-            passCount: 0,
-            facilities: new Set<string>(),
-            facilityCounts: {} as Record<string, { reports: number; photos: number }>,
-            areaPhotos: {},
-          });
-          curr.setDate(curr.getDate() + 1);
-        }
+    // Pre-populate all calendar days of the selected month
+    if (filterYear && filterMonthNum) {
+      const daysInMonth = new Date(filterYear, filterMonthNum, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const iso = `${filterYear}-${String(filterMonthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const label = formatDateToShortDdMm(iso);
+        dateMap.set(iso, {
+          rawDate: iso,
+          dateLabel: label,
+          reportsCount: 0,
+          photosCount: 0,
+          totalScore: 0,
+          passCount: 0,
+          facilities: new Set<string>(),
+          facilityCounts: {} as Record<string, { reports: number; photos: number }>,
+          areaPhotos: {},
+        });
       }
     }
 
@@ -154,6 +154,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
 
       const isoDate = normalizeDateToIso(r.ngay);
       if (!isoDate) return;
+      if (filterPrefix && !isoDate.startsWith(filterPrefix)) return;
       const label = formatDateToShortDdMm(isoDate);
 
       const existing = dateMap.get(isoDate) || {
@@ -202,7 +203,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
     });
 
     return sorted;
-  }, [mode, hygieneReports, qualityReports, filters.tuNgay, filters.denNgay, selectedFacility]);
+  }, [mode, hygieneReports, qualityReports, filters.thang, selectedFacility]);
 
   // Calculate daily average score points for the line chart overlay (scale 0 - 100)
   const scorePoints = useMemo(() => {
@@ -288,10 +289,20 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
   const allFacilityStats = useMemo(() => {
     const isHygiene = mode === 'hygiene';
     const reports = isHygiene ? hygieneReports : qualityReports;
+    const monthMatch = filters.thang && filters.thang !== 'all'
+      ? filters.thang.match(/(\d{1,2})[\/\-](\d{4})/)
+      : null;
+    const filterPrefix = monthMatch
+      ? `${monthMatch[2]}-${String(parseInt(monthMatch[1], 10)).padStart(2, '0')}-`
+      : null;
 
     // Map facility -> performed count
     const countMap: Record<string, { reports: number; photos: number }> = {};
     reports.forEach(r => {
+      if (filterPrefix) {
+        const iso = normalizeDateToIso(r.ngay);
+        if (!iso || !iso.startsWith(filterPrefix)) return;
+      }
       const norm = normalizeFacilityName(r.coSo);
       if (!countMap[norm]) {
         countMap[norm] = { reports: 0, photos: 0 };
@@ -309,7 +320,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
       const norm = normalizeFacilityName(facName);
       const stats = countMap[norm] || { reports: 0, photos: 0 };
       const performed = metric === 'photos' ? stats.photos : stats.reports;
-      const targetPeriod = calculatePeriodTarget(facName, filters.tuNgay, filters.denNgay, filters.thang);
+      const targetPeriod = calculatePeriodTarget(facName, '', '', filters.thang);
       const missing = Math.max(0, targetPeriod - performed);
 
       return {
@@ -321,7 +332,7 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
         missing,
       };
     });
-  }, [mode, hygieneReports, qualityReports, metric, filters.tuNgay, filters.denNgay, filters.thang]);
+  }, [mode, hygieneReports, qualityReports, metric, filters.thang]);
 
   const totalDailyWeekdaySum = useMemo(() => {
     return allFacilityStats.reduce((acc, f) => acc + f.weekdayTarget, 0);
@@ -362,32 +373,13 @@ export const FacilityTimelineChart: React.FC<FacilityTimelineChartProps> = ({
                 )}
               </h3>
               
-              {/* Interactive Date Range Picker directly in header */}
+              {/* Active Month & Facility summary in header (controlled by Global Filter) */}
               <div className="flex items-center gap-2 flex-wrap text-xs text-slate-600">
                 <Calendar className="w-3.5 h-3.5 text-[#1B5EA6] shrink-0" />
-                <span className="text-slate-500 font-medium">Từ ngày:</span>
-                <input
-                  type="date"
-                  value={filters.tuNgay || ''}
-                  onChange={(e) => onFilterChange?.({ ...filters, tuNgay: e.target.value })}
-                  className="bg-slate-50 border border-slate-200 hover:border-[#3EA8E0] focus:border-[#1B5EA6] rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none transition cursor-pointer"
-                />
-                <span className="text-slate-500 font-medium">Đến ngày:</span>
-                <input
-                  type="date"
-                  value={filters.denNgay || ''}
-                  onChange={(e) => onFilterChange?.({ ...filters, denNgay: e.target.value })}
-                  className="bg-slate-50 border border-slate-200 hover:border-[#3EA8E0] focus:border-[#1B5EA6] rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none transition cursor-pointer"
-                />
-                {(filters.tuNgay || filters.denNgay) && (
-                  <button
-                    onClick={() => onFilterChange?.({ ...filters, tuNgay: '', denNgay: '' })}
-                    className="text-[11px] text-[#F2775A] hover:text-rose-700 underline font-medium ml-1 transition-colors cursor-pointer"
-                    title="Xóa lọc ngày"
-                  >
-                    Bỏ lọc ngày
-                  </button>
-                )}
+                <span className="text-slate-500 font-medium">Kỳ đang lọc:</span>
+                <span className="bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-0.5 text-xs font-bold text-[#1A3A5C]">
+                  {filters.thang && filters.thang !== 'all' ? filters.thang : 'Tất cả các tháng'}
+                </span>
                 {!isAllFacilities && (
                   <button
                     onClick={() => onSelectFacility('all')}

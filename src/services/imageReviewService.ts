@@ -51,7 +51,7 @@ export const getImageReviewId = (report: HygieneReport) => {
 
 const LOCAL_IMAGE_REVIEWS_STORAGE_KEY = 'facility_image_reviews_v1';
 
-function getLocalImageReviews(): Record<string, ImageReviewRecord> {
+export function getLocalImageReviews(): Record<string, ImageReviewRecord> {
   try {
     const raw = localStorage.getItem(LOCAL_IMAGE_REVIEWS_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -65,6 +65,9 @@ function saveLocalImageReview(record: ImageReviewRecord) {
     const data = getLocalImageReviews();
     data[record.id] = record;
     localStorage.setItem(LOCAL_IMAGE_REVIEWS_STORAGE_KEY, JSON.stringify(data));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('facility-image-reviews-updated'));
+    }
   } catch {}
 }
 

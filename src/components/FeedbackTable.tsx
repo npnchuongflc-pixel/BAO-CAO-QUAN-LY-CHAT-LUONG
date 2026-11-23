@@ -310,36 +310,33 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
       )}
 
       {/* CLEAN PANEL HEADER */}
-      <div className="panel-head flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3 mb-3">
-        <div>
-          <span className="flex items-center gap-1.5 text-rose-600 font-extrabold text-xs">
-            <AlertOctagon className="w-4 h-4" />
+      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+        <div className="min-w-0">
+          <span className="flex items-center gap-1.5 text-rose-600 font-extrabold text-xs uppercase tracking-wider">
+            <AlertOctagon className="w-4 h-4 shrink-0" />
             CẢNH BÁO &amp; PHẢN HỒI PHỤ HUYNH
           </span>
-          <h2 className="text-base font-extrabold text-slate-900 tracking-tight mt-0.5">
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
             Danh sách ý kiến đóng góp &amp; Đánh giá cần xử lý
           </h2>
-          <p className="text-xs text-slate-500">
-            Dễ dàng chọn bộ phận phụ trách và bấm gửi email thông báo nhanh qua hộp thư quản lý ({TARGET_SENDER_EMAIL}).
-          </p>
         </div>
 
         {/* Nút thu gọn / mở rộng */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
             title={isCollapsed ? 'Mở rộng nhật ký phản hồi' : 'Thu gọn nhật ký phản hồi'}
           >
             {isCollapsed ? (
               <>
-                <ChevronDown className="w-4 h-4 text-rose-600" />
+                <ChevronDown className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>Mở rộng</span>
               </>
             ) : (
               <>
-                <ChevronUp className="w-4 h-4 text-slate-600" />
+                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
                 <span>Thu gọn lại</span>
               </>
             )}
@@ -351,7 +348,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
       {isCollapsed && (
         <div
           onClick={() => setIsCollapsed(false)}
-          className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/80 transition-colors"
+          className="p-4 bg-slate-50/80 flex items-center justify-between gap-3 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/80 transition-colors"
           title="Bấm để mở rộng nhật ký phản hồi"
         >
           <div className="flex items-center gap-2.5 flex-wrap">
@@ -363,16 +360,13 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
                 ⚠️ {urgentCount} phản hồi cần xử lý gấp (1–2★)
               </span>
             )}
-            <span className="text-slate-600">
-              • Đã gửi nhắc nhở: <strong className="text-blue-700">{Object.keys(sentRecords).length}</strong> email
-            </span>
           </div>
         </div>
       )}
 
       {/* Dạng mở rộng: Toàn bộ công cụ và bảng phản hồi */}
       {!isCollapsed && (
-        <>
+        <div className="p-4 sm:p-5">
           {/* SENDER GOOGLE ACCOUNT CONNECTION STRIP */}
           <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between flex-wrap gap-2 text-xs">
             <div className="flex items-center gap-2 flex-wrap">
@@ -818,7 +812,7 @@ export const FeedbackTable: React.FC<FeedbackTableProps> = ({ feedback, onExport
           <button type="button" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}>Sau</button>
         </div>
       </nav>}
-      </>
+        </div>
       )}
 
       {/* Confirmation & Email Sending Modal */}

@@ -29,115 +29,142 @@ export interface FacilityTargetDetail {
   total: number;
   weekday?: number;
   weekend?: number;
+  note?: string;
   items: TargetItem[];
 }
 
 export interface FacilityDayTarget {
-  weekday: number; // Thứ 2 đến Thứ 6 (Ngày thường)
-  weekend: number; // Thứ 7 & Chủ nhật (Cuối tuần)
+  weekday: number; // Thứ 2 đến Thứ 6 (Ngày thường mặc định - Cột K)
+  weekend: number; // Thứ 7 & Chủ nhật (Cuối tuần - Cột L)
+  /** Định mức riêng theo thứ trong tuần từ cột Ghi chú (0=CN, 1=T2, 2=T3, 3=T4, 4=T5, 5=T6, 6=T7). Giá trị 0 = Không có lớp / Ngày nghỉ */
+  byWeekday?: Partial<Record<0 | 1 | 2 | 3 | 4 | 5 | 6, number>>;
+  note?: string;
 }
 
 /**
- * Số lượng ảnh quy định chính thức của từng cơ sở theo ngày thường và cuối tuần
- * Bảng quy định chuẩn: Trong tuần (T2 - T6), Cuối tuần (T7, CN)
+ * Định mức số lượng ảnh quy định chính thức theo ngày từ bảng Google Sheet chuẩn:
+ * Cột K (Ngày thường), Cột L (Cuối tuần), Cột M & N (Ghi chú theo thứ / đặc thù).
  */
 export const FACILITY_DAY_TARGETS: Record<string, FacilityDayTarget> = {
-  'Cơ sở Gò Vấp': { weekday: 11, weekend: 16 },
-  'Cơ sở An Phú': { weekday: 8, weekend: 11 },
-  'Cơ sở Thạnh Mỹ Lợi': { weekday: 7, weekend: 7 },
-  'Cơ sở Vinhomes': { weekday: 10, weekend: 14 },
-  'Cơ sở Gia Hòa': { weekday: 7, weekend: 7 },
-  'Cơ sở Tân Bình': { weekday: 8, weekend: 11 },
+  'Cơ sở Gò Vấp': {
+    weekday: 8,
+    weekend: 17,
+    byWeekday: { 2: 11, 4: 11 }, // Thứ 3 - Thứ 5: 11 hình
+    note: 'Thứ 3 - Thứ 5: 11 hình',
+  },
+  'Cơ sở An Phú': { weekday: 9, weekend: 11 },
+  'Cơ sở Thạnh Mỹ Lợi': { weekday: 8, weekend: 9 },
+  'Cơ sở Vinhomes': { weekday: 10, weekend: 13 },
+  'Cơ sở Gia Hòa': { weekday: 8, weekend: 8 },
+  'Cơ sở Tân Bình': {
+    weekday: 7,
+    weekend: 9,
+    byWeekday: { 5: 4 }, // Thứ 6: 4 hình
+    note: 'Thứ 6: 4 hình',
+  },
   'Cơ sở Tân Phú': { weekday: 8, weekend: 8 },
   'Cơ sở Hiệp Thành': { weekday: 8, weekend: 8 },
   'Cơ sở Phú Nhuận': { weekday: 7, weekend: 10 },
-  'Cơ sở Bình Tân': { weekday: 8, weekend: 13 },
-  'Cơ sở Dream Home': { weekday: 7, weekend: 7 },
+  'Cơ sở Bình Tân': { weekday: 8, weekend: 11 },
+  'Cơ sở Dream Home': {
+    weekday: 7,
+    weekend: 9,
+    byWeekday: { 5: 5 }, // Thứ 6: 5 ảnh
+    note: 'Thứ 6: 5 ảnh',
+  },
   'Cơ sở Gigamall': { weekday: 7, weekend: 7 },
-  'Cơ sở Hà Đô': { weekday: 12, weekend: 12 },
-  'Cơ sở Moonlight': { weekday: 6, weekend: 6 },
-  'Cơ sở Nguyễn Duy Trinh': { weekday: 8, weekend: 8 },
-  'Cơ sở Richstar': { weekday: 9, weekend: 9 },
-  'Cơ sở Phổ Quang': { weekday: 12, weekend: 12 },
-  'Cơ sở RichMond': { weekday: 9, weekend: 9 },
-  'Cơ sở Richmond': { weekday: 9, weekend: 9 },
-  'Cơ sở Bình Phú': { weekday: 9, weekend: 9 },
+  'Cơ sở Hà Đô': { weekday: 11, weekend: 13 },
+  'Cơ sở Moonlight': { weekday: 7, weekend: 9 },
+  'Cơ sở Nguyễn Duy Trinh': { weekday: 10, weekend: 10 },
+  'Cơ sở Richstar': { weekday: 7, weekend: 9 },
+  'Cơ sở Phổ Quang': { weekday: 8, weekend: 8 },
+  'Cơ sở RichMond': {
+    weekday: 9,
+    weekend: 9,
+    byWeekday: { 1: 7 }, // Thứ 2: 7 ảnh
+    note: 'Thứ 2: 7 ảnh',
+  },
+  'Cơ sở Richmond': {
+    weekday: 9,
+    weekend: 9,
+    byWeekday: { 1: 7 },
+    note: 'Thứ 2: 7 ảnh',
+  },
+  'Cơ sở Bình Phú': { weekday: 8, weekend: 8 },
 };
 
 export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
   'Cơ sở Gò Vấp': {
-    total: 11,
-    weekday: 11,
-    weekend: 16,
+    total: 8,
+    weekday: 8,
+    weekend: 17,
+    note: 'Thứ 3 - Thứ 5: 11 hình',
     items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'Phòng cờ', count: 3 },
+      { label: 'Máy lạnh cờ', count: 3 },
       { label: 'WC cờ', count: 2 },
       { label: 'Phòng vẽ', count: 2 },
-      { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'WC vẽ', count: 1 },
+      { label: 'Máy lạnh vẽ', count: 2 },
+      { label: 'WC vẽ', count: 2 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở An Phú': {
-    total: 8,
-    weekday: 8,
+    total: 9,
+    weekday: 9,
     weekend: 11,
     items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 1 },
+      { label: 'Phòng cờ', count: 3 },
+      { label: 'Máy lạnh cờ', count: 3 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Thạnh Mỹ Lợi': {
-    total: 7,
-    weekday: 7,
-    weekend: 7,
+    total: 8,
+    weekday: 8,
+    weekend: 9,
     items: [
       { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 1 },
+      { label: 'Máy lạnh cờ', count: 2 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Vinhomes': {
     total: 10,
     weekday: 10,
-    weekend: 14,
+    weekend: 13,
     items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 2 },
-      { label: 'Phòng vẽ', count: 2 },
+      { label: 'Phòng cờ', count: 4 },
+      { label: 'Máy lạnh cờ', count: 4 },
+      { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Gia Hòa': {
-    total: 7,
-    weekday: 7,
-    weekend: 7,
+    total: 8,
+    weekday: 8,
+    weekend: 8,
     items: [
       { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 1 },
+      { label: 'Máy lạnh cờ', count: 2 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Tân Bình': {
-    total: 8,
-    weekday: 8,
-    weekend: 11,
+    total: 7,
+    weekday: 7,
+    weekend: 9,
+    note: 'Thứ 6: 4 hình',
     items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'Phòng cờ', count: 3 },
+      { label: 'Máy lạnh cờ', count: 3 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'WC vẽ', count: 1 },
@@ -151,7 +178,6 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     items: [
       { label: 'Phòng cờ', count: 2 },
       { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
@@ -164,10 +190,8 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     items: [
       { label: 'Phòng cờ', count: 2 },
       { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
@@ -177,21 +201,22 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     weekend: 10,
     items: [
       { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 1 },
+      { label: 'Máy lạnh cờ', count: 2 },
       { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Bình Tân': {
     total: 8,
     weekday: 8,
-    weekend: 13,
+    weekend: 11,
     items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 1 },
+      { label: 'Phòng cờ', count: 3 },
+      { label: 'Máy lạnh cờ', count: 3 },
+      { label: 'WC cờ', count: 2 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
@@ -200,13 +225,14 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
   'Cơ sở Dream Home': {
     total: 7,
     weekday: 7,
-    weekend: 7,
+    weekend: 9,
+    note: 'Thứ 6: 5 ảnh',
     items: [
       { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 1 },
-      { label: 'WC cờ', count: 1 },
+      { label: 'Máy lạnh cờ', count: 2 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
@@ -215,31 +241,30 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     weekday: 7,
     weekend: 7,
     items: [
-      { label: 'Phòng cờ', count: 2 },
+      { label: 'Phòng cờ', count: 1 },
       { label: 'Máy lạnh cờ', count: 1 },
-      { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'WC vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Hà Đô': {
-    total: 12,
-    weekday: 12,
-    weekend: 12,
+    total: 11,
+    weekday: 11,
+    weekend: 13,
     items: [
       { label: 'Phòng cờ', count: 3 },
       { label: 'Máy lạnh cờ', count: 3 },
-      { label: 'WC cờ', count: 2 },
       { label: 'Phòng vẽ', count: 2 },
-      { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'Máy lạnh vẽ', count: 2 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Moonlight': {
-    total: 6,
-    weekday: 6,
-    weekend: 6,
+    total: 7,
+    weekday: 7,
+    weekend: 9,
     items: [
       { label: 'Phòng cờ', count: 1 },
       { label: 'Máy lạnh cờ', count: 1 },
@@ -250,9 +275,50 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
     ],
   },
   'Cơ sở Nguyễn Duy Trinh': {
+    total: 10,
+    weekday: 10,
+    weekend: 10,
+    items: [
+      { label: 'Phòng cờ', count: 2 },
+      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'Phòng vẽ', count: 1 },
+      { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'WC vẽ', count: 1 },
+      { label: 'Lễ tân', count: 1 },
+    ],
+  },
+  'Cơ sở Richstar': {
+    total: 7,
+    weekday: 7,
+    weekend: 9,
+    items: [
+      { label: 'Phòng cờ', count: 2 },
+      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'Phòng vẽ', count: 1 },
+      { label: 'Máy lạnh vẽ', count: 1 },
+      { label: 'WC vẽ', count: 1 },
+      { label: 'Lễ tân', count: 1 },
+    ],
+  },
+  'Cơ sở Phổ Quang': {
     total: 8,
     weekday: 8,
     weekend: 8,
+    items: [
+      { label: 'Phòng cờ', count: 2 },
+      { label: 'Máy lạnh cờ', count: 2 },
+      { label: 'WC cờ', count: 2 },
+      { label: 'Phòng vẽ', count: 2 },
+      { label: 'Máy lạnh vẽ', count: 2 },
+      { label: 'WC vẽ', count: 1 },
+      { label: 'Lễ tân', count: 1 },
+    ],
+  },
+  'Cơ sở RichMond': {
+    total: 9,
+    weekday: 9,
+    weekend: 9,
+    note: 'Thứ 2: 7 ảnh',
     items: [
       { label: 'Phòng cờ', count: 2 },
       { label: 'Máy lạnh cờ', count: 2 },
@@ -262,66 +328,28 @@ export const FACILITY_TARGET_DETAILS: Record<string, FacilityTargetDetail> = {
       { label: 'Lễ tân', count: 1 },
     ],
   },
-  'Cơ sở Richstar': {
-    total: 9,
-    weekday: 9,
-    weekend: 9,
-    items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 2 },
-      { label: 'Phòng vẽ', count: 1 },
-      { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'Lễ tân', count: 1 },
-    ],
-  },
-  'Cơ sở Phổ Quang': {
-    total: 12,
-    weekday: 12,
-    weekend: 12,
-    items: [
-      { label: 'Phòng cờ', count: 3 },
-      { label: 'Máy lạnh cờ', count: 3 },
-      { label: 'WC cờ', count: 2 },
-      { label: 'Phòng vẽ', count: 2 },
-      { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'Lễ tân', count: 1 },
-    ],
-  },
-  'Cơ sở RichMond': {
-    total: 9,
-    weekday: 9,
-    weekend: 9,
-    items: [
-      { label: 'Phòng cờ', count: 2 },
-      { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 2 },
-      { label: 'Phòng vẽ', count: 1 },
-      { label: 'Máy lạnh vẽ', count: 1 },
-      { label: 'Lễ tân', count: 1 },
-    ],
-  },
   'Cơ sở Richmond': {
     total: 9,
     weekday: 9,
     weekend: 9,
+    note: 'Thứ 2: 7 ảnh',
     items: [
       { label: 'Phòng cờ', count: 2 },
       { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 2 },
+      { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
     ],
   },
   'Cơ sở Bình Phú': {
-    total: 9,
-    weekday: 9,
-    weekend: 9,
+    total: 8,
+    weekday: 8,
+    weekend: 8,
     items: [
       { label: 'Phòng cờ', count: 2 },
       { label: 'Máy lạnh cờ', count: 2 },
-      { label: 'WC cờ', count: 2 },
+      { label: 'WC cờ', count: 1 },
       { label: 'Phòng vẽ', count: 1 },
       { label: 'Máy lạnh vẽ', count: 1 },
       { label: 'Lễ tân', count: 1 },
@@ -353,8 +381,8 @@ export function getFacilityRoomConfig(facilityName: string): FacilityRoomConfig 
   return { co, ve, nvs, leTan };
 }
 
-export function isWeekendDay(dateInput?: string | Date): boolean {
-  if (!dateInput) return false;
+function parseTargetDateInput(dateInput?: string | Date): Date | null {
+  if (!dateInput) return null;
   let d: Date;
   if (typeof dateInput === 'string') {
     const trimmed = dateInput.trim();
@@ -370,14 +398,19 @@ export function isWeekendDay(dateInput?: string | Date): boolean {
   } else {
     d = dateInput;
   }
-  if (isNaN(d.getTime())) return false;
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function isWeekendDay(dateInput?: string | Date): boolean {
+  const d = parseTargetDateInput(dateInput);
+  if (!d) return false;
   const dayOfWeek = d.getDay(); // 0: Chủ nhật, 6: Thứ 7
   return dayOfWeek === 0 || dayOfWeek === 6;
 }
 
 export function getFacilityDayTargetConfig(facilityName?: string): FacilityDayTarget {
   if (!facilityName || facilityName === 'all') {
-    return { weekday: 156, weekend: 175 };
+    return { weekday: 155, weekend: 186 };
   }
   const norm = normalizeFacilityName(facilityName);
   if (FACILITY_DAY_TARGETS[norm]) return FACILITY_DAY_TARGETS[norm];
@@ -395,33 +428,58 @@ export function getFacilityTargetDetail(facilityName: string): FacilityTargetDet
   const norm = normalizeFacilityName(facilityName);
   if (FACILITY_TARGET_DETAILS[norm]) return FACILITY_TARGET_DETAILS[norm];
   if (FACILITY_TARGET_DETAILS[facilityName]) return FACILITY_TARGET_DETAILS[facilityName];
-  
-  // Case insensitive fallback
+
   const searchLower = (norm || facilityName).toLowerCase().trim();
   const foundKey = Object.keys(FACILITY_TARGET_DETAILS).find(k => k.toLowerCase().trim() === searchLower);
   return foundKey ? FACILITY_TARGET_DETAILS[foundKey] : null;
 }
 
-export function getTotalDailyTargetAllFacilities(dateInput?: string | Date): number {
-  if (dateInput && isWeekendDay(dateInput)) {
-    return 184;
+export function getFacilityDaySchedule(
+  facilityName: string,
+  dateInput?: string | Date,
+): { target: number; isDayOff: boolean; note?: string } {
+  const cfg = getFacilityDayTargetConfig(facilityName);
+  const d = parseTargetDateInput(dateInput);
+  if (d) {
+    const wd = d.getDay() as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+    if (cfg.byWeekday && cfg.byWeekday[wd] !== undefined) {
+      const target = cfg.byWeekday[wd]!;
+      return {
+        target,
+        isDayOff: target <= 0,
+        note: cfg.note,
+      };
+    }
+    const isWknd = wd === 0 || wd === 6;
+    return {
+      target: isWknd ? cfg.weekend : cfg.weekday,
+      isDayOff: false,
+      note: cfg.note,
+    };
   }
-  return 161;
+  return {
+    target: cfg.weekday,
+    isDayOff: false,
+    note: cfg.note,
+  };
+}
+
+export function getTotalDailyTargetAllFacilities(dateInput?: string | Date): number {
+  return OFFICIAL_FACILITIES.reduce(
+    (sum, fac) => sum + getFacilityDailyTarget(fac, dateInput),
+    0,
+  );
 }
 
 export function getFacilityDailyTarget(facilityName?: string, dateInput?: string | Date): number {
   if (!facilityName || facilityName === 'all') {
     return getTotalDailyTargetAllFacilities(dateInput);
   }
-  const cfg = getFacilityDayTargetConfig(facilityName);
-  if (dateInput) {
-    return isWeekendDay(dateInput) ? cfg.weekend : cfg.weekday;
-  }
-  return cfg.weekday;
+  return getFacilityDaySchedule(facilityName, dateInput).target;
 }
 
 /**
- * Tính tổng chỉ tiêu chuẩn cho một khoảng thời gian (tính chuẩn từng ngày trong kỳ là ngày thường hay cuối tuần)
+ * Tính tổng chỉ tiêu chuẩn cho một khoảng thời gian (tính chuẩn từng ngày theo thứ & ghi chú)
  */
 export function calculatePeriodTarget(
   facilityName?: string,
@@ -430,36 +488,26 @@ export function calculatePeriodTarget(
   monthFilter?: string,
   metric: 'photos' | 'reports' = 'photos'
 ): number {
-  const cfg = getFacilityDayTargetConfig(facilityName);
   const isReports = metric === 'reports';
   const isAll = !facilityName || facilityName === 'all';
 
   const getDayTarget = (d: Date): number => {
     if (isReports) {
-      return isAll ? 19 : 1;
+      if (isAll) {
+        return OFFICIAL_FACILITIES.filter(f => !getFacilityDaySchedule(f, d).isDayOff).length;
+      }
+      return getFacilityDaySchedule(facilityName!, d).isDayOff ? 0 : 1;
     }
-    return isWeekendDay(d) ? cfg.weekend : cfg.weekday;
-  };
-
-  const parseD = (s?: string): Date | null => {
-    if (!s) return null;
-    const trimmed = s.trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-      const [y, m, d] = trimmed.split('T')[0].split('-').map(Number);
-      return new Date(y, m - 1, d);
+    if (isAll) {
+      return getTotalDailyTargetAllFacilities(d);
     }
-    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}/.test(trimmed)) {
-      const parts = trimmed.split(/[\/\-]/).map(Number);
-      return new Date(parts[2], parts[1] - 1, parts[0]);
-    }
-    const dt = new Date(trimmed);
-    return isNaN(dt.getTime()) ? null : dt;
+    return getFacilityDailyTarget(facilityName, d);
   };
 
   // Nếu lọc theo ngày cụ thể (từ ngày - đến ngày)
   if (startDate && endDate) {
-    const dStart = parseD(startDate);
-    const dEnd = parseD(endDate);
+    const dStart = parseTargetDateInput(startDate);
+    const dEnd = parseTargetDateInput(endDate);
     if (dStart && dEnd && dStart <= dEnd) {
       let total = 0;
       const curr = new Date(dStart);

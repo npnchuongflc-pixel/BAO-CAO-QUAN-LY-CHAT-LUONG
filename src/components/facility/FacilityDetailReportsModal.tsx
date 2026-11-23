@@ -61,8 +61,8 @@ export const FacilityDetailReportsModal: React.FC<FacilityDetailReportsModalProp
   }, [facilityName]);
 
   const targetTotalPeriod = useMemo(() => {
-    return calculatePeriodTarget(facilityName, filters.tuNgay, filters.denNgay, filters.thang);
-  }, [facilityName, filters.tuNgay, filters.denNgay, filters.thang]);
+    return calculatePeriodTarget(facilityName, '', '', filters.thang);
+  }, [facilityName, filters.thang]);
 
   return (
     <div 
@@ -150,13 +150,7 @@ export const FacilityDetailReportsModal: React.FC<FacilityDetailReportsModalProp
               title={facilityName === 'all' ? 'BÁO CÁO TOÀN DIỆN CÁC CƠ SỞ' : `BÁO CÁO CHI TIẾT CƠ SỞ: ${facilityName.toUpperCase()}`}
               subtitle={`Hệ thống quản lý chất lượng cơ sở • ${targetConfig ? (targetConfig.weekday === targetConfig.weekend ? `Quy định ${targetConfig.weekday} ảnh/ngày` : `Quy định: T2-T6: ${targetConfig.weekday} ảnh • T7-CN: ${targetConfig.weekend} ảnh`) : ''}`}
               pageNumber="Trang 1/2"
-              dateRange={
-                filters.tuNgay && filters.denNgay
-                  ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
-                  : filters.thang !== 'all'
-                  ? `Tháng ${filters.thang}`
-                  : 'Toàn thời gian'
-              }
+              dateRange={filters.thang !== 'all' ? filters.thang : 'Tất cả các tháng'}
             />
 
             {/* Facility Timeline Execution Chart */}

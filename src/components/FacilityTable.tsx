@@ -22,12 +22,12 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
   return (
     <section className="panel table-panel facility-table-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar */}
-      <div className="panel-head p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
+      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
         <div className="min-w-0">
           <span className="text-xs font-bold text-sky-700 uppercase tracking-wider block">
             HIỆU QUẢ THEO CƠ SỞ
           </span>
-          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-0.5">
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
             Xếp hạng điểm hiệu quả tổng hợp
           </h2>
           {!isCollapsed && (
@@ -41,7 +41,7 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
         </div>
 
         {/* Nút Thu gọn / Mở rộng & Sắp xếp */}
-        <div className="flex items-center gap-2.5 self-end md:self-center shrink-0">
+        <div className="flex items-center gap-2.5 self-start md:self-center shrink-0">
           {!isCollapsed && (
             <label className="sort-label text-xs font-semibold text-slate-700 flex items-center gap-1.5">
               <span>Sắp xếp:</span>
@@ -63,17 +63,17 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
             title={isCollapsed ? 'Mở rộng bảng xếp hạng cơ sở' : 'Thu gọn bảng xếp hạng cơ sở'}
           >
             {isCollapsed ? (
               <>
-                <ChevronDown className="w-3.5 h-3.5 text-blue-600" />
+                <ChevronDown className="w-4 h-4 text-blue-600 shrink-0" />
                 <span>Mở rộng</span>
               </>
             ) : (
               <>
-                <ChevronUp className="w-3.5 h-3.5 text-slate-600" />
+                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
                 <span>Thu gọn lại</span>
               </>
             )}
@@ -103,7 +103,8 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
 
       {/* Dạng mở rộng: Bảng xếp hạng chuẩn sạch đẹp */}
       {!isCollapsed && (
-        <div className="table-scroll">
+        <div className="p-4 sm:p-5">
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
@@ -152,6 +153,7 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </section>

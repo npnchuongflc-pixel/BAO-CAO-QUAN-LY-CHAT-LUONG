@@ -999,6 +999,513 @@ app.post("/api/warning-audits", async (req, res) => {
     res.status(500).json({ success: false, error: err.message || "L\u1ED7i m\xE1y ch\u1EE7" });
   }
 });
+var DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID = "1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E";
+var WEEKLY_CONFIG_DIR = path.resolve(process.cwd(), ".data");
+var WEEKLY_CONFIG_FILE = path.resolve(WEEKLY_CONFIG_DIR, "weekly-warning-sheet-config.json");
+var sanitizeSpreadsheetId = (val) => {
+  const s = typeof val === "string" ? val.trim() : "";
+  return /^[a-zA-Z0-9_-]{10,120}$/.test(s) ? s : DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID;
+};
+var isValidAppsScriptExecUrl = (val) => {
+  if (typeof val !== "string") return false;
+  return /^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]{15,200}\/exec$/.test(val.trim());
+};
+var weeklyWarningConfigState = {
+  spreadsheetId: sanitizeSpreadsheetId(process.env.WEEKLY_WARNING_SHEET_ID || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID),
+  spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sanitizeSpreadsheetId(process.env.WEEKLY_WARNING_SHEET_ID || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID)}/edit`,
+  spreadsheetTitle: "THEO D\xD5I X\u1EEC L\xDD C\u1EA2NH B\xC1O V\u1EC6 SINH",
+  appsScriptUrl: isValidAppsScriptExecUrl(configuredNewSheetScriptUrl) ? configuredNewSheetScriptUrl : DEFAULT_NEW_SHEET_APPS_SCRIPT_URL,
+  teamLeadersByFacility: {},
+  weekSyncHistory: {},
+  updatedAt: ""
+};
+try {
+  if (fs.existsSync(WEEKLY_CONFIG_FILE)) {
+    const rawCfg = fs.readFileSync(WEEKLY_CONFIG_FILE, "utf8");
+    const parsedCfg = JSON.parse(rawCfg);
+    if (parsedCfg && typeof parsedCfg === "object") {
+      const sid = sanitizeSpreadsheetId(parsedCfg.spreadsheetId);
+      weeklyWarningConfigState = {
+        ...weeklyWarningConfigState,
+        ...parsedCfg,
+        spreadsheetId: sid,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sid}/edit`,
+        appsScriptUrl: isValidAppsScriptExecUrl(parsedCfg.appsScriptUrl) ? parsedCfg.appsScriptUrl.trim() : weeklyWarningConfigState.appsScriptUrl
+      };
+    }
+  }
+} catch (err) {
+  console.warn("Kh\xF4ng th\u1EC3 \u0111\u1ECDc c\u1EA5u h\xECnh weekly-warning-sheet:", err);
+}
+function persistWeeklyWarningConfig(nextConfig) {
+  weeklyWarningConfigState = nextConfig;
+  try {
+    if (!fs.existsSync(WEEKLY_CONFIG_DIR)) {
+      fs.mkdirSync(WEEKLY_CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(WEEKLY_CONFIG_FILE, JSON.stringify(nextConfig, null, 2), "utf8");
+  } catch (writeErr) {
+    console.warn("Kh\xF4ng th\u1EC3 l\u01B0u file c\u1EA5u h\xECnh weekly-warning-sheet:", writeErr);
+  }
+}
+function buildServerWeekCode(startIso, endIso) {
+  return `W_${startIso}_TO_${endIso}`;
+}
+function formatServerDmy(iso) {
+  const parts = (iso || "").trim().split("-");
+  if (parts.length !== 3) return iso;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+function buildServerMonthLabel(startIso) {
+  const parts = (startIso || "").trim().split("-");
+  if (parts.length !== 3) return "";
+  return `${parts[1]}/${parts[0]}`;
+}
+function buildServerDateRange(startIso, endIso) {
+  return `${formatServerDmy(startIso)} - ${formatServerDmy(endIso)}`;
+}
+function buildServerWeekPrefixNew(weekNumber, startIso) {
+  const wk = Number(weekNumber || 0);
+  const monthLabel = buildServerMonthLabel(startIso);
+  if (wk > 0 && monthLabel) {
+    return `Tu\u1EA7n ${wk}_${monthLabel}_`;
+  }
+  return "";
+}
+function normalizeServerRangeCompare(val) {
+  return (val || "").replace(/\s*\(Tuần\s*\d+\)\s*/i, "").replace(/[–—]/g, "-").replace(/\s*-\s*/g, " - ").trim();
+}
+function buildServerWeekTabTitle(startIso, endIso) {
+  const s = (startIso || "").split("-");
+  const e = (endIso || "").split("-");
+  if (s.length === 3 && e.length === 3) {
+    return `Tu\u1EA7n ${s[2]}.${s[1]}-${e[2]}.${e[1]}.${e[0]}`;
+  }
+  return `Tu\u1EA7n ${startIso}_${endIso}`.slice(0, 90);
+}
+async function fetchPublicSpreadsheetTabs(spreadsheetId) {
+  const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
+  const resp = await fetch(targetUrl, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!resp.ok) {
+    throw new Error(`Kh\xF4ng th\u1EC3 \u0111\u1ECDc danh s\xE1ch tab c\u1EE7a Google Sheet (HTTP ${resp.status}).`);
+  }
+  const html = await resp.text();
+  if (html.includes("accounts.google.com") && !html.includes("items.push")) {
+    throw new Error("Google Sheet ch\u01B0a b\u1EADt quy\u1EC1n xem c\xF4ng khai (Anyone with the link).");
+  }
+  const tabs = [];
+  const regex = /items\.push\(\{name:\s*"([^"]+)"[^}]*gid:\s*"(\d+)"/g;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    let decodedName = match[1];
+    try {
+      decodedName = JSON.parse(`"${match[1].replace(/"/g, '\\"')}"`);
+    } catch {
+    }
+    tabs.push({ name: decodedName.trim(), gid: match[2] });
+  }
+  return tabs;
+}
+async function fetchPublicSheetCsvRows(spreadsheetId, gid) {
+  const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&gid=${gid}&t=${Date.now()}`;
+  const resp = await fetch(targetUrl, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!resp.ok) {
+    throw new Error(`Kh\xF4ng th\u1EC3 \u0111\u1ECDc d\u1EEF li\u1EC7u tab gid=${gid} (HTTP ${resp.status}).`);
+  }
+  const csv = await resp.text();
+  if (csv.includes("<!DOCTYPE html>") || csv.includes("accounts.google.com")) {
+    throw new Error("Kh\xF4ng th\u1EC3 \u0111\u1ECDc d\u1EEF li\u1EC7u CSV t\u1EEB Google Sheet.");
+  }
+  const parsed = Papa.parse(csv, { skipEmptyLines: true });
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+app.get("/api/weekly-warning-config", (_req, res) => {
+  res.json({ success: true, config: weeklyWarningConfigState });
+});
+app.post("/api/weekly-warning-config", (req, res) => {
+  try {
+    const body = req.body || {};
+    const nextConfig = {
+      ...weeklyWarningConfigState,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    if (typeof body.spreadsheetId === "string") {
+      const cleanId = body.spreadsheetId.trim() || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID;
+      if (!/^[a-zA-Z0-9_-]{10,120}$/.test(cleanId)) {
+        return res.status(400).json({ success: false, error: "Spreadsheet ID kh\xF4ng h\u1EE3p l\u1EC7." });
+      }
+      nextConfig.spreadsheetId = cleanId;
+      nextConfig.spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/edit`;
+    }
+    if (typeof body.spreadsheetUrl === "string" && body.spreadsheetUrl.startsWith("https://docs.google.com/spreadsheets/")) {
+      nextConfig.spreadsheetUrl = body.spreadsheetUrl.slice(0, 500);
+    }
+    if (typeof body.spreadsheetTitle === "string" && body.spreadsheetTitle.trim()) {
+      nextConfig.spreadsheetTitle = body.spreadsheetTitle.trim().slice(0, 160);
+    }
+    if (typeof body.appsScriptUrl === "string" && body.appsScriptUrl.trim()) {
+      const trimmedScript = body.appsScriptUrl.trim();
+      if (!isValidAppsScriptExecUrl(trimmedScript)) {
+        return res.status(400).json({
+          success: false,
+          error: "\u0110\u01B0\u1EDDng d\u1EABn Web App Apps Script ph\u1EA3i c\xF3 d\u1EA1ng https://script.google.com/macros/s/.../exec"
+        });
+      }
+      nextConfig.appsScriptUrl = trimmedScript;
+      configuredNewSheetScriptUrl = trimmedScript;
+    }
+    if (body.teamLeadersByFacility && typeof body.teamLeadersByFacility === "object") {
+      const cleanMap = {};
+      Object.entries(body.teamLeadersByFacility).slice(0, 50).forEach(([k, v]) => {
+        if (typeof k === "string" && typeof v === "string") {
+          cleanMap[k.trim().slice(0, 120)] = v.trim().slice(0, 120);
+        }
+      });
+      nextConfig.teamLeadersByFacility = cleanMap;
+    }
+    if (body.weekSyncHistory && typeof body.weekSyncHistory === "object") {
+      nextConfig.weekSyncHistory = {
+        ...weeklyWarningConfigState.weekSyncHistory,
+        ...body.weekSyncHistory
+      };
+    }
+    persistWeeklyWarningConfig(nextConfig);
+    res.json({ success: true, config: weeklyWarningConfigState });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message || "L\u1ED7i l\u01B0u c\u1EA5u h\xECnh" });
+  }
+});
+var TEAM_LEADER_PROCESSING_SHEET_NAME = "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD";
+function findTeamLeaderPublicTab(tabs) {
+  const targetLower = TEAM_LEADER_PROCESSING_SHEET_NAME.trim().toLowerCase();
+  return tabs.find((t) => t.name.trim().toLowerCase() === targetLower);
+}
+app.get("/api/weekly-warning-sheet/check", async (req, res) => {
+  try {
+    const startIso = String(req.query.startIso || "").trim();
+    const endIso = String(req.query.endIso || "").trim();
+    const weekNumber = String(req.query.weekNumber || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startIso) || !/^\d{4}-\d{2}-\d{2}$/.test(endIso)) {
+      return res.status(400).json({ success: false, error: "Ng\xE0y b\u1EAFt \u0111\u1EA7u / k\u1EBFt th\xFAc tu\u1EA7n kh\xF4ng h\u1EE3p l\u1EC7." });
+    }
+    const spreadsheetId = sanitizeSpreadsheetId(req.query.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const weekCode = buildServerWeekCode(startIso, endIso);
+    const legacyPrefix = `${weekCode}__`;
+    const newPrefix = buildServerWeekPrefixNew(weekNumber, startIso);
+    const expectedDateRange = buildServerDateRange(startIso, endIso);
+    const expectedMonth = buildServerMonthLabel(startIso);
+    const legacyTitle = buildServerWeekTabTitle(startIso, endIso);
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    const tabs = await fetchPublicSpreadsheetTabs(spreadsheetId);
+    const teamLeaderTab = findTeamLeaderPublicTab(tabs);
+    const matchedTab = teamLeaderTab || tabs.find((t) => t.name.trim() === legacyTitle || t.name.includes(weekCode));
+    if (!matchedTab) {
+      return res.json({
+        success: true,
+        result: {
+          spreadsheetFound: true,
+          spreadsheetId,
+          spreadsheetUrl,
+          weekExists: false,
+          weekCode,
+          sheetTitle: TEAM_LEADER_PROCESSING_SHEET_NAME,
+          existingRowCount: 0,
+          tabUrl: spreadsheetUrl
+        }
+      });
+    }
+    const rows = await fetchPublicSheetCsvRows(spreadsheetId, matchedTab.gid);
+    const weekRows = rows.slice(1).filter((r) => {
+      const code = String(r?.[0] || "").trim();
+      const rowRange = normalizeServerRangeCompare(String(r?.[1] || ""));
+      const rowMonth = String(r?.[2] || "").trim();
+      return Boolean(code) && (newPrefix && code.startsWith(newPrefix) || code.startsWith(legacyPrefix) || rowRange === expectedDateRange && rowMonth === expectedMonth || rowRange === expectedDateRange);
+    });
+    const sheetIdNum = parseInt(matchedTab.gid, 10) || 0;
+    const tabUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${matchedTab.gid}`;
+    return res.json({
+      success: true,
+      result: {
+        spreadsheetFound: true,
+        spreadsheetId,
+        spreadsheetUrl,
+        weekExists: weekRows.length > 0,
+        weekCode,
+        sheetId: sheetIdNum,
+        sheetTitle: matchedTab.name,
+        existingRowCount: weekRows.length,
+        tabUrl
+      }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Kh\xF4ng th\u1EC3 ki\u1EC3m tra sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD" tr\xEAn Google Sheet.'
+    });
+  }
+});
+app.get("/api/weekly-warning-sheet/records", async (req, res) => {
+  try {
+    const spreadsheetId = sanitizeSpreadsheetId(req.query.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    const tabs = await fetchPublicSpreadsheetTabs(spreadsheetId);
+    const ignored = /* @__PURE__ */ new Set(["ki\u1EC3m duy\u1EC7t v\u1EC7 sinh", "nh\u1EAFc nh\u1EDF", "t\u1ED5ng h\u1EE3p h\u1ED3 s\u01A1", "sheet1"]);
+    const candidateTabs = tabs.filter((t) => !ignored.has(t.name.trim().toLowerCase()));
+    const tabRowsResults = await Promise.all(
+      candidateTabs.map(async (tab) => {
+        try {
+          const rows = await fetchPublicSheetCsvRows(spreadsheetId, tab.gid);
+          return { tab, rows };
+        } catch {
+          return { tab, rows: [] };
+        }
+      })
+    );
+    const rawRecords = [];
+    tabRowsResults.forEach(({ tab, rows }) => {
+      if (!rows.length) return;
+      const header0 = String(rows[0]?.[0] || "").trim();
+      if (header0 !== "M\xE3 h\u1ED3 s\u01A1") return;
+      const sheetIdNum = parseInt(tab.gid, 10) || 0;
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const col0 = String(r?.[0] || "").trim();
+        const col2Or4 = String(r?.[4] || "").trim() || String(r?.[2] || "").trim();
+        if (col0 && col2Or4) {
+          rawRecords.push({
+            row: r,
+            rowNumber: i + 1,
+            spreadsheetId,
+            sheetId: sheetIdNum,
+            sheetTitle: tab.name
+          });
+        }
+      }
+    });
+    res.json({
+      success: true,
+      spreadsheetFound: true,
+      spreadsheetId,
+      spreadsheetUrl,
+      rawRecords
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Kh\xF4ng th\u1EC3 \u0111\u1ECDc d\u1EEF li\u1EC7u b\xE1o c\xE1o tu\u1EA7n t\u1EEB Google Sheet."
+    });
+  }
+});
+app.post("/api/weekly-warning-sheet/sync", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const spreadsheetId = sanitizeSpreadsheetId(body.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const selectedWeek = body.selectedWeek;
+    const sourceRows = Array.isArray(body.sourceRows) ? body.sourceRows : [];
+    const mode = body.mode === "update" ? "update" : "create";
+    const scriptUrlCandidate = typeof body.scriptUrl === "string" && body.scriptUrl.trim() || weeklyWarningConfigState.appsScriptUrl || configuredNewSheetScriptUrl || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+    if (!selectedWeek?.startIso || !selectedWeek?.endIso) {
+      return res.status(400).json({ success: false, error: "Thi\u1EBFu th\xF4ng tin tu\u1EA7n \u0111ang ch\u1ECDn." });
+    }
+    if (!isValidAppsScriptExecUrl(scriptUrlCandidate)) {
+      return res.status(400).json({
+        success: false,
+        needsScriptUpdate: true,
+        error: "Ch\u01B0a c\xF3 \u0111\u01B0\u1EDDng d\u1EABn Web App Google Apps Script h\u1EE3p l\u1EC7 cho file Google Sheet."
+      });
+    }
+    const weekCode = buildServerWeekCode(selectedWeek.startIso, selectedWeek.endIso);
+    const legacyPrefix = `${weekCode}__`;
+    const weekPrefixNew = typeof body.weekPrefix === "string" && body.weekPrefix.trim() || buildServerWeekPrefixNew(selectedWeek.weekNumber, selectedWeek.startIso);
+    const expectedDateRange = buildServerDateRange(selectedWeek.startIso, selectedWeek.endIso);
+    const expectedMonth = buildServerMonthLabel(selectedWeek.startIso);
+    const appsResp = await fetch(scriptUrlCandidate.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "sync_weekly_warning_report",
+        spreadsheetId,
+        targetSheetName: TEAM_LEADER_PROCESSING_SHEET_NAME,
+        sheetTitle: TEAM_LEADER_PROCESSING_SHEET_NAME,
+        weekCode,
+        weekPrefix: weekPrefixNew,
+        startIso: selectedWeek.startIso,
+        endIso: selectedWeek.endIso,
+        mode,
+        sourceRows
+      }),
+      signal: AbortSignal.timeout(3e4)
+    });
+    const respText = await appsResp.text().catch(() => "");
+    let appsJson = null;
+    try {
+      appsJson = JSON.parse(respText);
+    } catch {
+      appsJson = null;
+    }
+    if (!appsResp.ok || !appsJson || appsJson.weeklySupported !== true) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+        message: 'Apps Script g\u1EAFn tr\xEAn Google Sheet ch\u01B0a \u0111\u01B0\u1EE3c c\u1EADp nh\u1EADt h\xE0m ghi v\xE0o sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD" (kh\xF4ng c\u1EA7n \u0111\u0103ng nh\u1EADp). H\xE3y sao ch\xE9p m\xE3 Apps Script m\u1EDBi v\xE0 d\xE1n/tri\u1EC3n khai 1 l\u1EA7n trong Google Sheet.'
+      });
+    }
+    if (appsJson.alreadyExists) {
+      return res.json({
+        success: false,
+        alreadyExists: true,
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+        sheetId: Number(appsJson.sheetId || 0),
+        sheetTitle: appsJson.sheetTitle || TEAM_LEADER_PROCESSING_SHEET_NAME,
+        existingRowCount: Number(appsJson.existingRowCount || 0),
+        tabUrl: appsJson.tabUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${appsJson.sheetId}`,
+        message: appsJson.message || 'Tu\u1EA7n n\xE0y \u0111\xE3 t\u1ED3n t\u1EA1i trong sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD".'
+      });
+    }
+    if (!appsJson.success) {
+      return res.status(502).json({
+        success: false,
+        message: appsJson.error || appsJson.message || 'Google Apps Script b\xE1o l\u1ED7i khi ghi v\xE0o sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD".'
+      });
+    }
+    const sheetIdStr = String(appsJson.sheetId ?? "");
+    let verifiedCodes = /* @__PURE__ */ new Set();
+    if (sheetIdStr) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const readRows = await fetchPublicSheetCsvRows(spreadsheetId, sheetIdStr);
+          verifiedCodes = new Set(
+            readRows.slice(1).filter((r) => {
+              const code = String(r?.[0] || "").trim();
+              const rRange = normalizeServerRangeCompare(String(r?.[1] || ""));
+              const rMonth = String(r?.[2] || "").trim();
+              return Boolean(code) && (weekPrefixNew && code.startsWith(weekPrefixNew) || code.startsWith(legacyPrefix) || rRange === expectedDateRange && rMonth === expectedMonth);
+            }).map((r) => String(r?.[0] || "").trim())
+          );
+          const missing = sourceRows.filter((s) => !verifiedCodes.has(String(s.recordCode || "").trim()));
+          if (missing.length === 0) break;
+        } catch {
+        }
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 900));
+      }
+    }
+    const totalRowsVerified = Math.max(verifiedCodes.size, Number(appsJson.totalRowsVerified || 0));
+    if (sourceRows.length > 0 && totalRowsVerified < sourceRows.length) {
+      return res.status(502).json({
+        success: false,
+        message: `\u0110\u1ECDc ki\u1EC3m tra l\u1EA1i sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD" ch\u1EC9 th\u1EA5y ${totalRowsVerified}/${sourceRows.length} h\u1ED3 s\u01A1 c\u1EE7a tu\u1EA7n n\xE0y. Vui l\xF2ng th\u1EED l\u1EA1i.`
+      });
+    }
+    const syncedAt = String(appsJson.syncedAt || "");
+    const sheetIdNum = Number(appsJson.sheetId || 0);
+    const finalTitle = String(appsJson.sheetTitle || TEAM_LEADER_PROCESSING_SHEET_NAME);
+    const tabUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetIdNum}`;
+    persistWeeklyWarningConfig({
+      ...weeklyWarningConfigState,
+      spreadsheetId,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      appsScriptUrl: scriptUrlCandidate.trim(),
+      weekSyncHistory: {
+        ...weeklyWarningConfigState.weekSyncHistory,
+        [weekCode]: {
+          syncedAt,
+          sheetId: sheetIdNum,
+          sheetTitle: finalTitle
+        }
+      },
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    return res.json({
+      success: true,
+      mode,
+      spreadsheetId,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      tabUrl,
+      sheetId: sheetIdNum,
+      sheetTitle: finalTitle,
+      weekCode,
+      syncedAt,
+      updatedCount: Number(appsJson.updatedCount || 0),
+      addedCount: Number(appsJson.addedCount || 0),
+      resolvedCount: Number(appsJson.resolvedCount || 0),
+      totalRowsVerified,
+      message: mode === "create" ? `\u0110\xE3 ghi th\xE0nh c\xF4ng ${Number(appsJson.addedCount || sourceRows.length)} c\u01A1 s\u1EDF v\xE0o sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD" (\u0111\xE3 ki\u1EC3m tra \u0111\u1ECDc l\u1EA1i ${totalRowsVerified} d\xF2ng).` : `\u0110\xE3 c\u1EADp nh\u1EADt sheet "Tr\u01B0\u1EDFng nh\xF3m x\u1EED l\xFD" l\xFAc ${syncedAt}: ${Number(appsJson.updatedCount || 0)} d\xF2ng c\u1EADp nh\u1EADt, ${Number(appsJson.addedCount || 0)} th\xEAm m\u1EDBi, ${Number(appsJson.resolvedCount || 0)} kh\xF4ng c\xF2n c\u1EA3nh b\xE1o.`
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err?.message || "L\u1ED7i k\u1EBFt n\u1ED1i \u0111\u1ED3ng b\u1ED9 Google Sheet."
+    });
+  }
+});
+app.post("/api/weekly-warning-sheet/update-row", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const spreadsheetId = sanitizeSpreadsheetId(body.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const scriptUrlCandidate = typeof body.scriptUrl === "string" && body.scriptUrl.trim() || weeklyWarningConfigState.appsScriptUrl || configuredNewSheetScriptUrl || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+    if (!isValidAppsScriptExecUrl(scriptUrlCandidate)) {
+      return res.status(400).json({
+        success: false,
+        needsScriptUpdate: true,
+        message: "Ch\u01B0a c\xF3 \u0111\u01B0\u1EDDng d\u1EABn Web App Google Apps Script h\u1EE3p l\u1EC7."
+      });
+    }
+    const appsResp = await fetch(scriptUrlCandidate.trim(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update_weekly_warning_record",
+        spreadsheetId,
+        recordCode: String(body.recordCode || "").trim(),
+        sheetTitle: String(body.sheetTitle || "").trim(),
+        weekCode: String(body.weekCode || "").trim(),
+        patch: body.patch || {},
+        actor: String(body.actor || "Tr\u01B0\u1EDFng nh\xF3m / QLCL").trim().slice(0, 120)
+      }),
+      signal: AbortSignal.timeout(2e4)
+    });
+    const respText = await appsResp.text().catch(() => "");
+    let appsJson = null;
+    try {
+      appsJson = JSON.parse(respText);
+    } catch {
+      appsJson = null;
+    }
+    if (!appsResp.ok || !appsJson || appsJson.weeklySupported !== true) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        message: "Apps Script g\u1EAFn tr\xEAn Google Sheet ch\u01B0a h\u1ED7 tr\u1EE3 l\u01B0u thao t\xE1c kh\xF4ng c\u1EA7n \u0111\u0103ng nh\u1EADp. Vui l\xF2ng c\u1EADp nh\u1EADt m\xE3 Apps Script m\u1EDBi trong Google Sheet."
+      });
+    }
+    if (!appsJson.success || !Array.isArray(appsJson.rowValues)) {
+      return res.status(502).json({
+        success: false,
+        message: appsJson.error || "Kh\xF4ng th\u1EC3 l\u01B0u thay \u0111\u1ED5i l\xEAn Google Sheet."
+      });
+    }
+    return res.json({
+      success: true,
+      rowNumber: Number(appsJson.rowNumber || 0),
+      rowValues: appsJson.rowValues,
+      status: appsJson.status
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err?.message || "L\u1ED7i l\u01B0u c\u1EADp nh\u1EADt l\xEAn Google Sheet."
+    });
+  }
+});
 async function startServer() {
   const distPath = path.join(process.cwd(), "dist");
   const distIndexExists = fs.existsSync(path.join(distPath, "index.html"));

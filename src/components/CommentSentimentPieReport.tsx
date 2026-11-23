@@ -421,7 +421,7 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
   return (
     <section className="panel table-panel comment-sentiment-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       {/* Header bar */}
-      <div className="panel-head p-4 sm:p-5 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-white border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-50/70 via-teal-50/40 to-white border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider">
@@ -432,8 +432,8 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
               {categoryStats.total} Nhận xét chi tiết
             </span>
           </div>
-          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
-            Biểu đồ phân loại nhận xét khen ngợi & các nhóm lỗi phàn nàn
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
+            Biểu đồ phân loại nhận xét khen ngợi &amp; các nhóm lỗi phàn nàn
           </h2>
         </div>
 
@@ -442,17 +442,17 @@ export const CommentSentimentPieReport: React.FC<CommentSentimentPieReportProps>
           <button
             type="button"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
             title={isCollapsed ? 'Mở rộng biểu đồ phân loại ý kiến' : 'Thu gọn biểu đồ'}
           >
             {isCollapsed ? (
               <>
-                <ChevronDown className="w-4 h-4 text-emerald-600" />
-                <span>Mở rộng biểu đồ</span>
+                <ChevronDown className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Mở rộng</span>
               </>
             ) : (
               <>
-                <ChevronUp className="w-4 h-4 text-slate-600" />
+                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
                 <span>Thu gọn lại</span>
               </>
             )}

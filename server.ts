@@ -1186,6 +1186,699 @@ app.post('/api/warning-audits', async (req, res) => {
   }
 });
 
+// ============================================================================
+// Persistent config & No-Login Google Sheet APIs for Weekly Warning Reports
+// Default target spreadsheet: 1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E
+// ============================================================================
+const DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
+
+interface WeeklyWarningSheetServerConfig {
+  spreadsheetId: string;
+  spreadsheetUrl: string;
+  spreadsheetTitle: string;
+  appsScriptUrl: string;
+  teamLeadersByFacility: Record<string, string>;
+  weekSyncHistory: Record<string, { syncedAt: string; sheetId?: number; sheetTitle?: string }>;
+  updatedAt: string;
+}
+
+const WEEKLY_CONFIG_DIR = path.resolve(process.cwd(), '.data');
+const WEEKLY_CONFIG_FILE = path.resolve(WEEKLY_CONFIG_DIR, 'weekly-warning-sheet-config.json');
+
+const sanitizeSpreadsheetId = (val: unknown): string => {
+  const s = typeof val === 'string' ? val.trim() : '';
+  return /^[a-zA-Z0-9_-]{10,120}$/.test(s) ? s : DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID;
+};
+
+const isValidAppsScriptExecUrl = (val: unknown): val is string => {
+  if (typeof val !== 'string') return false;
+  return /^https:\/\/script\.google\.com\/macros\/s\/[a-zA-Z0-9_-]{15,200}\/exec$/.test(val.trim());
+};
+
+let weeklyWarningConfigState: WeeklyWarningSheetServerConfig = {
+  spreadsheetId: sanitizeSpreadsheetId(process.env.WEEKLY_WARNING_SHEET_ID || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID),
+  spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sanitizeSpreadsheetId(process.env.WEEKLY_WARNING_SHEET_ID || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID)}/edit`,
+  spreadsheetTitle: 'THEO DÕI XỬ LÝ CẢNH BÁO VỆ SINH',
+  appsScriptUrl: isValidAppsScriptExecUrl(configuredNewSheetScriptUrl) ? configuredNewSheetScriptUrl : DEFAULT_NEW_SHEET_APPS_SCRIPT_URL,
+  teamLeadersByFacility: {},
+  weekSyncHistory: {},
+  updatedAt: '',
+};
+
+try {
+  if (fs.existsSync(WEEKLY_CONFIG_FILE)) {
+    const rawCfg = fs.readFileSync(WEEKLY_CONFIG_FILE, 'utf8');
+    const parsedCfg = JSON.parse(rawCfg);
+    if (parsedCfg && typeof parsedCfg === 'object') {
+      const sid = sanitizeSpreadsheetId(parsedCfg.spreadsheetId);
+      weeklyWarningConfigState = {
+        ...weeklyWarningConfigState,
+        ...parsedCfg,
+        spreadsheetId: sid,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${sid}/edit`,
+        appsScriptUrl: isValidAppsScriptExecUrl(parsedCfg.appsScriptUrl)
+          ? parsedCfg.appsScriptUrl.trim()
+          : weeklyWarningConfigState.appsScriptUrl,
+      };
+    }
+  }
+} catch (err) {
+  console.warn('Không thể đọc cấu hình weekly-warning-sheet:', err);
+}
+
+function persistWeeklyWarningConfig(nextConfig: WeeklyWarningSheetServerConfig) {
+  weeklyWarningConfigState = nextConfig;
+  try {
+    if (!fs.existsSync(WEEKLY_CONFIG_DIR)) {
+      fs.mkdirSync(WEEKLY_CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(WEEKLY_CONFIG_FILE, JSON.stringify(nextConfig, null, 2), 'utf8');
+  } catch (writeErr) {
+    console.warn('Không thể lưu file cấu hình weekly-warning-sheet:', writeErr);
+  }
+}
+
+function buildServerWeekCode(startIso: string, endIso: string): string {
+  return `W_${startIso}_TO_${endIso}`;
+}
+
+function formatServerDmy(iso: string): string {
+  const parts = (iso || '').trim().split('-');
+  if (parts.length !== 3) return iso;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function buildServerMonthLabel(startIso: string): string {
+  const parts = (startIso || '').trim().split('-');
+  if (parts.length !== 3) return '';
+  return `${parts[1]}/${parts[0]}`;
+}
+
+function buildServerDateRange(startIso: string, endIso: string): string {
+  return `${formatServerDmy(startIso)} - ${formatServerDmy(endIso)}`;
+}
+
+function buildServerWeekPrefixNew(weekNumber: number | string, startIso: string): string {
+  const wk = Number(weekNumber || 0);
+  const monthLabel = buildServerMonthLabel(startIso);
+  if (wk > 0 && monthLabel) {
+    return `Tuần ${wk}_${monthLabel}_`;
+  }
+  return '';
+}
+
+function normalizeServerRangeCompare(val: string): string {
+  return (val || '')
+    .replace(/\s*\(Tuần\s*\d+\)\s*/i, '')
+    .replace(/[–—]/g, '-')
+    .replace(/\s*-\s*/g, ' - ')
+    .trim();
+}
+
+function buildServerWeekTabTitle(startIso: string, endIso: string): string {
+  const s = (startIso || '').split('-');
+  const e = (endIso || '').split('-');
+  if (s.length === 3 && e.length === 3) {
+    return `Tuần ${s[2]}.${s[1]}-${e[2]}.${e[1]}.${e[0]}`;
+  }
+  return `Tuần ${startIso}_${endIso}`.slice(0, 90);
+}
+
+async function fetchPublicSpreadsheetTabs(
+  spreadsheetId: string,
+): Promise<Array<{ name: string; gid: string }>> {
+  const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
+  const resp = await fetch(targetUrl, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) {
+    throw new Error(`Không thể đọc danh sách tab của Google Sheet (HTTP ${resp.status}).`);
+  }
+  const html = await resp.text();
+  if (html.includes('accounts.google.com') && !html.includes('items.push')) {
+    throw new Error('Google Sheet chưa bật quyền xem công khai (Anyone with the link).');
+  }
+
+  const tabs: Array<{ name: string; gid: string }> = [];
+  const regex = /items\.push\(\{name:\s*"([^"]+)"[^}]*gid:\s*"(\d+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    // Decode basic JS unicode escapes if any (e.g. \u00e0)
+    let decodedName = match[1];
+    try {
+      decodedName = JSON.parse(`"${match[1].replace(/"/g, '\\"')}"`);
+    } catch {}
+    tabs.push({ name: decodedName.trim(), gid: match[2] });
+  }
+  return tabs;
+}
+
+async function fetchPublicSheetCsvRows(
+  spreadsheetId: string,
+  gid: string,
+): Promise<string[][]> {
+  const targetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}&t=${Date.now()}`;
+  const resp = await fetch(targetUrl, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) {
+    throw new Error(`Không thể đọc dữ liệu tab gid=${gid} (HTTP ${resp.status}).`);
+  }
+  const csv = await resp.text();
+  if (csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+    throw new Error('Không thể đọc dữ liệu CSV từ Google Sheet.');
+  }
+  const parsed = Papa.parse<string[]>(csv, { skipEmptyLines: false });
+  return Array.isArray(parsed.data) ? parsed.data : [];
+}
+
+app.get('/api/weekly-warning-config', (_req, res) => {
+  res.json({ success: true, config: weeklyWarningConfigState });
+});
+
+app.post('/api/weekly-warning-config', (req, res) => {
+  try {
+    const body = req.body || {};
+    const nextConfig: WeeklyWarningSheetServerConfig = {
+      ...weeklyWarningConfigState,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (typeof body.spreadsheetId === 'string') {
+      const cleanId = body.spreadsheetId.trim() || DEFAULT_WEEKLY_WARNING_SPREADSHEET_ID;
+      if (!/^[a-zA-Z0-9_-]{10,120}$/.test(cleanId)) {
+        return res.status(400).json({ success: false, error: 'Spreadsheet ID không hợp lệ.' });
+      }
+      nextConfig.spreadsheetId = cleanId;
+      nextConfig.spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/edit`;
+    }
+    if (typeof body.spreadsheetUrl === 'string' && body.spreadsheetUrl.startsWith('https://docs.google.com/spreadsheets/')) {
+      nextConfig.spreadsheetUrl = body.spreadsheetUrl.slice(0, 500);
+    }
+    if (typeof body.spreadsheetTitle === 'string' && body.spreadsheetTitle.trim()) {
+      nextConfig.spreadsheetTitle = body.spreadsheetTitle.trim().slice(0, 160);
+    }
+    if (typeof body.appsScriptUrl === 'string' && body.appsScriptUrl.trim()) {
+      const trimmedScript = body.appsScriptUrl.trim();
+      if (!isValidAppsScriptExecUrl(trimmedScript)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Đường dẫn Web App Apps Script phải có dạng https://script.google.com/macros/s/.../exec',
+        });
+      }
+      nextConfig.appsScriptUrl = trimmedScript;
+      configuredNewSheetScriptUrl = trimmedScript;
+    }
+    if (body.teamLeadersByFacility && typeof body.teamLeadersByFacility === 'object') {
+      const cleanMap: Record<string, string> = {};
+      Object.entries(body.teamLeadersByFacility).slice(0, 50).forEach(([k, v]) => {
+        if (typeof k === 'string' && typeof v === 'string') {
+          cleanMap[k.trim().slice(0, 120)] = v.trim().slice(0, 120);
+        }
+      });
+      nextConfig.teamLeadersByFacility = cleanMap;
+    }
+    if (body.weekSyncHistory && typeof body.weekSyncHistory === 'object') {
+      nextConfig.weekSyncHistory = {
+        ...weeklyWarningConfigState.weekSyncHistory,
+        ...body.weekSyncHistory,
+      };
+    }
+
+    persistWeeklyWarningConfig(nextConfig);
+    res.json({ success: true, config: weeklyWarningConfigState });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message || 'Lỗi lưu cấu hình' });
+  }
+});
+
+const TEAM_LEADER_PROCESSING_SHEET_NAME = 'Trưởng nhóm xử lý';
+const REQUIRED_WEEKLY_SCHEMA_VERSION = 8;
+
+async function verifyWeeklyAppsScriptSchema(scriptUrl: string): Promise<{
+  supported: boolean;
+  schemaVersion: number;
+}> {
+  try {
+    const pingResp = await fetch(scriptUrl.trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'weekly_ping' }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    const pingText = await pingResp.text().catch(() => '');
+    const pingJson: any = pingText ? JSON.parse(pingText) : null;
+    const schemaVersion = Number(pingJson?.schemaVersion || 0);
+    const supported =
+      Boolean(pingResp.ok) &&
+      pingJson?.weeklySupported === true &&
+      schemaVersion >= REQUIRED_WEEKLY_SCHEMA_VERSION;
+    return { supported, schemaVersion };
+  } catch {
+    return { supported: false, schemaVersion: 0 };
+  }
+}
+
+function findTeamLeaderPublicTab(tabs: Array<{ name: string; gid: string }>) {
+  const targetLower = TEAM_LEADER_PROCESSING_SHEET_NAME.trim().toLowerCase();
+  return tabs.find(t => t.name.trim().toLowerCase() === targetLower);
+}
+
+// No-login check whether a week already has records inside sheet "Trưởng nhóm xử lý"
+app.get('/api/weekly-warning-sheet/check', async (req, res) => {
+  try {
+    const startIso = String(req.query.startIso || '').trim();
+    const endIso = String(req.query.endIso || '').trim();
+    const weekNumber = String(req.query.weekNumber || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startIso) || !/^\d{4}-\d{2}-\d{2}$/.test(endIso)) {
+      return res.status(400).json({ success: false, error: 'Ngày bắt đầu / kết thúc tuần không hợp lệ.' });
+    }
+    const spreadsheetId = sanitizeSpreadsheetId(req.query.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const weekCode = buildServerWeekCode(startIso, endIso);
+    const legacyPrefix = `${weekCode}__`;
+    const newPrefix = buildServerWeekPrefixNew(weekNumber, startIso);
+    const expectedDateRange = buildServerDateRange(startIso, endIso);
+    const expectedMonth = buildServerMonthLabel(startIso);
+    const legacyTitle = buildServerWeekTabTitle(startIso, endIso);
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+    const tabs = await fetchPublicSpreadsheetTabs(spreadsheetId);
+    const teamLeaderTab = findTeamLeaderPublicTab(tabs);
+    const matchedTab =
+      teamLeaderTab ||
+      tabs.find(t => t.name.trim() === legacyTitle || t.name.includes(weekCode));
+
+    if (!matchedTab) {
+      return res.json({
+        success: true,
+        result: {
+          spreadsheetFound: true,
+          spreadsheetId,
+          spreadsheetUrl,
+          weekExists: false,
+          weekCode,
+          sheetTitle: TEAM_LEADER_PROCESSING_SHEET_NAME,
+          existingRowCount: 0,
+          tabUrl: spreadsheetUrl,
+        },
+      });
+    }
+
+    const rows = await fetchPublicSheetCsvRows(spreadsheetId, matchedTab.gid);
+    const checkStartIdx = String(rows[0]?.[0] || '').trim() === 'Mã hồ sơ' ? 1 : 0;
+    const weekRows = rows.slice(checkStartIdx).filter(r => {
+      const code = String(r?.[0] || '').trim();
+      const rowRange = normalizeServerRangeCompare(String(r?.[1] || ''));
+      const rowMonth = String(r?.[2] || '').trim();
+      return (
+        Boolean(code) &&
+        ((newPrefix && code.startsWith(newPrefix)) ||
+          code.startsWith(legacyPrefix) ||
+          (rowRange === expectedDateRange && rowMonth === expectedMonth) ||
+          rowRange === expectedDateRange)
+      );
+    });
+    const sheetIdNum = parseInt(matchedTab.gid, 10) || 0;
+    const tabUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${matchedTab.gid}`;
+
+    return res.json({
+      success: true,
+      result: {
+        spreadsheetFound: true,
+        spreadsheetId,
+        spreadsheetUrl,
+        weekExists: weekRows.length > 0,
+        weekCode,
+        sheetId: sheetIdNum,
+        sheetTitle: matchedTab.name,
+        existingRowCount: weekRows.length,
+        tabUrl,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Không thể kiểm tra sheet "Trưởng nhóm xử lý" trên Google Sheet.',
+    });
+  }
+});
+
+// No-login read all weekly records from "Trưởng nhóm xử lý" (plus any legacy weekly tabs)
+app.get('/api/weekly-warning-sheet/records', async (req, res) => {
+  try {
+    const spreadsheetId = sanitizeSpreadsheetId(req.query.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    const tabs = await fetchPublicSpreadsheetTabs(spreadsheetId);
+
+    const ignored = new Set(['kiểm duyệt vệ sinh', 'nhắc nhở', 'tổng hợp hồ sơ', 'sheet1']);
+    const candidateTabs = tabs.filter(t => !ignored.has(t.name.trim().toLowerCase()));
+
+    const tabRowsResults = await Promise.all(
+      candidateTabs.map(async tab => {
+        try {
+          const rows = await fetchPublicSheetCsvRows(spreadsheetId, tab.gid);
+          return { tab, rows };
+        } catch {
+          return { tab, rows: [] as string[][] };
+        }
+      }),
+    );
+
+    const rawRecords: Array<{
+      row: string[];
+      rowNumber: number;
+      spreadsheetId: string;
+      sheetId: number;
+      sheetTitle: string;
+    }> = [];
+
+    tabRowsResults.forEach(({ tab, rows }) => {
+      if (!rows.length) return;
+      const header0 = String(rows[0]?.[0] || '').trim();
+      const firstRowLooksLikeRecord = /^Tuần\s*\d+_|^W_\d{4}-/.test(header0);
+      if (header0 !== 'Mã hồ sơ' && !firstRowLooksLikeRecord) return;
+      const startIdx = header0 === 'Mã hồ sơ' ? 1 : 0;
+      const sheetIdNum = parseInt(tab.gid, 10) || 0;
+      for (let i = startIdx; i < rows.length; i++) {
+        const r = rows[i];
+        const col0 = String(r?.[0] || '').trim();
+        const colFac =
+          String(r?.[5] || '').trim() ||
+          String(r?.[4] || '').trim() ||
+          String(r?.[2] || '').trim();
+        if (col0 && colFac) {
+          rawRecords.push({
+            row: r,
+            rowNumber: i + 1,
+            spreadsheetId,
+            sheetId: sheetIdNum,
+            sheetTitle: tab.name,
+          });
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      spreadsheetFound: true,
+      spreadsheetId,
+      spreadsheetUrl,
+      rawRecords,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Không thể đọc dữ liệu báo cáo tuần từ Google Sheet.',
+    });
+  }
+});
+
+// No-login create / update a week report inside "Trưởng nhóm xử lý" via Apps Script Web App + CSV readback verification
+app.post('/api/weekly-warning-sheet/sync', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const spreadsheetId = sanitizeSpreadsheetId(body.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const selectedWeek = body.selectedWeek;
+    const sourceRows = Array.isArray(body.sourceRows) ? body.sourceRows : [];
+    const mode = body.mode === 'update' ? 'update' : 'create';
+    const scriptUrlCandidate =
+      (typeof body.scriptUrl === 'string' && body.scriptUrl.trim()) ||
+      weeklyWarningConfigState.appsScriptUrl ||
+      configuredNewSheetScriptUrl ||
+      DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+
+    if (!selectedWeek?.startIso || !selectedWeek?.endIso) {
+      return res.status(400).json({ success: false, error: 'Thiếu thông tin tuần đang chọn.' });
+    }
+    if (!isValidAppsScriptExecUrl(scriptUrlCandidate)) {
+      return res.status(400).json({
+        success: false,
+        needsScriptUpdate: true,
+        error: 'Chưa có đường dẫn Web App Google Apps Script hợp lệ cho file Google Sheet.',
+      });
+    }
+
+    const weekCode = buildServerWeekCode(selectedWeek.startIso, selectedWeek.endIso);
+    const legacyPrefix = `${weekCode}__`;
+    const weekPrefixNew =
+      (typeof body.weekPrefix === 'string' && body.weekPrefix.trim()) ||
+      buildServerWeekPrefixNew(selectedWeek.weekNumber, selectedWeek.startIso);
+    const expectedDateRange = buildServerDateRange(selectedWeek.startIso, selectedWeek.endIso);
+    const expectedMonth = buildServerMonthLabel(selectedWeek.startIso);
+
+    const preflight = await verifyWeeklyAppsScriptSchema(scriptUrlCandidate);
+    if (!preflight.supported) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+        message:
+          'Apps Script gắn trên Google Sheet cần được cập nhật lên phiên bản mới (v8) để tự động điền "Thời gian cập nhật" (cột N) ngay khi tích trực tiếp ô "Trưởng nhóm đã duyệt" (cột K) trên Google Sheet. Vui lòng bấm "1. Sao chép mã Apps Script mới", dán vào Code.gs rồi chọn Triển khai > Quản lý các mục đã triển khai > Chỉnh sửa > Phiên bản mới > Triển khai.',
+      });
+    }
+
+    // Note: intentionally pass `sourceRows` (NOT `records`) so older Apps Script deployments return
+    // `{ success: true, message: "Không có bản ghi" }` without touching "Kiểm duyệt vệ sinh".
+    const appsResp = await fetch(scriptUrlCandidate.trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'sync_weekly_warning_report',
+        spreadsheetId,
+        targetSheetName: TEAM_LEADER_PROCESSING_SHEET_NAME,
+        sheetTitle: TEAM_LEADER_PROCESSING_SHEET_NAME,
+        weekCode,
+        weekPrefix: weekPrefixNew,
+        startIso: selectedWeek.startIso,
+        endIso: selectedWeek.endIso,
+        mode,
+        sourceRows,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    const respText = await appsResp.text().catch(() => '');
+    let appsJson: any = null;
+    try {
+      appsJson = JSON.parse(respText);
+    } catch {
+      appsJson = null;
+    }
+
+    if (
+      !appsResp.ok ||
+      !appsJson ||
+      appsJson.weeklySupported !== true ||
+      Number(appsJson.schemaVersion || 0) < REQUIRED_WEEKLY_SCHEMA_VERSION
+    ) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+        message:
+          'Apps Script gắn trên Google Sheet chưa phải phiên bản v8 mới nhất (tự điền Thời gian cập nhật khi tích duyệt trên Sheet). Vui lòng sao chép mã Apps Script mới, lưu vào Code.gs và triển khai Phiên bản mới (New version) trong Google Sheet.',
+      });
+    }
+
+    if (appsJson.alreadyExists) {
+      return res.json({
+        success: false,
+        alreadyExists: true,
+        spreadsheetId,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+        sheetId: Number(appsJson.sheetId || 0),
+        sheetTitle: appsJson.sheetTitle || TEAM_LEADER_PROCESSING_SHEET_NAME,
+        existingRowCount: Number(appsJson.existingRowCount || 0),
+        tabUrl: appsJson.tabUrl || `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${appsJson.sheetId}`,
+        message: appsJson.message || 'Tuần này đã tồn tại trong sheet "Trưởng nhóm xử lý".',
+      });
+    }
+
+    if (!appsJson.success) {
+      return res.status(502).json({
+        success: false,
+        message: appsJson.error || appsJson.message || 'Google Apps Script báo lỗi khi ghi vào sheet "Trưởng nhóm xử lý".',
+      });
+    }
+
+    // Mandatory readback verification from live Google Sheet CSV specifically for this week
+    const sheetIdStr = String(appsJson.sheetId ?? '');
+    let verifiedCodes = new Set<string>();
+    if (sheetIdStr) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const readRows = await fetchPublicSheetCsvRows(spreadsheetId, sheetIdStr);
+          const readStartIdx = String(readRows[0]?.[0] || '').trim() === 'Mã hồ sơ' ? 1 : 0;
+          verifiedCodes = new Set(
+            readRows
+              .slice(readStartIdx)
+              .filter(r => {
+                const code = String(r?.[0] || '').trim();
+                const rRange = normalizeServerRangeCompare(String(r?.[1] || ''));
+                const rMonth = String(r?.[2] || '').trim();
+                return (
+                  Boolean(code) &&
+                  ((weekPrefixNew && code.startsWith(weekPrefixNew)) ||
+                    code.startsWith(legacyPrefix) ||
+                    (rRange === expectedDateRange && rMonth === expectedMonth))
+                );
+              })
+              .map(r => String(r?.[0] || '').trim()),
+          );
+          const missing = sourceRows.filter((s: any) => !verifiedCodes.has(String(s.recordCode || '').trim()));
+          if (missing.length === 0) break;
+        } catch {}
+        if (attempt === 0) await new Promise(r => setTimeout(r, 900));
+      }
+    }
+
+    const totalRowsVerified = Math.max(verifiedCodes.size, Number(appsJson.totalRowsVerified || 0));
+    if (sourceRows.length > 0 && totalRowsVerified < sourceRows.length) {
+      return res.status(502).json({
+        success: false,
+        message: `Đọc kiểm tra lại sheet "Trưởng nhóm xử lý" chỉ thấy ${totalRowsVerified}/${sourceRows.length} hồ sơ của tuần này. Vui lòng thử lại.`,
+      });
+    }
+
+    const syncedAt = String(appsJson.syncedAt || '');
+    const sheetIdNum = Number(appsJson.sheetId || 0);
+    const finalTitle = String(appsJson.sheetTitle || TEAM_LEADER_PROCESSING_SHEET_NAME);
+    const tabUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheetIdNum}`;
+
+    persistWeeklyWarningConfig({
+      ...weeklyWarningConfigState,
+      spreadsheetId,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      appsScriptUrl: scriptUrlCandidate.trim(),
+      weekSyncHistory: {
+        ...weeklyWarningConfigState.weekSyncHistory,
+        [weekCode]: {
+          syncedAt,
+          sheetId: sheetIdNum,
+          sheetTitle: finalTitle,
+        },
+      },
+      updatedAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      mode,
+      spreadsheetId,
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+      tabUrl,
+      sheetId: sheetIdNum,
+      sheetTitle: finalTitle,
+      weekCode,
+      syncedAt,
+      updatedCount: Number(appsJson.updatedCount || 0),
+      addedCount: Number(appsJson.addedCount || 0),
+      resolvedCount: Number(appsJson.resolvedCount || 0),
+      totalRowsVerified,
+      message:
+        mode === 'create'
+          ? `Đã ghi thành công ${Number(appsJson.addedCount || sourceRows.length)} cơ sở vào sheet "Trưởng nhóm xử lý" (đã kiểm tra đọc lại ${totalRowsVerified} dòng).`
+          : `Đã cập nhật sheet "Trưởng nhóm xử lý" lúc ${syncedAt}: ${Number(appsJson.updatedCount || 0)} dòng cập nhật, ${Number(appsJson.addedCount || 0)} thêm mới, ${Number(appsJson.resolvedCount || 0)} không còn cảnh báo.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: err?.message || 'Lỗi kết nối đồng bộ Google Sheet.',
+    });
+  }
+});
+
+// No-login update single Team Leader / QLCL tracking row via Apps Script Web App
+app.post('/api/weekly-warning-sheet/update-row', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const spreadsheetId = sanitizeSpreadsheetId(body.spreadsheetId || weeklyWarningConfigState.spreadsheetId);
+    const scriptUrlCandidate =
+      (typeof body.scriptUrl === 'string' && body.scriptUrl.trim()) ||
+      weeklyWarningConfigState.appsScriptUrl ||
+      configuredNewSheetScriptUrl ||
+      DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
+
+    if (!isValidAppsScriptExecUrl(scriptUrlCandidate)) {
+      return res.status(400).json({
+        success: false,
+        needsScriptUpdate: true,
+        message: 'Chưa có đường dẫn Web App Google Apps Script hợp lệ.',
+      });
+    }
+
+    const preflight = await verifyWeeklyAppsScriptSchema(scriptUrlCandidate);
+    if (!preflight.supported) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        message:
+          'Apps Script trên Google Sheet đang là bản cũ (chưa cập nhật cột "Số lượt đã nhắc nhở" & 4 phương án xử lý). Vui lòng sao chép mã Code.gs mới và triển khai Phiên bản mới (New version) trong Google Sheet.',
+      });
+    }
+
+    const appsResp = await fetch(scriptUrlCandidate.trim(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update_weekly_warning_record',
+        spreadsheetId,
+        recordCode: String(body.recordCode || '').trim(),
+        sheetTitle: String(body.sheetTitle || '').trim(),
+        weekCode: String(body.weekCode || '').trim(),
+        patch: body.patch || {},
+        actor: String(body.actor || 'Trưởng nhóm / QLCL').trim().slice(0, 120),
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    const respText = await appsResp.text().catch(() => '');
+    let appsJson: any = null;
+    try {
+      appsJson = JSON.parse(respText);
+    } catch {
+      appsJson = null;
+    }
+
+    if (
+      !appsResp.ok ||
+      !appsJson ||
+      appsJson.weeklySupported !== true ||
+      Number(appsJson.schemaVersion || 0) < REQUIRED_WEEKLY_SCHEMA_VERSION
+    ) {
+      return res.json({
+        success: false,
+        needsScriptUpdate: true,
+        message:
+          'Apps Script gắn trên Google Sheet chưa cập nhật phiên bản 18 cột mới. Vui lòng cập nhật Code.gs và triển khai Phiên bản mới trong Google Sheet.',
+      });
+    }
+
+    if (!appsJson.success || !Array.isArray(appsJson.rowValues)) {
+      return res.status(502).json({
+        success: false,
+        message: appsJson.error || 'Không thể lưu thay đổi lên Google Sheet.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      rowNumber: Number(appsJson.rowNumber || 0),
+      rowValues: appsJson.rowValues,
+      status: appsJson.status,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: err?.message || 'Lỗi lưu cập nhật lên Google Sheet.',
+    });
+  }
+});
+
 async function startServer() {
   const distPath = path.join(process.cwd(), 'dist');
   const distIndexExists = fs.existsSync(path.join(distPath, 'index.html'));

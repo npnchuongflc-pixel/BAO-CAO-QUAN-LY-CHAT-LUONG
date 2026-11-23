@@ -23,7 +23,7 @@ import { FacilityDetailReportsModal } from './FacilityDetailReportsModal';
 import { PrintReportHeader } from '../PrintReportHeader';
 import { PrintReportFooter } from '../PrintReportFooter';
 const RepairManagementModule = lazy(() => import('../../repair/RepairManagementModule').then(m => ({ default: m.RepairManagementModule })));
-import { Building2, CheckCircle2, ShieldCheck, Wrench, RefreshCw, AlertTriangle, Layers } from 'lucide-react';
+import { Building2, CheckCircle2, Wrench, RefreshCw, AlertTriangle, Layers } from 'lucide-react';
 
 export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refreshKey = 0 }) => {
   const [mode, setMode] = useState<ReportMode>('hygiene');
@@ -52,31 +52,23 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
   const [lightboxImage, setLightboxImage] = useState<{ url: string; title: string } | null>(null);
   const [detailModalFacility, setDetailModalFacility] = useState<string | null>(null);
 
-  const getDefaultCurrentMonthRange = () => {
+  const getCurrentMonthLabel = () => {
     const now = new Date();
-    const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-    const lastDayStr = String(lastDay).padStart(2, '0');
-    return {
-      tuNgay: `${year}-${month}-01`,
-      denNgay: `${year}-${month}-${lastDayStr}`,
-    };
+    const year = now.getFullYear();
+    return `Tháng ${month}/${year}`;
   };
 
-  // Filter State
-  const [filters, setFilters] = useState<FilterState>(() => {
-    const range = getDefaultCurrentMonthRange();
-    return {
-      thang: 'all',
-      tuNgay: range.tuNgay,
-      denNgay: range.denNgay,
-      coSo: 'all',
-      khuVuc: 'all',
-      trangThai: 'all',
-      searchQuery: '',
-    };
-  });
+  // Filter State (kiểm soát toàn cục theo Tháng & Cơ sở kiểm tra)
+  const [filters, setFilters] = useState<FilterState>(() => ({
+    thang: getCurrentMonthLabel(),
+    tuNgay: '',
+    denNgay: '',
+    coSo: 'all',
+    khuVuc: 'all',
+    trangThai: 'all',
+    searchQuery: '',
+  }));
 
   // Fetch / Sync Data
   const loadData = useCallback(async () => {
@@ -113,31 +105,30 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
     };
   }, [loadData, refreshKey]);
 
-  // Extract Month string helper from date string
+  // Extract Month string helper from date string using ISO normalizer
   const getMonthLabel = (dateStr: string): string => {
-    if (!dateStr) return 'Khác';
-    if (dateStr.includes('-')) {
-      const parts = dateStr.split('-');
-      if (parts.length >= 2) {
-        return `Tháng ${parts[1]}/${parts[0]}`;
-      }
-    } else if (dateStr.includes('/')) {
-      const parts = dateStr.split('/');
-      if (parts.length >= 3) {
-        return `Tháng ${parts[1]}/${parts[2]}`;
-      }
-    }
-    return dateStr;
+    const iso = normalizeDateToIso(dateStr);
+    if (!iso) return 'Khác';
+    const [yyyy, mm] = iso.split('-');
+    return `Tháng ${mm}/${yyyy}`;
   };
 
-  // Extract list of months available
+  // Extract list of months available sorted newest-first chronologically
   const availableMonths = useMemo(() => {
-    const monthsSet = new Set<string>();
+    const monthsSet = new Set<string>([getCurrentMonthLabel()]);
     const allReports = mode === 'hygiene' ? hygieneReports : qualityReports;
     allReports.forEach(r => {
-      if (r.ngay) monthsSet.add(getMonthLabel(r.ngay));
+      if (r.ngay) {
+        const label = getMonthLabel(r.ngay);
+        if (label !== 'Khác') monthsSet.add(label);
+      }
     });
-    return Array.from(monthsSet).sort().reverse();
+    const toMonthIndex = (label: string) => {
+      const match = label.match(/(\d{1,2})[\/\-](\d{4})/);
+      if (!match) return 0;
+      return parseInt(match[2], 10) * 12 + parseInt(match[1], 10);
+    };
+    return Array.from(monthsSet).sort((a, b) => toMonthIndex(b) - toMonthIndex(a));
   }, [mode, hygieneReports, qualityReports]);
 
   // Extract list of facilities available (always 19 official facilities)
@@ -155,168 +146,36 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
     return Array.from(areasSet).sort();
   }, [mode, hygieneReports, qualityReports]);
 
-  // Date ISO Normalizer
-  const parseToIsoDate = (dateStr: string): string => {
-    return normalizeDateToIso(dateStr);
-  };
-
-  // Match Area Category or Exact Area String
-  const matchAreaFilter = (khuVucReport: string, filterKhuVuc: string): boolean => {
-    if (!filterKhuVuc || filterKhuVuc === 'all') return true;
-    const kv = (khuVucReport || '').toLowerCase();
-
-    switch (filterKhuVuc) {
-      case 'cat_phong_co':
-        return kv.includes('cờ') && (kv.includes('tổng thể') || kv.includes('phòng học')) && !kv.includes('máy lạnh') && !kv.includes('điều hòa') && !kv.includes('wc') && !kv.includes('vệ sinh');
-      case 'cat_may_lanh_co':
-        return kv.includes('cờ') && (kv.includes('máy lạnh') || kv.includes('điều hòa') || kv.includes('aircon'));
-      case 'cat_wc_co':
-        return kv.includes('cờ') && (kv.includes('wc') || kv.includes('vệ sinh') || kv.includes('toilet'));
-      case 'cat_phong_ve':
-        return kv.includes('vẽ') && (kv.includes('tổng thể') || kv.includes('phòng học')) && !kv.includes('máy lạnh') && !kv.includes('điều hòa') && !kv.includes('wc') && !kv.includes('vệ sinh');
-      case 'cat_may_lanh_ve':
-        return kv.includes('vẽ') && (kv.includes('máy lạnh') || kv.includes('điều hòa') || kv.includes('aircon'));
-      case 'cat_wc_ve':
-        return kv.includes('vẽ') && (kv.includes('wc') || kv.includes('vệ sinh') || kv.includes('toilet'));
-      case 'cat_le_tan':
-        return kv.includes('lễ tân') || kv.includes('sảnh') || kv.includes('tiếp tân');
-      case 'cat_nvs':
-        return kv.includes('vệ sinh') || kv.includes('nvs') || kv.includes('wc') || kv.includes('toilet');
-      case 'cat_may_lanh':
-        return kv.includes('máy lạnh') || kv.includes('điều hòa') || kv.includes('aircon');
-      default:
-        return khuVucReport === filterKhuVuc || kv.includes(filterKhuVuc.toLowerCase());
-    }
-  };
-
-  // Match Hygiene Status & Score Levels
-  const matchHygieneStatus = (report: HygieneReport, filterStatus: string): boolean => {
-    if (!filterStatus || filterStatus === 'all') return true;
-    const filtNorm = filterStatus.trim().toLowerCase();
-    const repNorm = (report.trangThai || '').trim().toLowerCase();
-
-    // Normalize score to 100-point scale
-    let score100 = report.diemSo ?? 0;
-    if (report.diemSoMax && report.diemSoMax <= 10 && score100 <= 10) {
-      score100 = score100 * 10;
-    }
-
-    if (filtNorm === 'muc_1') {
-      return score100 >= 90 || repNorm.includes('xuất sắc');
-    }
-    if (filtNorm === 'muc_2') {
-      return (score100 >= 80 && score100 < 90) || repNorm.includes('khá') || repNorm.includes('tốt');
-    }
-    if (filtNorm === 'muc_3') {
-      return (score100 >= 70 && score100 < 80) || repNorm.includes('trung bình') || repNorm.includes('đạt');
-    }
-    if (filtNorm === 'muc_4' || filtNorm.includes('cần cải thiện')) {
-      return score100 < 70 || repNorm.includes('cải thiện') || repNorm.includes('thực hiện lại') || repNorm.includes('bẩn nặng') || repNorm.includes('không đạt');
-    }
-
-    if (filtNorm === 'đạt') {
-      return repNorm.includes('đạt') && !repNorm.includes('không đạt');
-    }
-    if (filtNorm === 'không đạt') {
-      return repNorm.includes('không đạt') || score100 < 70;
-    }
-    if (filtNorm === 'cần khắc phục') {
-      return repNorm.includes('khắc phục') || repNorm.includes('cần');
-    }
-    return repNorm.includes(filtNorm) || filtNorm.includes(repNorm);
-  };
-
-  // Match Quality Status & Severity
-  const matchQualityStatus = (trangThaiGhiNhan: string, mucDo: string, filterStatus: string): boolean => {
-    if (!filterStatus || filterStatus === 'all') return true;
-    const filtNorm = filterStatus.trim().toLowerCase();
-    const ttNorm = (trangThaiGhiNhan || '').trim().toLowerCase();
-    const mdNorm = (mucDo || '').trim().toLowerCase();
-
-    return (
-      ttNorm.includes(filtNorm) ||
-      mdNorm.includes(filtNorm) ||
-      filtNorm.includes(ttNorm) ||
-      filtNorm.includes(mdNorm)
-    );
-  };
-
-  // Base Filter Hygiene Reports
+  // Base Filter Hygiene Reports (controlled by global Month filter)
   const baseFilteredHygiene = useMemo(() => {
     return hygieneReports.filter((r) => {
-      if (filters.tuNgay) {
-        const repIso = parseToIsoDate(r.ngay);
-        if (repIso && repIso < filters.tuNgay) return false;
-      }
-      if (filters.denNgay) {
-        const repIso = parseToIsoDate(r.ngay);
-        if (repIso && repIso > filters.denNgay) return false;
-      }
-      if (!filters.tuNgay && !filters.denNgay && filters.thang !== 'all') {
+      if (filters.thang && filters.thang !== 'all') {
         if (getMonthLabel(r.ngay) !== filters.thang) return false;
-      }
-
-      if (!matchAreaFilter(r.khuVuc, filters.khuVuc)) return false;
-      if (!matchHygieneStatus(r, filters.trangThai)) return false;
-
-      if (filters.searchQuery.trim()) {
-        const q = filters.searchQuery.toLowerCase();
-        const matches =
-          r.coSo.toLowerCase().includes(q) ||
-          r.khuVuc.toLowerCase().includes(q) ||
-          r.nguoiKiemTra.toLowerCase().includes(q) ||
-          r.chiTiet.toLowerCase().includes(q) ||
-          (r.phanHoi && r.phanHoi.toLowerCase().includes(q)) ||
-          (r.feedbackNguoiDung && r.feedbackNguoiDung.toLowerCase().includes(q));
-        if (!matches) return false;
       }
       return true;
     });
-  }, [hygieneReports, filters.tuNgay, filters.denNgay, filters.thang, filters.khuVuc, filters.trangThai, filters.searchQuery]);
+  }, [hygieneReports, filters.thang]);
 
-  // Base Filter Quality Reports
+  // Base Filter Quality Reports (controlled by global Month filter)
   const baseFilteredQuality = useMemo(() => {
     return qualityReports.filter((r) => {
-      if (filters.tuNgay) {
-        const repIso = parseToIsoDate(r.ngay);
-        if (repIso && repIso < filters.tuNgay) return false;
-      }
-      if (filters.denNgay) {
-        const repIso = parseToIsoDate(r.ngay);
-        if (repIso && repIso > filters.denNgay) return false;
-      }
-      if (!filters.tuNgay && !filters.denNgay && filters.thang !== 'all') {
+      if (filters.thang && filters.thang !== 'all') {
         if (getMonthLabel(r.ngay) !== filters.thang) return false;
-      }
-
-      if (!matchAreaFilter(r.khuVuc, filters.khuVuc)) return false;
-      if (!matchQualityStatus(r.trangThaiGhiNhan, r.mucDo, filters.trangThai)) return false;
-
-      if (filters.searchQuery.trim()) {
-        const q = filters.searchQuery.toLowerCase();
-        const matches =
-          r.coSo.toLowerCase().includes(q) ||
-          r.khuVuc.toLowerCase().includes(q) ||
-          r.ten.toLowerCase().includes(q) ||
-          r.deXuat.toLowerCase().includes(q) ||
-          r.mucDo.toLowerCase().includes(q) ||
-          r.trangThaiGhiNhan.toLowerCase().includes(q);
-        if (!matches) return false;
       }
       return true;
     });
-  }, [qualityReports, filters.tuNgay, filters.denNgay, filters.thang, filters.khuVuc, filters.trangThai, filters.searchQuery]);
+  }, [qualityReports, filters.thang]);
 
-  // Final Filtered Hygiene Reports (with coSo filter)
+  // Final Filtered Hygiene Reports (with normalized coSo filter)
   const filteredHygiene = useMemo(() => {
     if (filters.coSo === 'all') return baseFilteredHygiene;
-    return baseFilteredHygiene.filter(r => r.coSo === filters.coSo);
+    return baseFilteredHygiene.filter(r => (normalizeFacilityName(r.coSo) || r.coSo) === filters.coSo);
   }, [baseFilteredHygiene, filters.coSo]);
 
-  // Final Filtered Quality Reports (with coSo filter)
+  // Final Filtered Quality Reports (with normalized coSo filter)
   const filteredQuality = useMemo(() => {
     if (filters.coSo === 'all') return baseFilteredQuality;
-    return baseFilteredQuality.filter(r => r.coSo === filters.coSo);
+    return baseFilteredQuality.filter(r => (normalizeFacilityName(r.coSo) || r.coSo) === filters.coSo);
   }, [baseFilteredQuality, filters.coSo]);
 
   // FACILITY SUMMARIES AGGREGATION
@@ -498,7 +357,7 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                    Hệ Thống Giám Sát Cơ Sở &amp; 5S
+                    Báo cáo giám sát vệ sinh
                   </h1>
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/80 shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -548,38 +407,7 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
                   </span>
                 </button>
 
-                {/* Sheet 2: Chất Lượng Cơ Sở */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('quality');
-                    setActiveSubTab('hygiene-quality');
-                  }}
-                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-3 sm:px-3.5 py-2 rounded-lg text-xs sm:text-sm transition-all duration-150 cursor-pointer select-none whitespace-nowrap ${
-                    activeSubTab === 'hygiene-quality' && mode === 'quality'
-                      ? 'bg-white text-indigo-700 shadow-xs border border-slate-200/80 font-bold'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
-                  }`}
-                  title="Xem Báo Cáo Đánh Giá Chất Lượng Cơ Sở Vật Chất"
-                >
-                  <ShieldCheck
-                    className={`w-4 h-4 shrink-0 transition-transform ${
-                      activeSubTab === 'hygiene-quality' && mode === 'quality' ? 'text-indigo-600' : 'text-slate-400'
-                    }`}
-                  />
-                  <span>Chất Lượng Cơ Sở</span>
-                  <span
-                    className={`text-[11px] font-mono font-semibold px-2 py-0.5 rounded-md ${
-                      activeSubTab === 'hygiene-quality' && mode === 'quality'
-                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                        : 'bg-slate-200/70 text-slate-600'
-                    }`}
-                  >
-                    {qualityReports.length.toLocaleString('vi-VN')}
-                  </span>
-                </button>
-
-                {/* Sheet 3: Báo Cáo Sửa Chữa */}
+                {/* Sheet 2: Báo Cáo Sửa Chữa */}
                 <button
                   type="button"
                   onClick={() => setActiveSubTab('repair')}
@@ -653,13 +481,7 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
             title="BẢNG TỔNG HỢP XẾP HẠNG & TIẾN ĐỘ THỰC HIỆN 19 CƠ SỞ"
             subtitle={`Hệ thống quản trị cơ sở • Phạm vi: ${filters.coSo === 'all' ? 'Tất cả 19 cơ sở' : filters.coSo}`}
             pageNumber="Trang 1/2"
-            dateRange={
-              filters.tuNgay && filters.denNgay
-                ? `Từ ngày ${filters.tuNgay} đến ${filters.denNgay}`
-                : filters.thang !== 'all'
-                ? `Tháng ${filters.thang}`
-                : 'Toàn thời gian'
-            }
+            dateRange={filters.thang !== 'all' ? filters.thang : 'Tất cả các tháng'}
           />
 
           {/* Filters Bar */}
@@ -705,10 +527,7 @@ export const FacilityQualityModule: React.FC<{ refreshKey?: number }> = ({ refre
           hygieneReports={baseFilteredHygiene}
           qualityReports={baseFilteredQuality}
           filters={filters}
-          onClose={() => {
-            setDetailModalFacility(null);
-            setFilters(f => ({ ...f, coSo: 'all' }));
-          }}
+          onClose={() => setDetailModalFacility(null)}
           onSelectRecord={(rec) => setSelectedRecord(rec)}
           onOpenImageModal={(url, title) => setLightboxImage({ url, title })}
           availableFacilities={OFFICIAL_FACILITIES}
