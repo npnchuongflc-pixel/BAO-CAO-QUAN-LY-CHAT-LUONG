@@ -39,9 +39,10 @@ Các giá trị này đã được lưu trong `netlify.toml`, nên không cần 
 - Tệp `public/_redirects` đã được tạo sẵn để hỗ trợ SPA Routing (tải lại trang không bị lỗi 404).
 
 ### 2. Cloudflare Workers (CLI / Git)
-- File cấu hình: `wrangler.toml` đã được tích hợp sẵn lệnh build tự động `[build] command = "npm run build:client"`.
-- Mã nguồn Worker: `src/worker.ts` tự động xử lý proxy Google Sheets và phục vụ static assets từ `./dist`.
-- Lệnh deploy nhanh qua terminal: `npx wrangler deploy`.
+- File cấu hình: `wrangler.toml`; mã nguồn Worker: `src/worker.ts`; tài nguyên tĩnh: `./dist`.
+- Trước khi triển khai: `npm ci`, `npm run build:client` và `npx wrangler deploy --dry-run`.
+- Với Workers Builds kết nối GitHub, đặt **Root directory** là thư mục gốc, **Build command** là `npm run build:client` và **Deploy command** là `npx wrangler deploy`. Chọn nhánh `main` để triển khai bản production. Workers Builds không dùng lệnh `[build]` trong `wrangler.toml` làm Build command của cấu hình Git.
+- Với CLI đã đăng nhập đúng tài khoản Cloudflare: `npx wrangler deploy`. Lệnh này tự thực hiện `[build]` trong `wrangler.toml` trước khi tải Worker và assets lên.
 
 ## Kiểm tra sau khi deploy
 
