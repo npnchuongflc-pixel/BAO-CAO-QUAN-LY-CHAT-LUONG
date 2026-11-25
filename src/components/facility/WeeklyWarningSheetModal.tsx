@@ -537,13 +537,12 @@ export const WeeklyWarningSheetModal: React.FC<WeeklyWarningSheetModalProps> = (
                           <th className="p-2 text-center">KCO</th>
                           <th className="p-2 text-center">Thiếu ảnh</th>
                           <th className="p-2">Chi tiết các ngày vi phạm</th>
-                          <th className="p-2 text-center">Số lượt đã nhắc nhở</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {sourceRows.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="p-4 text-center text-slate-500">
+                            <td colSpan={9} className="p-4 text-center text-slate-500">
                               Tuần này không có cơ sở nào thiếu ảnh hoặc không check out.
                             </td>
                           </tr>
@@ -575,9 +574,6 @@ export const WeeklyWarningSheetModal: React.FC<WeeklyWarningSheetModalProps> = (
                                 {row.missingImages}
                               </td>
                               <td className="p-2 text-slate-600">{row.violationDetails}</td>
-                              <td className="p-2 text-center text-slate-500 italic whitespace-nowrap">
-                                Tự đếm theo tick duyệt (COUNTIFS)
-                              </td>
                             </tr>
                           ))
                         )}
@@ -709,7 +705,7 @@ export const WeeklyWarningSheetModal: React.FC<WeeklyWarningSheetModalProps> = (
                   <RefreshCw className="w-4 h-4 animate-spin text-[#1B5EA6]" />
                   <span>
                     {isSyncing
-                      ? `Đang ghi ${sourceRows.length} cơ sở (cột Số lượt đã nhắc nhở, Trưởng nhóm đã duyệt & Phương án xử lý) vào sheet "${TEAM_LEADER_SHEET_NAME}" và đọc kiểm tra lại...`
+                      ? `Đang ghi ${sourceRows.length} cơ sở (cột Trưởng nhóm đã duyệt & Phương án xử lý) vào sheet "${TEAM_LEADER_SHEET_NAME}" và đọc kiểm tra lại...`
                       : `Đang kiểm tra sheet "${TEAM_LEADER_SHEET_NAME}" xem tuần ${weekStartDmy}–${weekEndDmy} đã có dữ liệu chưa...`}
                   </span>
                 </div>
@@ -823,7 +819,7 @@ export const WeeklyWarningSheetModal: React.FC<WeeklyWarningSheetModalProps> = (
                     <p className="text-slate-600 leading-relaxed">
                       Dữ liệu từ Phần 2 gồm <strong>{sourceRows.length} cơ sở</strong> sẽ được ghi vào sheet{' '}
                       <strong className="text-[#1A3A5C]">“{TEAM_LEADER_SHEET_NAME}”</strong> với đầy đủ cột số liệu +{' '}
-                      <strong>Số lượt đã nhắc nhở</strong>, <strong>Trưởng nhóm đã duyệt</strong> &amp; <strong>Phương án xử lý</strong>.
+                      <strong>Trưởng nhóm đã duyệt</strong> &amp; <strong>Phương án xử lý</strong>.
                     </p>
                   </div>
 

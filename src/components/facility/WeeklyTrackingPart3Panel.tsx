@@ -374,7 +374,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
       {
         coSo: string;
         total: number;
-        reminderCount: number;
         unhandled: number;
         pendingQlcl: number;
         closed: number;
@@ -387,7 +386,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
       const cur = map.get(r.coSo) || {
         coSo: r.coSo,
         total: 0,
-        reminderCount: 0,
         unhandled: 0,
         pendingQlcl: 0,
         closed: 0,
@@ -396,7 +394,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
         totalNoCheckoutDays: 0,
       };
       cur.total += 1;
-      if (r.handled) cur.reminderCount += 1;
       cur.totalMissingImages += r.missingImages;
       cur.totalNoCheckoutDays += r.noCheckoutDays;
       if (r.status === 'Chưa xử lý') cur.unhandled += 1;
@@ -846,7 +843,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
                       <tr>
                         <th className="p-2.5">Cơ sở</th>
                         <th className="p-2.5 text-center">Tổng tuần vi phạm</th>
-                        <th className="p-2.5 text-center text-[#1B5EA6]">Số lượt đã nhắc nhở</th>
                         <th className="p-2.5 text-center text-rose-700">Tồn chưa xử lý</th>
                         <th className="p-2.5 text-center text-amber-700">Chờ QLCL</th>
                         <th className="p-2.5 text-center text-emerald-700">Đã đóng</th>
@@ -859,9 +855,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
                         <tr key={f.coSo} className="hover:bg-slate-50/80">
                           <td className="p-2.5 font-semibold text-slate-800">{f.coSo}</td>
                           <td className="p-2.5 text-center font-mono">{f.total}</td>
-                          <td className="p-2.5 text-center font-mono font-bold text-[#1B5EA6]">
-                            {f.reminderCount} lượt
-                          </td>
                           <td className="p-2.5 text-center font-mono font-bold text-rose-700">
                             {f.unhandled}
                           </td>
