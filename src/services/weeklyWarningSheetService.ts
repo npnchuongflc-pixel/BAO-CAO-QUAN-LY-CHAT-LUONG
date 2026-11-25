@@ -1639,7 +1639,7 @@ export async function syncWeekReportToGoogleSheet(params: {
         return json as WeeklySheetSyncResult;
       }
 
-      if (json?.needsScriptUpdate) {
+      if (json?.needsScriptUpdate && !(await getAccessToken())) {
         return {
           success: false,
           needsScriptUpdate: true,
