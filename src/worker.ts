@@ -13,7 +13,6 @@ const WEEKLY_SHEET_ID = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
 async function readWeeklyTabs(spreadsheetId: string): Promise<Array<{ name: string; gid: string }>> {
   const response = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`, {
     signal: AbortSignal.timeout(15_000),
-    cache: 'no-store',
   });
   if (!response.ok) throw new Error(`Không thể đọc danh sách tab (HTTP ${response.status}).`);
   const html = await response.text();
@@ -35,7 +34,7 @@ async function readWeeklyTabs(spreadsheetId: string): Promise<Array<{ name: stri
 async function readWeeklyRows(spreadsheetId: string, gid: string): Promise<string[][]> {
   const response = await fetch(
     `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`,
-    { signal: AbortSignal.timeout(15_000), cache: 'no-store' },
+    { signal: AbortSignal.timeout(15_000) },
   );
   if (!response.ok) throw new Error(`Không thể đọc tab ${gid} (HTTP ${response.status}).`);
   const csv = await response.text();
