@@ -51,6 +51,16 @@ function weeklyJson(data: unknown, status = 200): Response {
   });
 }
 
+function weekDate(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function normalizeWeekRange(value: string): string {
+  return value.replace(/\s*\(Tuần\s*\d+\)\s*/i, '')
+    .replace(/[–—]/g, '-').replace(/\s*-\s*/g, ' - ').trim();
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -92,6 +102,47 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/weekly-warning-sheet/check' && request.method === 'GET') {
+      const startIso = url.searchParams.get('startIso')?.trim() || '';
+      const endIso = url.searchParams.get('endIso')?.trim() || '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startIso) || !/^\d{4}-\d{2}-\d{2}$/.test(endIso)) {
+        return weeklyJson({ success: false, error: 'Ngày bắt đầu / kết thúc tuần không hợp lệ.' }, 400);
+      }
+      const suppliedId = url.searchParams.get('spreadsheetId')?.trim();
+      const spreadsheetId = suppliedId && /^[a-zA-Z0-9_-]{10,120}$/.test(suppliedId)
+        ? suppliedId : WEEKLY_SHEET_ID;
+      const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+      const weekCode = `W_${startIso}_TO_${endIso}`;
+      const weekNumber = Number(url.searchParams.get('weekNumber') || 0);
+      const month = `${startIso.slice(5, 7)}/${startIso.slice(0, 4)}`;
+      const weekPrefix = weekNumber > 0 ? `Tuần ${weekNumber}_${month}_` : '';
+      const dateRange = `${weekDate(startIso)} - ${weekDate(endIso)}`;
+      try {
+        const tabs = await readWeeklyTabs(spreadsheetId);
+        const tab = tabs.find(t => t.name.trim().toLowerCase() === 'trưởng nhóm xử lý')
+          || tabs.find(t => t.name.includes(weekCode));
+        if (!tab) return weeklyJson({ success: true, result: { spreadsheetFound: true,
+          spreadsheetId, spreadsheetUrl, weekExists: false, weekCode,
+          sheetTitle: 'Trưởng nhóm xử lý', existingRowCount: 0, tabUrl: spreadsheetUrl } });
+        const rows = await readWeeklyRows(spreadsheetId, tab.gid);
+        const start = String(rows[0]?.[0] || '').trim() === 'Mã hồ sơ' ? 1 : 0;
+        const matching = rows.slice(start).filter(row => {
+          const code = String(row?.[0] || '').trim();
+          const rowRange = normalizeWeekRange(String(row?.[1] || ''));
+          return Boolean(code) && (
+            (weekPrefix && code.startsWith(weekPrefix)) ||
+            code.startsWith(`${weekCode}__`) || rowRange === dateRange
+          );
+        });
+        return weeklyJson({ success: true, result: { spreadsheetFound: true,
+          spreadsheetId, spreadsheetUrl, weekExists: matching.length > 0, weekCode,
+          sheetId: Number(tab.gid), sheetTitle: tab.name, existingRowCount: matching.length,
+          tabUrl: `${spreadsheetUrl}#gid=${tab.gid}` } });
+      } catch (error) {
+        return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Không thể kiểm tra hồ sơ tuần.' }, 502);
+      }
+    }
+
     // API Health Check
     if (url.pathname === '/api/health') {
       return new Response(
@@ -107,6 +158,44 @@ export default {
           },
         }
       );
+    }
+
+    if (url.pathname === '/api/warning-reminders-data' && request.method === 'GET') {
+      try {
+        const tab = (await readWeeklyTabs(WEEKLY_SHEET_ID))
+          .find(item => item.name.trim().toLowerCase() === 'nhắc nhở');
+        if (!tab) throw new Error('Không tìm thấy tab nhắc nhở.');
+        const rows = await fetch(
+          `https://docs.google.com/spreadsheets/d/${WEEKLY_SHEET_ID}/export?format=csv&gid=${tab.gid}`,
+          { signal: AbortSignal.timeout(15_000) },
+        );
+        if (!rows.ok) throw new Error(`Google Sheet trả về HTTP ${rows.status}`);
+        const csv = await rows.text();
+        if (!csv || csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+          throw new Error('Không thể đọc tab nhắc nhở.');
+        }
+        return weeklyJson({ success: true, data: { csv }, cached: false });
+      } catch (error) {
+        return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Không thể đọc tab nhắc nhở.' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/proposals-sheet' && request.method === 'GET') {
+      try {
+        const response = await fetch(
+          `https://docs.google.com/spreadsheets/d/${FACILITY_SHEET_ID}/gviz/tq?tqx=out:json&gid=169229004`,
+          { signal: AbortSignal.timeout(15_000) },
+        );
+        if (!response.ok) throw new Error(`Google Sheet trả về HTTP ${response.status}`);
+        const body = await response.text();
+        const start = body.indexOf('{');
+        const end = body.lastIndexOf('}');
+        if (start < 0 || end < start) throw new Error('Dữ liệu đề xuất không đúng định dạng.');
+        const parsed = JSON.parse(body.slice(start, end + 1));
+        return weeklyJson({ success: true, table: parsed.table, cached: false });
+      } catch (error) {
+        return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Không thể đọc đề xuất.' }, 502);
+      }
     }
 
     // Facility Google Sheets CSV proxy
