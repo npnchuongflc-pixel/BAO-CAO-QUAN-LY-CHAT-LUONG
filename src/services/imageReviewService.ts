@@ -12,6 +12,11 @@ export interface ImageReviewRecord {
   linkAnh: string;
   rowIndex?: number;
   nguoiBaoCao: string;
+  trangThai?: string;
+  diemSo?: number;
+  chiTiet?: string;
+  phanHoi?: string;
+  feedbackNguoiDung?: string;
   reviewed: boolean;
   reviewStatus: 'pending' | 'approved' | 'rejected';
   trangThaiKiemDuyet: string;
@@ -82,6 +87,12 @@ const parseResponse = async (response: Response): Promise<ImageReviewApiResponse
 };
 
 export async function fetchImageReviews(date: string): Promise<ImageReviewRecord[]> {
+  const merged = new Map<string, ImageReviewRecord>();
+  const localMap = getLocalImageReviews();
+  Object.values(localMap)
+    .filter(r => r.ngay === date)
+    .forEach(r => merged.set(r.id, r));
+
   try {
     const response = await fetch(`/api/image-reviews?date=${encodeURIComponent(date)}&_=${Date.now()}`, {
       cache: 'no-store',
@@ -89,16 +100,14 @@ export async function fetchImageReviews(date: string): Promise<ImageReviewRecord
     if (response.ok) {
       const result = await parseResponse(response);
       if (result?.success && Array.isArray(result.records)) {
-        return result.records;
+        result.records.forEach(r => merged.set(r.id, r));
       }
     }
   } catch (err) {
     console.warn('Backend image-reviews không phản hồi, dùng bộ nhớ trình duyệt:', err);
   }
 
-  // Fallback: Đọc từ localStorage
-  const localMap = getLocalImageReviews();
-  return Object.values(localMap).filter(r => r.ngay === date);
+  return Array.from(merged.values());
 }
 
 import { syncReviewDirectToSheet, batchSyncReviewsDirectToSheet } from './googleSheetsDirectReviewService';
@@ -111,29 +120,38 @@ export async function saveImageReview(record: ImageReviewRecord, scriptUrl?: str
   saveLocalImageReview(record);
 
   // 1. Thử đồng bộ trực tiếp Google Sheets API v4 (khi người dùng đã đăng nhập Google)
+  let syncedDirectly = false;
   try {
     const directResult = await syncReviewDirectToSheet(record);
     if (directResult.success) {
+      syncedDirectly = true;
       record.syncedToSheet = true;
       delete record.syncError;
       saveLocalImageReview(record);
-      return { record };
     }
   } catch (e) {
     console.warn('Google Sheets API direct sync fallback:', e);
   }
 
-  // 2. Fallback: Gửi qua backend / Apps Script Web App
+  // 2. Lưu vào backend store (+ Apps Script Web App nếu chưa đồng bộ trực tiếp qua Google Sheets API)
   try {
     const response = await fetch('/api/image-reviews', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'upsert', record, scriptUrl }),
+      body: JSON.stringify({
+        action: 'upsert',
+        record,
+        scriptUrl,
+        skipSheetSync: syncedDirectly,
+      }),
     });
     if (response.ok) {
       const result = await parseResponse(response);
       if (result?.success && result?.record) {
-        return { record: result.record, warning: result.warning };
+        return {
+          record: syncedDirectly ? { ...result.record, syncedToSheet: true } : result.record,
+          warning: syncedDirectly ? undefined : result.warning,
+        };
       }
     }
   } catch (err) {
@@ -150,31 +168,40 @@ export async function batchSaveImageReviews(records: ImageReviewRecord[], script
   records.forEach(r => saveLocalImageReview(r));
 
   // 1. Thử đồng bộ batch qua Google Sheets API v4 trực tiếp
+  let syncedDirectly = false;
   try {
     const batchRes = await batchSyncReviewsDirectToSheet(records);
     if (batchRes.success && batchRes.updatedCount > 0) {
+      syncedDirectly = true;
       records.forEach(r => {
         r.syncedToSheet = true;
         delete r.syncError;
         saveLocalImageReview(r);
       });
-      return { records };
     }
   } catch (e) {
     console.warn('Direct batch sync fallback:', e);
   }
 
-  // 2. Fallback: Gửi qua backend / Apps Script Web App
+  // 2. Lưu vào backend store (+ Apps Script Web App nếu chưa đồng bộ trực tiếp)
   try {
     const response = await fetch('/api/image-reviews', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action: 'batch_upsert', records, scriptUrl }),
+      body: JSON.stringify({
+        action: 'batch_upsert',
+        records,
+        scriptUrl,
+        skipSheetSync: syncedDirectly,
+      }),
     });
     if (response.ok) {
       const result = await parseResponse(response);
       if (result?.success && Array.isArray(result.records)) {
-        return { records: result.records, warning: result.warning };
+        return {
+          records: result.records,
+          warning: syncedDirectly ? undefined : result.warning,
+        };
       }
     }
   } catch (err) {

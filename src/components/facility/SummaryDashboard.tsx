@@ -4169,7 +4169,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
               </h3>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Kiểm duyệt hình ảnh vệ sinh chi tiết từng khu vực, nhập đánh giá Đạt / Không đạt và đồng bộ về Google Sheet
+              Kiểm duyệt hình ảnh vệ sinh chi tiết từng khu vực, nhập đánh giá Lỗi AI / Đã duyệt và đồng bộ về Google Sheet
             </p>
           </div>
           {onOpenDetailModal && (

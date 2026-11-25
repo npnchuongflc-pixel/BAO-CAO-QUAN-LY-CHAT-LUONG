@@ -167,7 +167,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
     return normalizeFacilityName(selectedFacilityFilter) || selectedFacilityFilter;
   }, [selectedFacilityFilter]);
 
-  // Toàn bộ dữ liệu Phần 3 chịu sự chi phối trực tiếp của "Bộ lọc báo cáo" (Tháng, Cơ sở, Khoảng ngày)
+  // Phần KPI Lớn & Chỉ số tái phạm chịu sự chi phối của "Bộ lọc báo cáo" (Tháng, Cơ sở, Khoảng ngày); Tổng hợp theo chiều dữ liệu đọc toàn bộ sheet
   const reportScopedRecords = useMemo(() => {
     return records.filter(r => {
       if (activeGlobalMonthKey) {
@@ -338,7 +338,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
       }
     >();
 
-    reportScopedRecords.forEach(r => {
+    records.forEach(r => {
       const cur = map.get(r.weekCode) || {
         key: r.weekCode,
         label: r.weekLabel || r.sheetTitle,
@@ -366,7 +366,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
     return Array.from(map.values()).sort((a, b) =>
       (b.startIso || b.key).localeCompare(a.startIso || a.key),
     );
-  }, [reportScopedRecords]);
+  }, [records]);
 
   const byFacilityAgg = useMemo(() => {
     const map = new Map<
@@ -382,7 +382,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
         totalNoCheckoutDays: number;
       }
     >();
-    reportScopedRecords.forEach(r => {
+    records.forEach(r => {
       const cur = map.get(r.coSo) || {
         coSo: r.coSo,
         total: 0,
@@ -405,7 +405,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
     return Array.from(map.values()).sort(
       (a, b) => b.unhandled - a.unhandled || b.pendingQlcl - a.pendingQlcl || a.coSo.localeCompare(b.coSo, 'vi'),
     );
-  }, [reportScopedRecords]);
+  }, [records]);
 
   const byMethodAgg = useMemo(() => {
     const map = new Map<
@@ -422,7 +422,7 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
     HANDLING_METHODS.forEach(m => {
       map.set(m, { method: m, total: 0, unhandled: 0, pendingQlcl: 0, closed: 0, cleared: 0 });
     });
-    reportScopedRecords.forEach(r => {
+    records.forEach(r => {
       const key = r.handlingMethod.trim() || '(Chưa chọn phương án)';
       const cur = map.get(key) || {
         method: key,
@@ -440,21 +440,21 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
       map.set(key, cur);
     });
     return Array.from(map.values());
-  }, [reportScopedRecords]);
+  }, [records]);
 
   const byStatusAgg = useMemo(() => {
     return ALL_STATUSES.map(status => {
-      const matched = reportScopedRecords.filter(r => r.status === status);
+      const matched = records.filter(r => r.status === status);
       return {
         status,
         count: matched.length,
         percent:
-          reportScopedRecords.length > 0
-            ? ((matched.length / reportScopedRecords.length) * 100).toFixed(1)
+          records.length > 0
+            ? ((matched.length / records.length) * 100).toFixed(1)
             : '0.0',
       };
     });
-  }, [reportScopedRecords]);
+  }, [records]);
 
   const safeMasterUrl = isSafeSpreadsheetUrl(spreadsheetUrl) ? spreadsheetUrl : '';
   const activeSheetId = config.spreadsheetId || DEFAULT_WEEKLY_SPREADSHEET_ID;
@@ -730,9 +730,14 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
             {/* 4 Aggregation Dimensions */}
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
-                <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                  Tổng hợp theo chiều dữ liệu
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                    Tổng hợp theo chiều dữ liệu
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    (Toàn bộ {records.length} hồ sơ trong sheet • Không lọc theo ngày)
+                  </span>
+                </div>
                 <div className="inline-flex flex-wrap rounded-lg bg-white p-0.5 border border-slate-200 gap-0.5">
                   <button
                     type="button"
@@ -844,9 +849,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
                         <th className="p-2.5">Cơ sở</th>
                         <th className="p-2.5 text-center">Tổng tuần vi phạm</th>
                         <th className="p-2.5 text-center text-rose-700">Tồn chưa xử lý</th>
-                        <th className="p-2.5 text-center text-amber-700">Chờ QLCL</th>
-                        <th className="p-2.5 text-center text-emerald-700">Đã đóng</th>
-                        <th className="p-2.5 text-center text-[#1B5EA6]">Hết cảnh báo</th>
                         <th className="p-2.5 text-center">Lũy kế KCO / Thiếu ảnh</th>
                       </tr>
                     </thead>
@@ -858,13 +860,6 @@ export const WeeklyTrackingPart3Panel: React.FC<WeeklyTrackingPart3PanelProps> =
                           <td className="p-2.5 text-center font-mono font-bold text-rose-700">
                             {f.unhandled}
                           </td>
-                          <td className="p-2.5 text-center font-mono font-bold text-amber-700">
-                            {f.pendingQlcl}
-                          </td>
-                          <td className="p-2.5 text-center font-mono font-bold text-emerald-700">
-                            {f.closed}
-                          </td>
-                          <td className="p-2.5 text-center font-mono text-[#1B5EA6]">{f.cleared}</td>
                           <td className="p-2.5 text-center font-mono text-slate-600">
                             {f.totalNoCheckoutDays} ngày / {f.totalMissingImages} ảnh
                           </td>

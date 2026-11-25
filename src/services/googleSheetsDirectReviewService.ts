@@ -124,11 +124,66 @@ async function getSheetRows(spreadsheetId: string, token: string, force = false)
   return { title: targetSheetTitle, rows };
 }
 
+async function ensureErrorAiHeader(
+  spreadsheetId: string,
+  targetSheetTitle: string,
+  rows: string[][],
+  token: string
+) {
+  if (rows.length === 0) {
+    const headerRange = `${encodeURIComponent(targetSheetTitle)}!A1:N1`;
+    const headers = [
+      'Ngày', 'Giờ', 'Người kiểm tra', 'Cơ sở', 'Khu vực',
+      'Trạng thái', 'Điểm số', 'Chi tiết', 'Phản hồi',
+      'Feedback từ người dùng', 'Link ảnh', 'Đã duyệt', 'Lỗi AI', 'Thời gian đồng bộ',
+    ];
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          range: `${targetSheetTitle}!A1:N1`,
+          majorDimension: 'ROWS',
+          values: [headers],
+        }),
+      }
+    ).catch(() => {});
+    if (cachedRowsData) cachedRowsData[0] = headers;
+    return;
+  }
+
+  const m1 = String(rows[0]?.[12] || '').trim();
+  if (!m1 || m1.toLowerCase() === 'không đạt') {
+    const m1Range = `${encodeURIComponent(targetSheetTitle)}!M1`;
+    await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${m1Range}?valueInputOption=USER_ENTERED`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          range: `${targetSheetTitle}!M1`,
+          majorDimension: 'ROWS',
+          values: [['Lỗi AI']],
+        }),
+      }
+    ).catch(() => {});
+    if (rows[0]) rows[0][12] = 'Lỗi AI';
+    if (cachedRowsData && cachedRowsData[0]) cachedRowsData[0][12] = 'Lỗi AI';
+  }
+}
+
 /**
  * Trực tiếp cập nhật hàng trong Google Sheet qua Google Sheets API v4
  * Tuyệt đối bảo đảm tính loại trừ lẫn nhau:
- * - Khi tick 'Đã duyệt' -> Cột L = Tên người duyệt, Cột M = "" (Xóa kết quả Không đạt cũ)
- * - Khi tick 'Không đạt' -> Cột M = Tên người duyệt, Cột L = "" (Xóa kết quả Đã duyệt cũ)
+ * - Khi tick 'Đã duyệt' -> Cột L = Tên người duyệt, Cột M = "" (Xóa kết quả Lỗi AI cũ)
+ * - Khi tick 'Lỗi AI' -> Cột M = Tên người duyệt, Cột L = "" (Xóa kết quả Đã duyệt cũ)
  * - Khi bỏ tick -> Cột L = "", Cột M = ""
  */
 export async function syncReviewDirectToSheet(
@@ -148,6 +203,7 @@ export async function syncReviewDirectToSheet(
 
   try {
     const { title: targetSheetTitle, rows } = await getSheetRows(spreadsheetId, token);
+    await ensureErrorAiHeader(spreadsheetId, targetSheetTitle, rows, token);
 
     // Chuẩn bị thông tin ghi
     const revTimeStr = record.thoiGianKiemDuyet
@@ -160,10 +216,10 @@ export async function syncReviewDirectToSheet(
     let khongDatVal = '';
     if (record.reviewStatus === 'approved') {
       daDuyetVal = reviewerInfo || 'Đã duyệt';
-      khongDatVal = ''; // XÓA CỘT KHÔNG ĐẠT CŨ
+      khongDatVal = ''; // XÓA CỘT LỖI AI / KHÔNG ĐẠT CŨ
     } else if (record.reviewStatus === 'rejected') {
       daDuyetVal = ''; // XÓA CỘT ĐÃ DUYỆT CŨ
-      khongDatVal = reviewerInfo || 'Không đạt';
+      khongDatVal = reviewerInfo || 'Lỗi AI';
     } else {
       daDuyetVal = ''; // Bỏ tick: xóa cả 2 cột
       khongDatVal = '';
@@ -248,11 +304,11 @@ export async function syncReviewDirectToSheet(
         record.nguoiBaoCao || '',
         record.coSo,
         record.khuVuc || '',
-        'Đạt',
-        '100',
-        '',
-        '',
-        '',
+        record.trangThai || 'Không đạt',
+        record.diemSo !== undefined ? String(record.diemSo) : '',
+        record.chiTiet || '',
+        record.phanHoi || '',
+        record.feedbackNguoiDung || '',
         record.linkAnh,
         daDuyetVal,
         khongDatVal,
@@ -314,9 +370,11 @@ export async function batchSyncReviewsDirectToSheet(
 
   try {
     const { title: targetSheetTitle, rows } = await getSheetRows(spreadsheetId, token, true);
+    await ensureErrorAiHeader(spreadsheetId, targetSheetTitle, rows, token);
     const nowStr = new Date().toLocaleString('vi-VN');
 
     const updateData: Array<{ range: string; values: string[][] }> = [];
+    const appendRows: string[][] = [];
 
     for (const record of records) {
       const revTimeStr = record.thoiGianKiemDuyet
@@ -331,7 +389,7 @@ export async function batchSyncReviewsDirectToSheet(
         khongDatVal = '';
       } else if (record.reviewStatus === 'rejected') {
         daDuyetVal = '';
-        khongDatVal = reviewerInfo || 'Không đạt';
+        khongDatVal = reviewerInfo || 'Lỗi AI';
       }
 
       const targetLink = normLink(record.linkAnh);
@@ -368,45 +426,208 @@ export async function batchSyncReviewsDirectToSheet(
           range: `${targetSheetTitle}!L${matchRowIdx}:N${matchRowIdx}`,
           values: [[daDuyetVal, khongDatVal, revTimeStr]],
         });
+      } else {
+        appendRows.push([
+          record.ngay,
+          record.gio || '',
+          record.nguoiBaoCao || '',
+          record.coSo,
+          record.khuVuc || '',
+          record.trangThai || 'Không đạt',
+          record.diemSo !== undefined ? String(record.diemSo) : '',
+          record.chiTiet || '',
+          record.phanHoi || '',
+          record.feedbackNguoiDung || '',
+          record.linkAnh,
+          daDuyetVal,
+          khongDatVal,
+          revTimeStr,
+        ]);
       }
     }
 
-    if (updateData.length === 0) {
-      return { success: true, updatedCount: 0, message: 'Không tìm thấy dòng tương ứng trong Google Sheet.' };
+    if (updateData.length === 0 && appendRows.length === 0) {
+      return { success: true, updatedCount: 0, message: 'Không có bản ghi nào cần cập nhật.' };
     }
 
-    const batchResp = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          valueInputOption: 'USER_ENTERED',
-          data: updateData,
-        }),
-      }
-    );
+    if (updateData.length > 0) {
+      const batchResp = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            valueInputOption: 'USER_ENTERED',
+            data: updateData,
+          }),
+        }
+      );
 
-    if (!batchResp.ok) {
-      const errJson = await batchResp.json().catch(() => null);
-      throw new Error(errJson?.error?.message || `HTTP ${batchResp.status}`);
+      if (!batchResp.ok) {
+        const errJson = await batchResp.json().catch(() => null);
+        throw new Error(errJson?.error?.message || `HTTP ${batchResp.status}`);
+      }
+    }
+
+    if (appendRows.length > 0) {
+      const appendRange = `${encodeURIComponent(targetSheetTitle)}!A:N`;
+      const appendResp = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            range: `${targetSheetTitle}!A:N`,
+            majorDimension: 'ROWS',
+            values: appendRows,
+          }),
+        }
+      );
+      if (!appendResp.ok) {
+        const errJson = await appendResp.json().catch(() => null);
+        throw new Error(errJson?.error?.message || `HTTP ${appendResp.status}`);
+      }
     }
 
     invalidateSheetCache();
 
+    const totalTouched = updateData.length + appendRows.length;
     return {
       success: true,
-      updatedCount: updateData.length,
-      message: `Đã cập nhật trực tiếp ${updateData.length} hàng trên Google Sheet!`,
+      updatedCount: totalTouched,
+      message: `Đã cập nhật trực tiếp ${totalTouched} hàng trên Google Sheet!`,
     };
   } catch (err: any) {
     return {
       success: false,
       updatedCount: 0,
       message: err.message || 'Lỗi cập nhật hàng loạt trên Sheet',
+    };
+  }
+}
+
+export interface LowScoreSheetRecord {
+  ngay: string;
+  gio: string;
+  nguoiKiemTra: string;
+  coSo: string;
+  khuVuc: string;
+  trangThai: string;
+  diemSo: number | string;
+  chiTiet: string;
+  phanHoi: string;
+  feedbackNguoiDung: string;
+  linkAnh: string;
+  daDuyet: string;
+  khongDat: string;
+}
+
+/**
+ * Tự động ghi bổ sung các ảnh điểm thấp (< 80đ) chưa có trong Google Sheet mà không ghi đè dữ liệu đã tích duyệt.
+ */
+export async function syncLowScoreRecordsDirectToSheet(
+  dateIso: string,
+  records: LowScoreSheetRecord[],
+  customSpreadsheetId?: string
+): Promise<{ success: boolean; appendedCount: number; message: string }> {
+  const token = await getAccessToken();
+  if (!token) {
+    return { success: false, appendedCount: 0, message: 'Chưa đăng nhập Google Workspace.' };
+  }
+
+  const spreadsheetId = customSpreadsheetId || getTargetSpreadsheetId();
+
+  try {
+    const { title: targetSheetTitle, rows } = await getSheetRows(spreadsheetId, token, true);
+    await ensureErrorAiHeader(spreadsheetId, targetSheetTitle, rows, token);
+
+    const existingLinks = new Set<string>();
+    const existingKeys = new Set<string>();
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const rLink = normLink(r[10] || '');
+      if (rLink) existingLinks.add(rLink);
+      const rDate = normalizeDateToIso(r[0] || '');
+      const rCoSo = normStr(normalizeFacilityName(r[3] || ''));
+      const rArea = normStr(r[4] || '');
+      if (rDate && rCoSo && rArea) {
+        existingKeys.add(`${rDate}|${rCoSo}|${rArea}`);
+      }
+    }
+
+    const nowStr = new Date().toLocaleString('vi-VN');
+    const appendRows: string[][] = [];
+
+    for (const r of records) {
+      const linkKey = normLink(r.linkAnh || '');
+      const recDate = normalizeDateToIso(r.ngay) || dateIso;
+      const recKey = `${recDate}|${normStr(normalizeFacilityName(r.coSo))}|${normStr(r.khuVuc)}`;
+      if (linkKey ? existingLinks.has(linkKey) : existingKeys.has(recKey)) {
+        continue;
+      }
+      if (linkKey) existingLinks.add(linkKey);
+      existingKeys.add(recKey);
+
+      appendRows.push([
+        recDate,
+        r.gio || '',
+        r.nguoiKiemTra || '',
+        r.coSo || '',
+        r.khuVuc || '',
+        r.trangThai || '',
+        r.diemSo !== undefined ? String(r.diemSo) : '',
+        r.chiTiet || '',
+        r.phanHoi || '',
+        r.feedbackNguoiDung || '',
+        r.linkAnh || '',
+        r.daDuyet || '',
+        r.khongDat || '',
+        nowStr,
+      ]);
+    }
+
+    if (appendRows.length > 0) {
+      const appendRange = `${encodeURIComponent(targetSheetTitle)}!A:N`;
+      const appendResp = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            range: `${targetSheetTitle}!A:N`,
+            majorDimension: 'ROWS',
+            values: appendRows,
+          }),
+        }
+      );
+      if (!appendResp.ok) {
+        const errJson = await appendResp.json().catch(() => null);
+        throw new Error(errJson?.error?.message || `HTTP ${appendResp.status}`);
+      }
+      invalidateSheetCache();
+    }
+
+    return {
+      success: true,
+      appendedCount: appendRows.length,
+      message: appendRows.length > 0
+        ? `Đã tự động thêm ${appendRows.length} ảnh điểm thấp (<80đ) vào Google Sheet.`
+        : 'Tất cả ảnh điểm thấp (<80đ) đã có sẵn trong Google Sheet.',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      appendedCount: 0,
+      message: err.message || 'Lỗi tự động ghi dữ liệu sang Google Sheet',
     };
   }
 }

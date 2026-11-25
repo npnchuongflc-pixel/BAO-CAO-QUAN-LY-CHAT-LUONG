@@ -222,12 +222,18 @@ function doPost(e) {
 
     // =========================================================================
     // 2. CẬP NHẬT TRỰC TIẾP HÀNG KIỂM DUYỆT ẢNH (Sheet "Kiểm duyệt vệ sinh")
-    // Khi nhân viên xem và nhấn tick ("Đã duyệt" / "Không đạt") hoặc xóa nhận định
+    // Khi nhân viên xem và nhấn tick ("Đã duyệt" / "Lỗi AI") hoặc xóa nhận định
     // ĐIỀU CHỈNH TRỰC TIẾP TRÊN HÀNG CÓ SẴN - TUYỆT ĐỐI KHÔNG TẠO HÀNG THỪA MỚI
     // =========================================================================
     if (action === "upsert_image_review" || action === "update_image_review") {
       var hygieneSheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
       var lastRow = hygieneSheet.getLastRow();
+      if (lastRow >= 1) {
+        var m1Val = String(hygieneSheet.getRange(1, 13).getValue() || "").trim();
+        if (!m1Val || m1Val.toLowerCase() === "không đạt") {
+          hygieneSheet.getRange(1, 13).setValue("Lỗi AI");
+        }
+      }
       var targetDateRaw = payload.ngay || (payload.record && payload.record.ngay) || "";
       var targetLink = normLink(payload.linkAnh || (payload.record && payload.record.linkAnh) || "");
       var targetFacility = normStr(payload.coSo || (payload.record && payload.record.coSo) || "");
@@ -235,7 +241,8 @@ function doPost(e) {
       var targetTime = normTime(payload.gio || (payload.record && payload.record.gio) || "");
 
       var daDuyetVal = payload.daDuyet !== undefined ? payload.daDuyet : (payload.reviewStatus === "approved" ? (payload.reviewer || "Đã duyệt") : "");
-      var khongDatVal = payload.khongDat !== undefined ? payload.khongDat : (payload.reviewStatus === "rejected" ? (payload.reviewer || "Không đạt") : "");
+      var rawRejectedPayload = payload.loiAi !== undefined ? payload.loiAi : payload.khongDat;
+      var khongDatVal = rawRejectedPayload !== undefined ? rawRejectedPayload : (payload.reviewStatus === "rejected" ? (payload.reviewer || "Lỗi AI") : "");
 
       // TUYỆT ĐỐI LOẠI TRỪ LẪN NHAU - KHÔNG ĐỂ 2 KẾT QUẢ TỒN TẠI CÙNG LÚC
       if (daDuyetVal) {
@@ -354,6 +361,12 @@ function doPost(e) {
     if (action === "batch_update_image_reviews") {
       var hygieneSheet = ss.getSheetByName("Kiểm duyệt vệ sinh") || ss.getSheets()[0];
       var lastRow = hygieneSheet.getLastRow();
+      if (lastRow >= 1) {
+        var m1Batch = String(hygieneSheet.getRange(1, 13).getValue() || "").trim();
+        if (!m1Batch || m1Batch.toLowerCase() === "không đạt") {
+          hygieneSheet.getRange(1, 13).setValue("Lỗi AI");
+        }
+      }
       var updates = payload.updates || [];
       var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
 
@@ -383,7 +396,7 @@ function doPost(e) {
 
           if (matched) {
             data[i][11] = matched.daDuyet || "";
-            data[i][12] = matched.khongDat || "";
+            data[i][12] = matched.loiAi !== undefined ? (matched.loiAi || "") : (matched.khongDat || "");
             data[i][13] = nowStr;
           }
         }
@@ -405,26 +418,31 @@ function doPost(e) {
     var headers = [
       "Ngày", "Giờ", "Người kiểm tra", "Cơ sở", "Khu vực",
       "Trạng thái", "Điểm số", "Chi tiết", "Phản hồi",
-      "Feedback từ người dùng", "Link ảnh", "Đã duyệt", "Không đạt", "Thời gian đồng bộ"
+      "Feedback từ người dùng", "Link ảnh", "Đã duyệt", "Lỗi AI", "Thời gian đồng bộ"
     ];
 
     if (sheet.getLastRow() === 0) {
       sheet.appendRow(headers);
       sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e2e8f0");
+    } else {
+      var m1Header = String(sheet.getRange(1, 13).getValue() || "").trim();
+      if (!m1Header || m1Header.toLowerCase() === "không đạt") {
+        sheet.getRange(1, 13).setValue("Lỗi AI");
+      }
     }
 
     var records = payload.records || [];
     var targetDateRaw = payload.date || (records[0] && records[0].ngay) || "";
     var nowStr = Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "dd/MM/yyyy HH:mm:ss");
 
-    if (!records.length) {
+    if (!records.length && !payload.allowEmptyReplace) {
       return ContentService.createTextOutput(JSON.stringify({ success: true, message: "Không có bản ghi" })).setMimeType(ContentService.MimeType.JSON);
     }
 
     var lastRow = sheet.getLastRow();
 
     // BƯỚC 4.1: THU THẬP KẾT QUẢ DUYỆT ĐÃ CÓ TRONG SHEET CŨ
-    // Để khi thay thế không bao giờ làm mất các ô "Đã duyệt" / "Không đạt" mà người dùng đã tick
+    // Để khi thay thế không bao giờ làm mất các ô "Đã duyệt" / "Lỗi AI" mà người dùng đã tick
     var preservedReviewsByLink = {};
     var preservedReviewsByKey = {};
     var preservedReviewsByFacArea = {};
@@ -488,7 +506,7 @@ function doPost(e) {
 
       // Bảo toàn trạng thái duyệt đã có
       var finalDaDuyet = String(r.daDuyet || "").trim();
-      var finalKhongDat = String(r.khongDat || "").trim();
+      var finalKhongDat = String(r.loiAi !== undefined ? (r.loiAi || "") : (r.khongDat || "")).trim();
 
       if (!finalDaDuyet && !finalKhongDat) {
         if (rLink && preservedReviewsByLink[rLink]) {
@@ -511,7 +529,7 @@ function doPost(e) {
 
       // NẾU CÓ CẢ 2 KẾT QUẢ: LOẠI BỎ KẾT QUẢ CŨ, CHỈ GIỮ 1 KẾT QUẢ DUY NHẤT
       if (finalDaDuyet && finalKhongDat) {
-        if (r.reviewStatus === "rejected" || (r.khongDat && !r.daDuyet)) {
+        if (r.reviewStatus === "rejected" || ((r.loiAi || r.khongDat) && !r.daDuyet)) {
           finalDaDuyet = "";
         } else {
           finalKhongDat = "";
@@ -600,53 +618,73 @@ function tuDongDoDuLieuHangNgay() {
     else if (h.indexOf("feedback") !== -1) colFeedback = c;
     else if (h.indexOf("ảnh") !== -1 || h.indexOf("link") !== -1 || h.indexOf("image") !== -1) colLinkAnh = c;
     else if (h.indexOf("đã duyệt") !== -1 || h.indexOf("approved") !== -1) colDaDuyet = c;
-    else if (h.indexOf("không đạt") !== -1 || h.indexOf("rejected") !== -1) colKhongDat = c;
+    else if (h.indexOf("lỗi ai") !== -1 || h.indexOf("không đạt") !== -1 || h.indexOf("rejected") !== -1) colKhongDat = c;
   }
 
   // Lấy ngày hôm trước theo giờ Việt Nam
   var now = new Date();
   var yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
 
+  function parseScore100Local(rawVal) {
+    var s = String(rawVal === undefined || rawVal === null ? "" : rawVal).trim().replace(",", ".");
+    if (!s) return null;
+    var slashMatch = /^(\\d+(?:\\.\\d+)?)\\s*\\/\\s*(\\d+(?:\\.\\d+)?)/.exec(s);
+    if (slashMatch) {
+      var n1 = Number(slashMatch[1]);
+      var max1 = Number(slashMatch[2]);
+      if (isNaN(n1) || isNaN(max1) || max1 <= 0) return null;
+      return max1 <= 10 ? n1 * 10 : n1;
+    }
+    var m = /(\\d+(?:\\.\\d+)?)/.exec(s);
+    if (!m) return null;
+    var n = Number(m[1]);
+    if (isNaN(n)) return null;
+    return (n > 0 && n <= 10) ? n * 10 : n;
+  }
+
   var matchingRows = [];
   for (var r = 1; r < csvData.length; r++) {
     var row = csvData[r];
     var rawDate = colNgay >= 0 ? String(row[colNgay]).trim() : "";
     if (isSameDay(rawDate, yesterday)) {
+      var linkVal = colLinkAnh >= 0 ? String(row[colLinkAnh] || "").trim() : "";
+      var rawDiem = colDiem >= 0 ? row[colDiem] : "";
+      var score100 = parseScore100Local(rawDiem);
+      if (!linkVal || linkVal.indexOf("images.unsplash.com/photo-1581578731548-c64695cc6952") !== -1) continue;
+      if (score100 === null || score100 >= 80) continue;
+
       matchingRows.push({
         ngay: rawDate,
         gio: colGio >= 0 ? row[colGio] : "",
         nguoiKiemTra: colNguoi >= 0 ? row[colNguoi] : "",
         coSo: colCoSo >= 0 ? row[colCoSo] : "",
         khuVuc: colKhuVuc >= 0 ? row[colKhuVuc] : "",
-        trangThai: colTrangThai >= 0 ? row[colTrangThai] : "Đạt",
-        diemSo: colDiem >= 0 ? row[colDiem] : "",
+        trangThai: colTrangThai >= 0 ? row[colTrangThai] : "Không đạt",
+        diemSo: rawDiem,
         chiTiet: colChiTiet >= 0 ? row[colChiTiet] : "",
         phanHoi: colPhanHoi >= 0 ? row[colPhanHoi] : "",
         feedbackNguoiDung: colFeedback >= 0 ? row[colFeedback] : "",
-        linkAnh: colLinkAnh >= 0 ? row[colLinkAnh] : "",
+        linkAnh: linkVal,
         daDuyet: colDaDuyet >= 0 ? row[colDaDuyet] : "",
         khongDat: colKhongDat >= 0 ? row[colKhongDat] : ""
       });
     }
   }
 
-  if (matchingRows.length === 0) {
-    Logger.log("Không có dòng nào thuộc ngày hôm trước.");
-    return;
-  }
-
-  // Gọi trực tiếp hàm thay thế toàn diện để đổ vào sheet
+  // Gọi trực tiếp hàm thay thế toàn diện để đổ vào sheet (chỉ ảnh < 80đ; nếu trống thì dọn dòng cũ ngày hôm trước)
   var mockEvent = {
     postData: {
       contents: JSON.stringify({
         action: "sync_full_day_hygiene_reviews",
         date: normIsoDate(yesterday),
-        records: matchingRows
+        records: matchingRows,
+        onlyLowScore: true,
+        allowEmptyReplace: true
       })
     }
   };
   doPost(mockEvent);
-  Logger.log("Tự động đổ hoàn tất: " + matchingRows.length + " dòng (đã thay thế gọn gàng).");
+  Logger.log("Tự động đổ hoàn tất: " + matchingRows.length + " ảnh điểm thấp (<80đ).");
 }
 
 /**

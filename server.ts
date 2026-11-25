@@ -488,7 +488,7 @@ app.post('/api/image-reviews', async (req, res) => {
           nguoiBaoCao: rec.nguoiBaoCao || '',
           reviewed: reviewStatus === 'approved',
           reviewStatus,
-          trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : reviewStatus === 'rejected' ? 'Không đạt' : 'Chưa duyệt',
+          trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : reviewStatus === 'rejected' ? 'Lỗi AI' : 'Chưa duyệt',
           nguoiKiemDuyet: reviewer,
           thoiGianKiemDuyet: rec.thoiGianKiemDuyet || now,
           updatedAt: now,
@@ -504,14 +504,15 @@ app.post('/api/image-reviews', async (req, res) => {
           coSo: facility,
           khuVuc: rec.khuVuc || '',
           daDuyet: reviewStatus === 'approved' ? (revNote || reviewer || 'Đã duyệt') : '',
-          khongDat: reviewStatus === 'rejected' ? (revNote || reviewer || 'Không đạt') : '',
+          khongDat: reviewStatus === 'rejected' ? (revNote || reviewer || 'Lỗi AI') : '',
+          loiAi: reviewStatus === 'rejected' ? (revNote || reviewer || 'Lỗi AI') : '',
           reviewStatus,
           reviewer,
         });
       }
 
       let syncWarning = '';
-      if (targetScriptUrl && updatesForSheet.length > 0) {
+      if (!payload?.skipSheetSync && targetScriptUrl && updatesForSheet.length > 0) {
         try {
           const syncResp = await fetch(targetScriptUrl, {
             method: 'POST',
@@ -574,7 +575,7 @@ app.post('/api/image-reviews', async (req, res) => {
       nguoiBaoCao: record.nguoiBaoCao || '',
       reviewed,
       reviewStatus,
-      trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : reviewStatus === 'rejected' ? 'Không đạt' : 'Chưa duyệt',
+      trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : reviewStatus === 'rejected' ? 'Lỗi AI' : 'Chưa duyệt',
       nguoiKiemDuyet: reviewer,
       thoiGianKiemDuyet: record.thoiGianKiemDuyet || now,
       updatedAt: now,
@@ -582,7 +583,7 @@ app.post('/api/image-reviews', async (req, res) => {
     };
 
     let syncWarning = '';
-    if (targetScriptUrl) {
+    if (!payload?.skipSheetSync && targetScriptUrl) {
       try {
         const syncResp = await fetch(targetScriptUrl, {
           method: 'POST',
@@ -598,9 +599,10 @@ app.post('/api/image-reviews', async (req, res) => {
             khuVuc: savedRecord.khuVuc,
             reviewStatus: savedRecord.reviewStatus,
             reviewer: savedRecord.nguoiKiemDuyet,
-            // Column 12 (Đã duyệt) and Column 13 (Không đạt)
+            // Column 12 (Đã duyệt) and Column 13 (Lỗi AI)
             daDuyet: savedRecord.reviewStatus === 'approved' ? (revNote || savedRecord.nguoiKiemDuyet || 'Đã duyệt') : '',
-            khongDat: savedRecord.reviewStatus === 'rejected' ? (revNote || savedRecord.nguoiKiemDuyet || 'Không đạt') : '',
+            khongDat: savedRecord.reviewStatus === 'rejected' ? (revNote || savedRecord.nguoiKiemDuyet || 'Lỗi AI') : '',
+            loiAi: savedRecord.reviewStatus === 'rejected' ? (revNote || savedRecord.nguoiKiemDuyet || 'Lỗi AI') : '',
           }),
           signal: AbortSignal.timeout(15000),
         });
@@ -695,8 +697,26 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
       return '';
     };
 
-    // Filter rows for target date
+    const parseScore100 = (raw: string): number | null => {
+      const s = String(raw || '').trim().replace(',', '.');
+      if (!s) return null;
+      const slashMatch = /^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/.exec(s);
+      if (slashMatch) {
+        const num = Number(slashMatch[1]);
+        const max = Number(slashMatch[2]);
+        if (!Number.isFinite(num) || !Number.isFinite(max) || max <= 0) return null;
+        return max <= 10 ? num * 10 : num;
+      }
+      const numMatch = /(\d+(?:\.\d+)?)/.exec(s);
+      if (!numMatch) return null;
+      const num = Number(numMatch[1]);
+      if (!Number.isFinite(num)) return null;
+      return num > 0 && num <= 10 ? num * 10 : num;
+    };
+
+    // Filter rows for target date (chỉ lấy các ảnh điểm thấp < 80đ để kiểm duyệt và ghi lại)
     const matchedRecords: any[] = [];
+    let totalDateRows = 0;
     rows.forEach((row: any, idx: number) => {
       const rawDate = getClean(row, ['Ngày', 'NGÀY', 'Date']) || '';
       let rowDateIso = '';
@@ -713,6 +733,7 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
       if (!matchDate) {
         return;
       }
+      totalDateRows += 1;
 
       const gio = getClean(row, ['Giờ', 'GIỜ', 'Time']) || '';
       const nguoiKiemTra = getClean(row, ['Người kiểm tra', 'NGƯỜI KIỂM TRA', 'Inspector']) || '';
@@ -725,7 +746,13 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
       const feedbackNguoiDung = getClean(row, ['Feedback từ người dùng', 'FEEDBACK TỪ NGƯỜI DÙNG', 'Feedback']) || '';
       const linkAnh = getClean(row, ['Link ảnh', 'LINK ẢNH', 'Image']) || '';
       let daDuyet = getClean(row, ['Đã duyệt', 'ĐÃ DUYỆT', 'Approved', 'Đã Duyệt', 'Đạt']) || '';
-      let khongDat = getClean(row, ['Không đạt', 'KHÔNG ĐẠT', 'Rejected', 'Không Đạt']) || '';
+      let khongDat = getClean(row, ['Lỗi AI', 'LỖI AI', 'Không đạt', 'KHÔNG ĐẠT', 'Rejected', 'Không Đạt']) || '';
+
+      const hasValidImage = Boolean(linkAnh) && !linkAnh.includes('images.unsplash.com/photo-1581578731548-c64695cc6952');
+      const score100 = parseScore100(diemSo);
+      if (!hasValidImage || score100 === null || score100 >= 80) {
+        return;
+      }
 
       // Check review store in memory
       const reviewKey = `reviews/${dateIso}/${encodeURIComponent(`sheet-hyg-${idx + 1}`)}`;
@@ -737,7 +764,7 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
           daDuyet = revNote || 'Đã duyệt';
           khongDat = '';
         } else if (savedReview.reviewStatus === 'rejected') {
-          khongDat = revNote || 'Không đạt';
+          khongDat = revNote || 'Lỗi AI';
           daDuyet = '';
         }
       }
@@ -759,7 +786,7 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
       });
     });
 
-    if (matchedRecords.length === 0) {
+    if (totalDateRows === 0) {
       const msg = `Không tìm thấy bản ghi vệ sinh nào trong ngày ${dateIso} từ Sheet gốc.`;
       autoSyncLogs.unshift({
         id: `log-${Date.now()}`,
@@ -772,7 +799,7 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
       return { success: false, error: msg, count: 0 };
     }
 
-    // 2. Post to Apps Script
+    // 2. Post to Apps Script (chỉ ghi các ảnh điểm thấp < 80đ; nếu ngày đó không có ảnh < 80đ thì làm sạch các dòng cũ của ngày đó)
     const syncResp = await fetch(scriptUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -781,6 +808,8 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
         date: dateIso,
         count: matchedRecords.length,
         records: matchedRecords,
+        onlyLowScore: true,
+        allowEmptyReplace: true,
         timestamp: new Date().toISOString(),
       }),
       signal: AbortSignal.timeout(30000),
@@ -788,7 +817,9 @@ async function runDailyHygieneSync(targetDateIso?: string, targetUrl?: string) {
 
     const syncJson: any = await syncResp.json().catch(() => null);
     if (syncResp.ok && (syncJson?.success || syncJson?.status === 'ok')) {
-      const successMsg = `Đã tự động đổ ${matchedRecords.length} dòng ngày ${dateIso} sang Sheet Mới thành công!`;
+      const successMsg = matchedRecords.length > 0
+        ? `Đã tự động đổ ${matchedRecords.length} ảnh điểm thấp (<80đ) ngày ${dateIso} sang Sheet Mới thành công!`
+        : `Ngày ${dateIso} không có ảnh điểm thấp (<80đ); đã đồng bộ gọn Sheet Mới.`;
       autoSyncLogs.unshift({
         id: `log-${Date.now()}`,
         date: dateIso,
@@ -916,7 +947,7 @@ app.post('/api/trigger-daily-sync', async (req, res) => {
 // Sync entire day of hygiene reports + 2 review columns (Đã duyệt, Không đạt) to a new Google Sheet
 app.post('/api/sync-day-to-new-sheet', async (req, res) => {
   try {
-    const { date, scriptUrl, records } = req.body;
+    const { date, scriptUrl, records, allowEmptyReplace, onlyLowScore } = req.body;
     if (!date || !Array.isArray(records)) {
       return res.status(400).json({ success: false, error: 'Thiếu thông tin ngày hoặc danh sách bản ghi.' });
     }
@@ -937,6 +968,8 @@ app.post('/api/sync-day-to-new-sheet', async (req, res) => {
         date,
         count: records.length,
         records,
+        onlyLowScore: Boolean(onlyLowScore),
+        allowEmptyReplace: Boolean(allowEmptyReplace),
         timestamp: new Date().toISOString(),
       }),
       signal: AbortSignal.timeout(30000),

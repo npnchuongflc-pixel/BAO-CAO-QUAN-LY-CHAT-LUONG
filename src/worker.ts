@@ -6,6 +6,7 @@ export interface Env {
   ASSETS: {
     fetch: (request: Request) => Promise<Response>;
   };
+  GEMINI_API_KEY?: string;
 }
 
 const FACILITY_SHEET_ID = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
@@ -13,9 +14,13 @@ const FEEDBACK_SHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
 const WEEKLY_SHEET_ID = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
 
 async function readWeeklyTabs(spreadsheetId: string): Promise<Array<{ name: string; gid: string }>> {
-  const response = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`, {
-    signal: AbortSignal.timeout(15_000),
-  });
+  const response = await fetch(
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview?t=${Date.now()}`,
+    {
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
   if (!response.ok) throw new Error(`Không thể đọc danh sách tab (HTTP ${response.status}).`);
   const html = await response.text();
   if (html.includes('accounts.google.com') && !html.includes('items.push')) {
@@ -35,8 +40,11 @@ async function readWeeklyTabs(spreadsheetId: string): Promise<Array<{ name: stri
 
 async function readWeeklyRows(spreadsheetId: string, gid: string): Promise<string[][]> {
   const response = await fetch(
-    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`,
-    { signal: AbortSignal.timeout(15_000) },
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${encodeURIComponent(gid)}&t=${Date.now()}`,
+    {
+      headers: { 'Cache-Control': 'no-cache' },
+      signal: AbortSignal.timeout(15_000),
+    },
   );
   if (!response.ok) throw new Error(`Không thể đọc tab ${gid} (HTTP ${response.status}).`);
   const csv = await response.text();
@@ -89,7 +97,7 @@ function imageReviewFromRow(row: string[], rowIndex: number) {
     rowIndex, ngay: date, gio: String(row[1] || ''),
     coSo: facility, khuVuc: area, linkAnh: imageUrl,
     nguoiBaoCao: String(row[2] || ''), reviewed: reviewStatus === 'approved',
-    reviewStatus, trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : 'Không đạt',
+    reviewStatus, trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : 'Lỗi AI',
     nguoiKiemDuyet: note.replace(/\s*\([^)]*\)\s*$/, '').trim(),
     thoiGianKiemDuyet: String(row[13] || ''), syncedToSheet: true,
   };
@@ -137,6 +145,37 @@ export default {
         spreadsheetTitle: 'THEO DÕI XỬ LÝ CẢNH BÁO VỆ SINH',
         appsScriptUrl: '', teamLeadersByFacility: {}, weekSyncHistory: {},
       } });
+    }
+
+    if (url.pathname === '/api/weekly-warning-config' && request.method === 'POST') {
+      try {
+        const body: any = await request.json().catch(() => ({}));
+        const suppliedId = typeof body?.spreadsheetId === 'string' ? body.spreadsheetId.trim() : '';
+        const spreadsheetId = /^[a-zA-Z0-9_-]{10,120}$/.test(suppliedId) ? suppliedId : WEEKLY_SHEET_ID;
+        const scriptUrl = typeof body?.appsScriptUrl === 'string' && body.appsScriptUrl.trim()
+          ? weeklyScriptUrl(body.appsScriptUrl) : '';
+        return weeklyJson({
+          success: true,
+          config: {
+            spreadsheetId,
+            spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/edit',
+            spreadsheetTitle: typeof body?.spreadsheetTitle === 'string' && body.spreadsheetTitle.trim()
+              ? body.spreadsheetTitle.trim().slice(0, 160)
+              : 'THEO DÕI XỬ LÝ CẢNH BÁO VỆ SINH',
+            appsScriptUrl: scriptUrl,
+            teamLeadersByFacility: body?.teamLeadersByFacility && typeof body.teamLeadersByFacility === 'object'
+              ? body.teamLeadersByFacility : {},
+            weekSyncHistory: body?.weekSyncHistory && typeof body.weekSyncHistory === 'object'
+              ? body.weekSyncHistory : {},
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      } catch (error) {
+        return weeklyJson({
+          success: false,
+          error: error instanceof Error ? error.message : 'Cấu hình không hợp lệ.',
+        }, 400);
+      }
     }
 
     if (url.pathname === '/api/weekly-warning-sheet/script-status' && request.method === 'GET') {
@@ -379,12 +418,12 @@ export default {
         const now = new Date().toISOString();
         const records = input.map((item: any) => {
           const date = String(item?.ngay || '');
-          const imageUrl = String(item?.linkAnh || '');
+          const imageUrl = String(item?.linkAnh || '').trim();
           const facility = String(item?.coSo || '').trim();
           const reviewer = String(item?.nguoiKiemDuyet || '').trim();
           const status = String(item?.reviewStatus || (item?.reviewed ? 'approved' : 'pending'));
           if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !facility ||
-              !imageUrl.startsWith('https://') || !['approved', 'rejected', 'pending'].includes(status) ||
+              !/^https?:\/\//i.test(imageUrl) || !['approved', 'rejected', 'pending'].includes(status) ||
               (status !== 'pending' && !reviewer)) {
             throw new Error('Dữ liệu kiểm duyệt ảnh không hợp lệ.');
           }
@@ -392,38 +431,172 @@ export default {
           const parsedTime = new Date(reviewTime);
           const timeText = Number.isNaN(parsedTime.getTime()) ? '' :
             parsedTime.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-          const label = reviewer ? `${reviewer} (${timeText})` : '';
+          const label = reviewer ? (timeText ? `${reviewer} (${timeText})` : reviewer) : '';
           return {
             ...item, id: item?.id || imageReviewId(date, facility, String(item?.khuVuc || ''), imageUrl),
             ngay: date, coSo: facility, linkAnh: imageUrl, reviewStatus: status,
             reviewed: status === 'approved',
-            trangThaiKiemDuyet: status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Không đạt' : 'Chưa duyệt',
+            trangThaiKiemDuyet: status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Lỗi AI' : 'Chưa duyệt',
             nguoiKiemDuyet: reviewer, thoiGianKiemDuyet: reviewTime, updatedAt: now,
-            syncedToSheet: true, daDuyet: status === 'approved' ? label : '',
-            khongDat: status === 'rejected' ? label : '',
+            syncedToSheet: true,
+            daDuyet: status === 'approved' ? (label || 'Đã duyệt') : '',
+            khongDat: status === 'rejected' ? (label || 'Lỗi AI') : '',
           };
         });
-        const updates = records.map((record: any) => ({
-          linkAnh: record.linkAnh, ngay: record.ngay, gio: record.gio || '',
-          coSo: record.coSo, khuVuc: record.khuVuc || '',
-          daDuyet: record.daDuyet, khongDat: record.khongDat,
-          reviewStatus: record.reviewStatus, reviewer: record.nguoiKiemDuyet,
-        }));
-        const upstream = await fetch(IMAGE_REVIEW_SCRIPT_URL, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action: 'batch_update_image_reviews', updates }),
-          signal: AbortSignal.timeout(20_000),
-        });
-        const result: any = await upstream.json().catch(() => null);
-        if (!upstream.ok || !(result?.success || result?.status === 'ok')) {
-          throw new Error(result?.error || `Google Sheet API HTTP ${upstream.status}`);
+
+        if (!body?.skipSheetSync) {
+          const scriptUrl = weeklyScriptUrl(body?.scriptUrl);
+          if (body.action === 'upsert') {
+            const first = records[0];
+            const { daDuyet, khongDat, ...savedRecord } = first;
+            const upstream = await fetch(scriptUrl, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                action: 'upsert_image_review',
+                record: savedRecord,
+                rowIndex: first.rowIndex,
+                linkAnh: first.linkAnh,
+                ngay: first.ngay,
+                gio: first.gio || '',
+                coSo: first.coSo,
+                khuVuc: first.khuVuc || '',
+                reviewStatus: first.reviewStatus,
+                reviewer: first.nguoiKiemDuyet,
+                daDuyet,
+                khongDat,
+                loiAi: khongDat,
+              }),
+              signal: AbortSignal.timeout(20_000),
+            });
+            const result: any = await upstream.json().catch(() => null);
+            if (!upstream.ok || !(result?.success || result?.status === 'ok')) {
+              throw new Error(result?.error || `Google Sheet API HTTP ${upstream.status}`);
+            }
+          } else {
+            const updates = records.map((record: any) => ({
+              linkAnh: record.linkAnh, ngay: record.ngay, gio: record.gio || '',
+              coSo: record.coSo, khuVuc: record.khuVuc || '',
+              daDuyet: record.daDuyet, khongDat: record.khongDat, loiAi: record.khongDat,
+              reviewStatus: record.reviewStatus, reviewer: record.nguoiKiemDuyet,
+            }));
+            const upstream = await fetch(scriptUrl, {
+              method: 'POST', headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: 'batch_update_image_reviews', updates }),
+              signal: AbortSignal.timeout(20_000),
+            });
+            const result: any = await upstream.json().catch(() => null);
+            if (!upstream.ok || !(result?.success || result?.status === 'ok')) {
+              throw new Error(result?.error || `Google Sheet API HTTP ${upstream.status}`);
+            }
+          }
         }
+
         const saved = records.map(({ daDuyet, khongDat, ...record }: any) => record);
         return weeklyJson(body.action === 'upsert'
           ? { success: true, record: saved[0] } : { success: true, records: saved });
       } catch (error) {
         return weeklyJson({ success: false,
           error: error instanceof Error ? error.message : 'Không thể ghi kiểm duyệt ảnh.' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/auto-sync-config' && request.method === 'POST') {
+      try {
+        const body: any = await request.json().catch(() => ({}));
+        const configured = Boolean(typeof body?.scriptUrl === 'string' && body.scriptUrl.trim());
+        return weeklyJson({
+          success: true,
+          configured,
+          message: configured ? 'Đã lưu cấu hình tự động đồng bộ.' : 'Đã xóa cấu hình',
+        });
+      } catch (error) {
+        return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Lỗi cấu hình' }, 400);
+      }
+    }
+
+    if (url.pathname === '/api/sync-day-to-new-sheet' && request.method === 'POST') {
+      try {
+        const body: any = await request.json();
+        const date = String(body?.date || '').trim();
+        const records: any[] = Array.isArray(body?.records) ? body.records : [];
+        if (!date) {
+          return weeklyJson({ success: false, error: 'Thiếu thông tin ngày hoặc danh sách bản ghi.' }, 400);
+        }
+        const scriptUrl = weeklyScriptUrl(body?.scriptUrl);
+        const upstream = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'sync_full_day_hygiene_reviews',
+            date,
+            count: records.length,
+            records,
+            onlyLowScore: Boolean(body?.onlyLowScore),
+            allowEmptyReplace: Boolean(body?.allowEmptyReplace),
+            timestamp: new Date().toISOString(),
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+        const syncJson: any = await upstream.json().catch(() => null);
+        if (upstream.ok && (syncJson?.success || syncJson?.status === 'ok')) {
+          return weeklyJson({
+            success: true,
+            message: syncJson?.message || `Đã ghi nhận thành công ${records.length} dòng sang Sheet mới.`,
+            syncedCount: records.length,
+          });
+        }
+        return weeklyJson({
+          success: false,
+          error: syncJson?.error || `Lỗi phản hồi từ Google Apps Script (HTTP ${upstream.status})`,
+        }, 502);
+      } catch (error) {
+        return weeklyJson({
+          success: false,
+          error: error instanceof Error ? error.message : 'Lỗi đồng bộ Google Sheet',
+        }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/sync-warnings-to-sheet' && request.method === 'POST') {
+      try {
+        const body: any = await request.json();
+        const date = String(body?.date || '').trim();
+        const records: any[] = Array.isArray(body?.records) ? body.records : [];
+        if (!date) {
+          return weeklyJson({ success: false, error: 'Thiếu thông tin ngày hoặc danh sách cảnh báo.' }, 400);
+        }
+        const scriptUrl = weeklyScriptUrl(body?.scriptUrl);
+        const upstream = await fetch(scriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'sync_warnings',
+            sheetName: 'nhắc nhở',
+            date,
+            count: records.length,
+            records,
+            timestamp: new Date().toISOString(),
+          }),
+          signal: AbortSignal.timeout(25_000),
+        });
+        const syncJson: any = await upstream.json().catch(() => null);
+        if (upstream.ok && (syncJson?.success || syncJson?.status === 'ok')) {
+          return weeklyJson({
+            success: true,
+            message: syncJson?.message || `Đã đổ thành công ${records.length} cơ sở cảnh báo sang sheet "nhắc nhở"!`,
+            syncedCount: records.length,
+            totalRows: syncJson?.totalRows,
+          });
+        }
+        return weeklyJson({
+          success: false,
+          error: syncJson?.error || `Lỗi phản hồi từ Google Apps Script (HTTP ${upstream.status})`,
+        }, 502);
+      } catch (error) {
+        return weeklyJson({
+          success: false,
+          error: error instanceof Error ? error.message : 'Lỗi kết nối Google Sheet',
+        }, 502);
       }
     }
 
@@ -484,17 +657,28 @@ export default {
 
     // Facility Google Sheets CSV proxy
     if (url.pathname === '/api/facility-sheet-data') {
+      const allowedGids = new Set(['0', '33769956', '1163313960']);
       const gid = url.searchParams.get('gid') || '0';
+      if (!allowedGids.has(gid)) {
+        return weeklyJson({ success: false, error: 'Google Sheet tab không hợp lệ' }, 400);
+      }
       const targetUrl = `https://docs.google.com/spreadsheets/d/${FACILITY_SHEET_ID}/export?format=csv&gid=${encodeURIComponent(gid)}`;
       try {
         const upstream = await fetch(targetUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
           },
+          signal: AbortSignal.timeout(15_000),
         });
         const csvText = await upstream.text();
+        if (!upstream.ok || !csvText || csvText.includes('<!DOCTYPE html>') || csvText.includes('accounts.google.com')) {
+          return weeklyJson({
+            success: false,
+            error: 'Google Sheets CSV không khả dụng hoặc cần quyền truy cập',
+          }, 502);
+        }
         return new Response(csvText, {
-          status: upstream.status,
+          status: 200,
           headers: {
             'Content-Type': 'text/csv; charset=utf-8',
             'Access-Control-Allow-Origin': '*',
@@ -601,9 +785,45 @@ export default {
 
     // Auto Sync Status API
     if (url.pathname === '/api/auto-sync-status') {
-      return new Response(JSON.stringify({ success: true, enabled: false, lastSyncDate: null }), {
+      return new Response(JSON.stringify({ success: true, enabled: true, lastSyncDate: null }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
+    }
+
+    if (url.pathname === '/api/ai-insights' && request.method === 'POST') {
+      if (!env.GEMINI_API_KEY) {
+        return weeklyJson({
+          success: false,
+          error: 'Tính năng AI Insights cần cấu hình biến môi trường GEMINI_API_KEY.',
+        }, 503);
+      }
+      try {
+        const body: any = await request.json();
+        const promptText = String(body?.question || body?.prompt || 'Phân tích tổng quan dữ liệu chất lượng giảng dạy:').trim();
+        const contextStr = JSON.stringify(body?.summaryData || {});
+        const geminiResp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `${promptText}\n\nDữ liệu: ${contextStr}` }] }],
+            }),
+            signal: AbortSignal.timeout(25_000),
+          },
+        );
+        const geminiJson: any = await geminiResp.json().catch(() => null);
+        const analysis = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (!geminiResp.ok || !analysis) {
+          throw new Error(geminiJson?.error?.message || 'Không nhận được phản hồi từ Gemini API.');
+        }
+        return weeklyJson({ success: true, analysis });
+      } catch (error) {
+        return weeklyJson({
+          success: false,
+          error: error instanceof Error ? error.message : 'Lỗi gọi Gemini API.',
+        }, 502);
+      }
     }
 
     // Classroom Report Live Sheet CSV Proxy (Cloudflare Edge Worker)

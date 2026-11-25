@@ -17,3 +17,9 @@ upload/
 # Prevent Bun lockfile conflicts on Cloudflare Pages / CI
 bun.lock
 bun.lockb
+
+# Generated build & runtime artifacts
+server.js
+.data/
+.wrangler/
+public/assets/aistudio/

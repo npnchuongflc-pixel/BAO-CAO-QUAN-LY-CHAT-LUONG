@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Building2,
+  Calendar,
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ClipboardCheck,
   CloudUpload,
@@ -44,6 +47,7 @@ import {
   getTargetSpreadsheetId,
   setTargetSpreadsheetId,
   cleanDuplicateReviewsInSheet,
+  syncLowScoreRecordsDirectToSheet,
 } from '../../services/googleSheetsDirectReviewService';
 
 type ReviewStatus = 'pending' | 'approved' | 'rejected';
@@ -60,21 +64,47 @@ const IMAGE_REVIEWER_STORAGE_KEY = 'yesterday-image-reviewer-demo-v1';
 const NEW_SHEET_STORAGE_KEY = 'new-sheet-apps-script-url-v2';
 const DEFAULT_NEW_SHEET_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
 const HYGIENE_PLACEHOLDER_IMAGE = 'images.unsplash.com/photo-1581578731548-c64695cc6952';
+const LOW_SCORE_THRESHOLD = 80;
 
 import { APPS_SCRIPT_TEMPLATE } from "./hygieneAppsScriptTemplate";
 export { APPS_SCRIPT_TEMPLATE };
 
 const getScore100 = (report: HygieneReport) => {
-  let score = report.diemSo || 0;
-  if (report.diemSoMax && report.diemSoMax <= 10 && score <= 10) score *= 10;
+  let score = Number(report.diemSo ?? 0);
+  if (Number.isNaN(score)) return 0;
+  if (
+    (report.diemSoMax && report.diemSoMax <= 10 && score <= 10) ||
+    (!report.diemSoMax && score > 0 && score <= 10)
+  ) {
+    score *= 10;
+  }
   return score;
 };
+
+const isLowScoreImageReport = (report: HygieneReport) =>
+  Boolean(report.linkAnh?.trim() && !report.linkAnh.includes(HYGIENE_PLACEHOLDER_IMAGE)) &&
+  getScore100(report) < LOW_SCORE_THRESHOLD;
 
 const formatReviewedTime = (value: string) => {
   if (!value) return '';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatIsoToDisplay = (iso: string): string => {
+  const parts = iso.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return iso;
+};
+
+const shiftIsoDate = (iso: string, deltaDays: number): string => {
+  const parts = iso.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return iso;
+  const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + deltaDays));
+  return dt.toISOString().slice(0, 10);
 };
 
 const getReviewStatus = (record?: ImageReviewRecord, report?: HygieneReport): ReviewStatus => {
@@ -94,12 +124,37 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
   selectedFacilityFilter = 'all',
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedDateIso, setSelectedDateIso] = useState<string>('');
   const [selectedFacility, setSelectedFacility] = useState<string | null>(null);
   const [filter, setFilter] = useState<ImageFilter>('all');
   const [reviewerError, setReviewerError] = useState(false);
   const [imageReviews, setImageReviews] = useState<Record<string, ImageReviewRecord>>({});
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
   const [savingReviewId, setSavingReviewId] = useState<string | null>(null);
+
+  const activeDateIso = selectedDateIso || dateIso;
+  const isCustomDateSelected = Boolean(selectedDateIso && selectedDateIso !== dateIso);
+  const activeDateDisplay = useMemo(
+    () => (isCustomDateSelected ? formatIsoToDisplay(activeDateIso) : dateDisplay),
+    [activeDateIso, dateDisplay, isCustomDateSelected],
+  );
+  const maxSelectableDateIso = useMemo(() => {
+    const now = new Date();
+    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return dateIso > todayIso ? dateIso : todayIso;
+  }, [dateIso]);
+
+  const handleSelectDate = (nextIso: string) => {
+    const normalized = nextIso.trim();
+    if (!normalized || normalized === dateIso) {
+      setSelectedDateIso('');
+    } else {
+      setSelectedDateIso(normalized);
+    }
+    setSelectedFacility(null);
+    setSyncAllStatus(null);
+    setIsExpanded(true);
+  };
   const [syncNotice, setSyncNotice] = useState<{
     tone: 'success' | 'warning' | 'error';
     message: string;
@@ -232,7 +287,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setIsLoadingReviews(true);
     setSyncNotice(null);
 
-    fetchImageReviews(dateIso)
+    fetchImageReviews(activeDateIso)
       .then(records => {
         if (!active) return;
         setImageReviews(Object.fromEntries(records.map(record => [record.id, record])));
@@ -251,7 +306,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     return () => {
       active = false;
     };
-  }, [dateIso]);
+  }, [activeDateIso]);
 
   useEffect(() => {
     try {
@@ -276,17 +331,18 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   const facilityRows = useMemo(() => {
     const reportsForDate = reports.filter(
-      report => normalizeDateToIso(report.ngay) === dateIso,
+      report => normalizeDateToIso(report.ngay) === activeDateIso,
     );
 
     return targetFacilities.map(coSo => {
       const facilityReports = reportsForDate.filter(
         report => normalizeFacilityName(report.coSo) === coSo,
       );
-      const images = facilityReports.filter(report => (
+      const allImages = facilityReports.filter(report => (
         report.linkAnh?.trim() && !report.linkAnh.includes(HYGIENE_PLACEHOLDER_IMAGE)
       ));
-      const target = getFacilityDailyTarget(coSo, dateIso);
+      const images = allImages.filter(report => getScore100(report) < LOW_SCORE_THRESHOLD);
+      const target = getFacilityDailyTarget(coSo, activeDateIso);
       const performed = facilityReports.length;
       const progress = target > 0 ? Math.min(100, (performed / target) * 100) : 0;
       const scores = facilityReports.map(getScore100);
@@ -297,20 +353,25 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       return {
         coSo,
         reports: facilityReports,
+        allImagesCount: allImages.length,
         images,
         target,
         performed,
         progress,
         averageScore,
       };
-    }).sort((left, right) => left.coSo.localeCompare(right.coSo, 'vi'));
-  }, [dateIso, reports, targetFacilities]);
+    }).sort((left, right) => right.images.length - left.images.length || left.coSo.localeCompare(right.coSo, 'vi'));
+  }, [activeDateIso, reports, targetFacilities]);
 
   const selectedRow = useMemo(
     () => facilityRows.find(row => row.coSo === selectedFacility) || null,
     [facilityRows, selectedFacility],
   );
 
+  const totalAllImages = useMemo(
+    () => facilityRows.reduce((sum, row) => sum + row.allImagesCount, 0),
+    [facilityRows],
+  );
   const totalImages = useMemo(
     () => facilityRows.reduce((sum, row) => sum + row.images.length, 0),
     [facilityRows],
@@ -329,7 +390,10 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       pending: Math.max(0, totalImages - approved - rejected),
     };
   }, [facilityRows, imageReviews, totalImages]);
-  const visibleRows = facilityRows;
+  const visibleRows = useMemo(
+    () => facilityRows.filter(row => row.images.length > 0),
+    [facilityRows],
+  );
 
   const selectedImages = useMemo(() => {
     if (!selectedRow) return [];
@@ -358,18 +422,23 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
       id: reviewId,
       reportId: report.id,
       rowIndex: report.rowIndex,
-      ngay: dateIso,
+      ngay: activeDateIso,
       gio: report.gio || '',
       coSo: report.coSo,
       khuVuc: report.khuVuc || '',
       linkAnh: report.linkAnh,
       nguoiBaoCao: report.nguoiKiemTra || '',
+      trangThai: report.trangThai || '',
+      diemSo: Math.round(getScore100(report) * 10) / 10,
+      chiTiet: report.chiTiet || '',
+      phanHoi: report.phanHoi || '',
+      feedbackNguoiDung: report.feedbackNguoiDung || '',
       reviewed: nextStatus === 'approved',
       reviewStatus: nextStatus,
       trangThaiKiemDuyet: nextStatus === 'approved'
         ? 'Đã duyệt'
         : nextStatus === 'rejected'
-        ? 'Không đạt'
+        ? 'Lỗi AI'
         : 'Chưa duyệt',
       nguoiKiemDuyet: cleanReviewer || previousRecord?.nguoiKiemDuyet || '',
       thoiGianKiemDuyet: timestamp,
@@ -427,12 +496,17 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
         id: reviewId,
         reportId: report.id,
         rowIndex: report.rowIndex,
-        ngay: dateIso,
+        ngay: activeDateIso,
         gio: report.gio || '',
         coSo: report.coSo,
         khuVuc: report.khuVuc || '',
         linkAnh: report.linkAnh,
         nguoiBaoCao: report.nguoiKiemTra || '',
+        trangThai: report.trangThai || '',
+        diemSo: Math.round(getScore100(report) * 10) / 10,
+        chiTiet: report.chiTiet || '',
+        phanHoi: report.phanHoi || '',
+        feedbackNguoiDung: report.feedbackNguoiDung || '',
         reviewed: true,
         reviewStatus: 'approved',
         trangThaiKiemDuyet: 'Đã duyệt',
@@ -492,12 +566,17 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
         id: reviewId,
         reportId: report.id,
         rowIndex: report.rowIndex,
-        ngay: dateIso,
+        ngay: activeDateIso,
         gio: report.gio || '',
         coSo: report.coSo,
         khuVuc: report.khuVuc || '',
         linkAnh: report.linkAnh,
         nguoiBaoCao: report.nguoiKiemTra || '',
+        trangThai: report.trangThai || '',
+        diemSo: Math.round(getScore100(report) * 10) / 10,
+        chiTiet: report.chiTiet || '',
+        phanHoi: report.phanHoi || '',
+        feedbackNguoiDung: report.feedbackNguoiDung || '',
         reviewed: false,
         reviewStatus: 'pending',
         trangThaiKiemDuyet: 'Chưa duyệt',
@@ -545,13 +624,13 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     setIsCleaningDuplicates(true);
     setSyncNotice(null);
     try {
-      const res = await cleanDuplicateReviewsInSheet(dateIso, targetSpreadsheetId);
+      const res = await cleanDuplicateReviewsInSheet(activeDateIso, targetSpreadsheetId);
       setSyncNotice({
         tone: res.success ? 'success' : 'warning',
         message: res.message,
       });
       if (res.success && res.cleanedCount > 0) {
-        fetchImageReviews(dateIso).then(records => {
+        fetchImageReviews(activeDateIso).then(records => {
           setImageReviews(Object.fromEntries(records.map(record => [record.id, record])));
         });
       }
@@ -581,7 +660,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     let approved = 0;
     let rejected = 0;
     selectedRow.images.forEach(image => {
-      const status = getReviewStatus(imageReviews[getImageReviewId(image)]);
+      const status = getReviewStatus(imageReviews[getImageReviewId(image)], image);
       if (status === 'approved') approved += 1;
       if (status === 'rejected') rejected += 1;
     });
@@ -602,101 +681,163 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   const reportsForDate = useMemo(() => {
     return reports.filter(report => {
-      if (normalizeDateToIso(report.ngay) !== dateIso) return false;
+      if (normalizeDateToIso(report.ngay) !== activeDateIso) return false;
       if (selectedFacilityFilter && selectedFacilityFilter !== 'all') {
         const normTarget = normalizeFacilityName(selectedFacilityFilter) || selectedFacilityFilter;
         return (normalizeFacilityName(report.coSo) || report.coSo) === normTarget;
       }
       return true;
     });
-  }, [reports, dateIso, selectedFacilityFilter]);
+  }, [reports, activeDateIso, selectedFacilityFilter]);
+
+  const allDayReportsForDate = useMemo(() => {
+    return reports.filter(report => normalizeDateToIso(report.ngay) === activeDateIso);
+  }, [reports, activeDateIso]);
+
+  const allDayPreparedRecords = useMemo(() => {
+    return allDayReportsForDate
+      .filter(isLowScoreImageReport)
+      .map(report => {
+        const reviewId = getImageReviewId(report);
+        const review = imageReviews[reviewId];
+        const reviewStatus = getReviewStatus(review, report);
+        const reviewer = review?.nguoiKiemDuyet || (reviewStatus === 'approved' ? (report.daDuyet || 'Đã duyệt') : reviewStatus === 'rejected' ? (report.khongDat || 'Lỗi AI') : '');
+        const reviewTime = review?.thoiGianKiemDuyet ? new Date(review.thoiGianKiemDuyet).toLocaleString('vi-VN') : '';
+        const reviewNote = reviewer ? (reviewTime ? `${reviewer} (${reviewTime})` : reviewer) : '';
+
+        const daDuyet = reviewStatus === 'approved' ? (reviewNote || 'Đã duyệt') : '';
+        const khongDat = reviewStatus === 'rejected' ? (reviewNote || 'Lỗi AI') : '';
+
+        return {
+          ngay: report.ngay,
+          gio: report.gio,
+          nguoiKiemTra: report.nguoiKiemTra,
+          coSo: report.coSo,
+          khuVuc: report.khuVuc,
+          trangThai: report.trangThai,
+          diemSo: Math.round(getScore100(report) * 10) / 10,
+          chiTiet: report.chiTiet,
+          phanHoi: report.phanHoi,
+          feedbackNguoiDung: report.feedbackNguoiDung,
+          linkAnh: report.linkAnh,
+          daDuyet,
+          khongDat,
+          loiAi: khongDat,
+        };
+      });
+  }, [allDayReportsForDate, imageReviews]);
 
   const preparedDateRecords = useMemo(() => {
-    return reportsForDate.map(report => {
-      const reviewId = getImageReviewId(report);
-      const review = imageReviews[reviewId];
-      const reviewStatus = getReviewStatus(review, report);
-      const reviewer = review?.nguoiKiemDuyet || (reviewStatus === 'approved' ? (report.daDuyet || 'Đã duyệt') : reviewStatus === 'rejected' ? (report.khongDat || 'Không đạt') : '');
-      const reviewTime = review?.thoiGianKiemDuyet ? new Date(review.thoiGianKiemDuyet).toLocaleString('vi-VN') : '';
-      const reviewNote = reviewer ? (reviewTime ? `${reviewer} (${reviewTime})` : reviewer) : '';
+    return reportsForDate
+      .filter(isLowScoreImageReport)
+      .map(report => {
+        const reviewId = getImageReviewId(report);
+        const review = imageReviews[reviewId];
+        const reviewStatus = getReviewStatus(review, report);
+        const reviewer = review?.nguoiKiemDuyet || (reviewStatus === 'approved' ? (report.daDuyet || 'Đã duyệt') : reviewStatus === 'rejected' ? (report.khongDat || 'Lỗi AI') : '');
+        const reviewTime = review?.thoiGianKiemDuyet ? new Date(review.thoiGianKiemDuyet).toLocaleString('vi-VN') : '';
+        const reviewNote = reviewer ? (reviewTime ? `${reviewer} (${reviewTime})` : reviewer) : '';
 
-      const daDuyet = reviewStatus === 'approved' ? (reviewNote || 'Đã duyệt') : '';
-      const khongDat = reviewStatus === 'rejected' ? (reviewNote || 'Không đạt') : '';
+        const daDuyet = reviewStatus === 'approved' ? (reviewNote || 'Đã duyệt') : '';
+        const khongDat = reviewStatus === 'rejected' ? (reviewNote || 'Lỗi AI') : '';
 
-      return {
-        ngay: report.ngay,
-        gio: report.gio,
-        nguoiKiemTra: report.nguoiKiemTra,
-        coSo: report.coSo,
-        khuVuc: report.khuVuc,
-        trangThai: report.trangThai,
-        diemSo: report.diemSo,
-        chiTiet: report.chiTiet,
-        phanHoi: report.phanHoi,
-        feedbackNguoiDung: report.feedbackNguoiDung,
-        linkAnh: report.linkAnh,
-        daDuyet,
-        khongDat,
-      };
-    });
+        return {
+          ngay: report.ngay,
+          gio: report.gio,
+          nguoiKiemTra: report.nguoiKiemTra,
+          coSo: report.coSo,
+          khuVuc: report.khuVuc,
+          trangThai: report.trangThai,
+          diemSo: Math.round(getScore100(report) * 10) / 10,
+          chiTiet: report.chiTiet,
+          phanHoi: report.phanHoi,
+          feedbackNguoiDung: report.feedbackNguoiDung,
+          linkAnh: report.linkAnh,
+          daDuyet,
+          khongDat,
+          loiAi: khongDat,
+        };
+      });
   }, [reportsForDate, imageReviews]);
 
-  // TỰ ĐỘNG ĐỔ DỮ LIỆU VỀ SHEET KHI CÓ DỮ LIỆU NGÀY HÔM TRƯỚC (KHÔNG CẦN NHẤN NÚT ĐỒNG BỘ)
+  // TỰ ĐỘNG ĐỔ DỮ LIỆU ẢNH ĐIỂM THẤP (<80Đ) VỀ GOOGLE SHEET (CHỈ TỰ ĐỘNG CHO NGÀY MẶC ĐỊNH)
   useEffect(() => {
-    if (!preparedDateRecords.length) return;
+    if (isCustomDateSelected || !allDayReportsForDate.length || isLoadingReviews) return;
     const targetScriptUrl = newSheetScriptUrl.trim() || DEFAULT_NEW_SHEET_APPS_SCRIPT_URL;
-    if (!targetScriptUrl) return;
+    if (!targetScriptUrl && !googleUser) return;
 
     // Đã tự động đổ cho ngày này trong phiên này rồi thì không chạy lại
-    if (autoSyncedDateRef.current === dateIso) return;
+    if (autoSyncedDateRef.current === activeDateIso) return;
 
     const timer = setTimeout(async () => {
       try {
         setAutoSyncNotice({
           status: 'syncing',
-          message: `Đang tự động đổ ${preparedDateRecords.length} dòng về Google Sheet...`,
+          message: allDayPreparedRecords.length > 0
+            ? `Đang tự động ghi ${allDayPreparedRecords.length} ảnh điểm thấp (<80đ) về Google Sheet...`
+            : `Đang đồng bộ danh sách ngày ${activeDateDisplay} (0 ảnh <80đ)...`,
         });
 
         let isSuccess = false;
-        let successMsg = '';
 
-        // 1. Thử gửi qua backend server
-        try {
-          const res = await fetch('/api/sync-day-to-new-sheet', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              date: dateIso,
-              scriptUrl: targetScriptUrl,
-              records: preparedDateRecords,
-              isAuto: true,
-            }),
-          });
-          const text = await res.text().catch(() => '');
-          if (text) {
-            try {
-              const data = JSON.parse(text);
-              if (res.ok && data?.success) {
-                isSuccess = true;
-                successMsg = data.message || `Đã tự động thay thế ${preparedDateRecords.length} dòng về Google Sheet thành công!`;
-              }
-            } catch {}
+        // 0. Nếu đã đăng nhập Google Workspace -> cập nhật trực tiếp tiêu đề 'Lỗi AI' & thêm các dòng <80đ còn thiếu
+        if (googleUser) {
+          try {
+            const directApiRes = await syncLowScoreRecordsDirectToSheet(
+              activeDateIso,
+              allDayPreparedRecords,
+              targetSpreadsheetId
+            );
+            if (directApiRes.success) {
+              isSuccess = true;
+            }
+          } catch (e) {
+            console.warn('Direct Google Sheets API auto-sync fallback:', e);
           }
-        } catch (e) {
-          console.warn('Backend auto-sync không phản hồi, thử fallback trực tiếp:', e);
+        }
+
+        // 1. Thử gửi qua backend server (khi có Apps Script URL)
+        if (!isSuccess && targetScriptUrl) {
+          try {
+            const res = await fetch('/api/sync-day-to-new-sheet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                date: activeDateIso,
+                scriptUrl: targetScriptUrl,
+                records: allDayPreparedRecords,
+                onlyLowScore: true,
+                allowEmptyReplace: true,
+                isAuto: true,
+              }),
+            });
+            const text = await res.text().catch(() => '');
+            if (text) {
+              try {
+                const data = JSON.parse(text);
+                if (res.ok && data?.success) {
+                  isSuccess = true;
+                }
+              } catch {}
+            }
+          } catch (e) {
+            console.warn('Backend auto-sync không phản hồi, thử fallback trực tiếp:', e);
+          }
         }
 
         // 2. Fallback gửi trực tiếp Google Apps Script
-        if (!isSuccess) {
+        if (!isSuccess && targetScriptUrl) {
           try {
             const directResp = await fetch(targetScriptUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({
                 action: 'sync_full_day_hygiene_reviews',
-                date: dateIso,
-                count: preparedDateRecords.length,
-                records: preparedDateRecords,
+                date: activeDateIso,
+                count: allDayPreparedRecords.length,
+                records: allDayPreparedRecords,
+                onlyLowScore: true,
+                allowEmptyReplace: true,
                 timestamp: new Date().toISOString(),
               }),
             });
@@ -706,7 +847,6 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                 const directData = JSON.parse(text);
                 if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
                   isSuccess = true;
-                  successMsg = directData?.message || `Đã tự động thay thế ${preparedDateRecords.length} dòng về Google Sheet thành công!`;
                 }
               } catch {}
             }
@@ -716,11 +856,13 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
         }
 
         if (isSuccess) {
-          autoSyncedDateRef.current = dateIso;
+          autoSyncedDateRef.current = activeDateIso;
           const timeStr = new Date().toLocaleTimeString('vi-VN');
           setAutoSyncNotice({
             status: 'synced',
-            message: `✓ Đã tự động đổ ${preparedDateRecords.length} dòng về Google Sheet (Chế độ thay thế - Không tạo hàng trùng)`,
+            message: allDayPreparedRecords.length > 0
+              ? `✓ Đã tự động ghi ${allDayPreparedRecords.length} ảnh điểm <80đ về Google Sheet`
+              : `✓ Ngày ${activeDateDisplay} không có ảnh <80đ (Sheet đã được giữ gọn)`,
             time: timeStr,
           });
         }
@@ -730,17 +872,17 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [dateIso, preparedDateRecords.length, newSheetScriptUrl]);
+  }, [isCustomDateSelected, activeDateIso, activeDateDisplay, allDayReportsForDate.length, isLoadingReviews, allDayPreparedRecords, newSheetScriptUrl, googleUser, targetSpreadsheetId]);
 
   const handleDownloadCsv = () => {
     if (!preparedDateRecords.length) {
-      setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu vệ sinh nào trong ngày này để tải về.' });
+      setSyncAllStatus({ type: 'error', message: 'Không có ảnh điểm thấp (<80đ) nào trong ngày này để tải về.' });
       return;
     }
     const headers = [
       'Ngày', 'Giờ', 'Người kiểm tra', 'Cơ sở', 'Khu vực',
       'Trạng thái', 'Điểm số', 'Chi tiết', 'Phản hồi',
-      'Feedback từ người dùng', 'Link ảnh', 'Đã duyệt', 'Không đạt'
+      'Feedback từ người dùng', 'Link ảnh', 'Đã duyệt', 'Lỗi AI'
     ];
     const escapeCsv = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const rows = preparedDateRecords.map(r => [
@@ -753,23 +895,24 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `kiem-duyet-ve-sinh-${dateIso}.csv`);
+    link.setAttribute('download', `kiem-duyet-anh-duoi-80d-${activeDateIso}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    setSyncAllStatus({ type: 'success', message: `Đã xuất file CSV với ${preparedDateRecords.length} dòng thành công!` });
+    setSyncAllStatus({ type: 'success', message: `Đã xuất file CSV với ${preparedDateRecords.length} ảnh điểm <80đ thành công!` });
   };
 
   const handleSyncAllToNewSheet = async () => {
-    if (!preparedDateRecords.length) {
+    if (!reportsForDate.length) {
       setSyncAllStatus({ type: 'error', message: 'Không có dữ liệu kiểm tra vệ sinh nào trong ngày này để ghi.' });
       return;
     }
 
-    const confirmed = window.confirm(
-      `Hành động này sẽ cập nhật ${preparedDateRecords.length} dòng dữ liệu kiểm duyệt ngày ${dateDisplay} vào bảng tính Google Sheets của bạn. Bạn có muốn tiếp tục không?`
-    );
+    const confirmMsg = preparedDateRecords.length > 0
+      ? `Hành động này sẽ chỉ ghi ${preparedDateRecords.length} ảnh điểm thấp (<80đ) ngày ${activeDateDisplay} vào bảng tính Google Sheets của bạn (loại bỏ các ảnh đạt ≥80đ). Bạn có muốn tiếp tục không?`
+      : `Ngày ${activeDateDisplay} không có ảnh nào dưới 80đ. Bạn có muốn cập nhật để xóa các dòng ≥80đ cũ của ngày này trên Google Sheet không?`;
+    const confirmed = window.confirm(confirmMsg);
     if (!confirmed) return;
 
     setIsSyncingAll(true);
@@ -784,9 +927,11 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            date: dateIso,
+            date: activeDateIso,
             scriptUrl: newSheetScriptUrl.trim() || undefined,
             records: preparedDateRecords,
+            onlyLowScore: true,
+            allowEmptyReplace: true,
           }),
         });
         const text = await res.text().catch(() => '');
@@ -795,7 +940,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             const data = JSON.parse(text);
             if (res.ok && data?.success) {
               isSuccess = true;
-              successMsg = data.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+              successMsg = data.message || `Đã ghi nhận ${preparedDateRecords.length} ảnh điểm <80đ sang Google Sheet thành công!`;
             }
           } catch {
             // Non-JSON response, ignore
@@ -815,9 +960,11 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
               action: 'sync_full_day_hygiene_reviews',
-              date: dateIso,
+              date: activeDateIso,
               count: preparedDateRecords.length,
               records: preparedDateRecords,
+              onlyLowScore: true,
+              allowEmptyReplace: true,
               timestamp: new Date().toISOString(),
             }),
           });
@@ -827,7 +974,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
               const directData = JSON.parse(text);
               if (directResp.ok && (directData?.success || directData?.status === 'ok')) {
                 isSuccess = true;
-                successMsg = directData?.message || `Đã ghi nhận toàn bộ ${preparedDateRecords.length} dòng sang Sheet mới thành công!`;
+                successMsg = directData?.message || `Đã ghi nhận ${preparedDateRecords.length} ảnh điểm <80đ sang Google Sheet thành công!`;
               }
             } catch {
               if (text.includes('Page not found') || text.includes('unable to open the file') || text.includes('accounts.google.com')) {
@@ -879,7 +1026,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            date: dateIso,
+            date: activeDateIso,
             scriptUrl: newSheetScriptUrl.trim() || undefined,
           }),
         });
@@ -910,7 +1057,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
               action: 'sync_full_day_hygiene_reviews',
-              date: dateIso,
+              date: activeDateIso,
               count: preparedDateRecords.length,
               records: preparedDateRecords,
               timestamp: new Date().toISOString(),
@@ -962,214 +1109,120 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
 
   return (
     <div className="my-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className={`flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 ${isExpanded ? 'border-b border-slate-200' : ''}`}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-[#1A3A5C]">
-              <ClipboardCheck className="h-4 w-4 text-sky-700" />
-              Kiểm duyệt ảnh ngày hôm trước
-            </h3>
-            <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-800">
-              {dateDisplay}
-            </span>
+      <div className={`bg-slate-50 px-4 py-3 ${isExpanded ? 'border-b border-slate-200' : ''}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-black uppercase tracking-wide text-[#1A3A5C]">
+                <ClipboardCheck className="h-4 w-4 text-sky-700" />
+                {isCustomDateSelected
+                  ? 'Kiểm duyệt ảnh điểm thấp (< 80đ) theo ngày'
+                  : 'Kiểm duyệt ảnh điểm thấp (< 80đ) ngày hôm trước'}
+              </h3>
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-800">
+                {activeDateDisplay}
+              </span>
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">
+                Chỉ ảnh &lt; 80đ ({totalImages})
+              </span>
+            </div>
           </div>
-          {isExpanded && (
-            <p className="mt-1 text-[11px] text-slate-500">
-              {facilityRows.length} cơ sở · {totalImages} ảnh · đạt {reviewSummary.approved} · không đạt {reviewSummary.rejected} · chờ {reviewSummary.pending}. Nhấn “Xem” để kiểm duyệt.
-            </p>
-          )}
-        </div>
 
-        <div className="flex items-center gap-2">
-          {isExpanded && (
-            <>
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+            <div className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-white px-2 py-1 shadow-2xs">
               <button
                 type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-50"
-                title="Cài đặt kết nối Sheet & Hướng dẫn phục hồi Apps Script"
+                onClick={() => handleSelectDate(shiftIsoDate(activeDateIso, -1))}
+                className="rounded p-1 text-slate-500 transition hover:bg-sky-50 hover:text-sky-700"
+                title="Xem ngày trước đó"
+                aria-label="Xem ngày trước đó"
               >
-                <Settings className="h-3.5 w-3.5 text-slate-500" />
-                Cài đặt Sheet
+                <ChevronLeft className="h-3.5 w-3.5" />
               </button>
+              <Calendar className="h-3.5 w-3.5 shrink-0 text-sky-700" />
+              <label htmlFor="hygiene-review-date-picker" className="text-[11px] font-semibold text-slate-500">
+                Ngày:
+              </label>
+              <input
+                id="hygiene-review-date-picker"
+                type="date"
+                value={activeDateIso}
+                max={maxSelectableDateIso}
+                onChange={event => handleSelectDate(event.target.value)}
+                className="cursor-pointer bg-transparent text-xs font-bold text-slate-800 outline-none"
+                title="Chọn ngày để xem lại dữ liệu và hình ảnh kiểm duyệt"
+              />
               <button
                 type="button"
-                onClick={handleSyncAllToNewSheet}
-                disabled={isSyncingAll || !preparedDateRecords.length}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 shadow-xs transition hover:bg-emerald-100 disabled:opacity-50"
-                title="Thay thế và đồng bộ lại toàn bộ dữ liệu ngày hôm nay sang Sheet mới"
+                onClick={() => handleSelectDate(shiftIsoDate(activeDateIso, 1))}
+                disabled={activeDateIso >= maxSelectableDateIso}
+                className="rounded p-1 text-slate-500 transition hover:bg-sky-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-35"
+                title="Xem ngày tiếp theo"
+                aria-label="Xem ngày tiếp theo"
               >
-                {isSyncingAll ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" />
-                ) : (
-                  <CloudUpload className="h-3.5 w-3.5 text-emerald-700" />
-                )}
-                {isSyncingAll ? 'Đang đồng bộ...' : 'Đồng bộ lại Sheet'}
+                <ChevronRight className="h-3.5 w-3.5" />
               </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setIsExpanded(current => !current)}
-            aria-expanded={isExpanded}
-            aria-controls="yesterday-image-review-content"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-700 transition hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-200"
-          >
-            {isExpanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
+            </div>
+
+            {isCustomDateSelected && (
+              <button
+                type="button"
+                onClick={() => handleSelectDate(dateIso)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-800 transition hover:bg-amber-100"
+                title={`Quay về ngày hôm trước mặc định (${dateDisplay})`}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Về {dateDisplay}
+              </button>
             )}
-            {isExpanded ? 'Thu gọn' : 'Mở rộng'}
-          </button>
+
+            <button
+              type="button"
+              onClick={() => setIsExpanded(current => !current)}
+              aria-expanded={isExpanded}
+              aria-controls="yesterday-image-review-content"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-sky-300 bg-white px-3 py-1.5 text-xs font-bold text-sky-700 transition hover:bg-sky-50 focus:outline-none focus:ring-2 focus:ring-sky-200"
+            >
+              {isExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+              {isExpanded ? 'Thu gọn' : 'Mở rộng'}
+            </button>
+          </div>
         </div>
       </div>
 
       {isExpanded && (
         <>
-          {/* Google Sheets Workspace OAuth Status / Connect Bar */}
-          <div className={`border-b px-4 py-2.5 text-xs ${
-            googleUser ? 'border-emerald-200 bg-emerald-50/70' : 'border-sky-200 bg-sky-50/70'
-          }`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                {googleUser ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                ) : (
-                  <FileSpreadsheet className="h-4 w-4 text-sky-700 shrink-0" />
-                )}
-                <div>
-                  {googleUser ? (
-                    <div className="text-emerald-950">
-                      <span className="font-bold">Đã kết nối Google Sheets:</span>{' '}
-                      <span className="font-medium text-emerald-800">{googleUser.email}</span>.
-                      <span className="ml-1 text-slate-600">
-                        Mỗi lượt tích duyệt ảnh sẽ tự động ghi trực tiếp vào Google Sheet{' '}
-                        <a
-                          href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit?gid=0#gid=0`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-bold underline text-emerald-800 hover:text-emerald-950 inline-flex items-center gap-0.5"
-                        >
-                          {targetSpreadsheetId.slice(0, 15)}...
-                          <ExternalLink className="h-3 w-3 inline" />
-                        </a>{' '}
-                        qua Google Sheets API chính thức!
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="text-slate-800">
-                      <span className="font-bold text-sky-900">Đồng bộ tự động vào Google Sheet:</span>{' '}
-                      <span className="text-slate-600">
-                        Đăng nhập bằng tài khoản Google để hệ thống tự ghi nhận duyệt vào file{' '}
-                        <a
-                          href={`https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/edit?gid=0#gid=0`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-bold underline text-sky-800 hover:text-sky-950 inline-flex items-center gap-0.5"
-                        >
-                          {targetSpreadsheetId.slice(0, 15)}...
-                          <ExternalLink className="h-3 w-3 inline" />
-                        </a>{' '}
-                        mà không cần Google Apps Script.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {!googleUser ? (
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={isGoogleSigningIn}
-                    className="gsi-material-button shadow-2xs"
-                  >
-                    <div className="gsi-material-button-state"></div>
-                    <div className="gsi-material-button-content-wrapper">
-                      <div className="gsi-material-button-icon">
-                        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ display: 'block' }}>
-                          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                          <path fill="none" d="M0 0h48v48H0z" />
-                        </svg>
-                      </div>
-                      <span className="gsi-material-button-contents">
-                        {isGoogleSigningIn ? 'Đang kết nối...' : 'Đăng nhập Google để đồng bộ'}
-                      </span>
-                    </div>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await logout();
-                      setGoogleUser(null);
-                    }}
-                    className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    Đăng xuất
-                  </button>
-                )}
-                {googleUser && (
-                  <button
-                    type="button"
-                    onClick={handleCleanDuplicateReviews}
-                    disabled={isCleaningDuplicates}
-                    className="inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
-                    title="Quét và xóa bỏ kết quả cũ nếu dòng nào trong Sheet bị 2 kết quả (Đã duyệt & Không đạt)"
-                  >
-                    {isCleaningDuplicates ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-amber-600" />}
-                    Xóa kết quả trùng cũ trong Sheet
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowSettingsModal(true)}
-                  className="rounded border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cài đặt & Hướng dẫn
-                </button>
-              </div>
-            </div>
-          </div>
-          {syncAllStatus && (
-            <div className={`flex items-center justify-between border-b px-4 py-2 text-xs font-medium ${
-              syncAllStatus.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-rose-200 bg-rose-50 text-rose-800'
-            }`}>
-              <span>{syncAllStatus.message}</span>
-              <button
-                type="button"
-                onClick={() => setSyncAllStatus(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
 
           <div id="yesterday-image-review-content" className="overflow-x-auto">
+          {visibleRows.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 bg-emerald-50/60 px-4 py-8 text-center text-xs font-semibold text-emerald-800">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+              <span>
+                {reportsForDate.length === 0
+                  ? `Ngày ${activeDateDisplay} không có dữ liệu kiểm tra vệ sinh nào được ghi nhận.`
+                  : `Ngày ${activeDateDisplay} không có ảnh điểm thấp (< 80đ) nào cần kiểm duyệt (tổng ${totalAllImages} ảnh đều đạt từ 80đ trở lên).`}
+              </span>
+            </div>
+          ) : (
           <table className="w-full min-w-[850px] text-left text-xs text-slate-700">
           <thead className="border-b border-slate-200 bg-white text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 text-center">STT</th>
               <th className="px-4 py-3">Tên cơ sở</th>
-              <th className="px-4 py-3 text-center">Chỉ tiêu/ngày</th>
-              <th className="px-4 py-3 text-center">Đã thực hiện</th>
-              <th className="px-4 py-3">Tiến độ ngày</th>
+              <th className="px-4 py-3 text-center">Ảnh &lt; 80đ cần duyệt</th>
+              <th className="px-4 py-3 text-center">Tổng ảnh ngày</th>
               <th className="px-4 py-3 text-center">Kiểm duyệt</th>
               <th className="px-4 py-3 text-center">Báo cáo chi tiết</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {visibleRows.map((row, index) => {
-              const approved = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)]) === 'approved').length;
-              const rejected = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)]) === 'rejected').length;
+              const approved = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)], image) === 'approved').length;
+              const rejected = row.images.filter(image => getReviewStatus(imageReviews[getImageReviewId(image)], image) === 'rejected').length;
               const evaluated = approved + rejected;
               const reviewProgress = row.images.length > 0 ? (evaluated / row.images.length) * 100 : 0;
 
@@ -1183,30 +1236,14 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-bold text-slate-800">
-                      {row.target} lượt/ngày
+                    <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 font-bold text-rose-700">
+                      {row.images.length} ảnh &lt; 80đ
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 font-bold text-sky-700">
-                      {row.performed} lượt
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-700">
+                      {row.allImagesCount} ảnh ({row.performed}/{row.target} lượt)
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="w-44">
-                      <div className="mb-1 flex items-center justify-between text-[10px] font-bold">
-                        <span className={row.progress >= 100 ? 'text-emerald-700' : row.progress >= 50 ? 'text-sky-700' : 'text-amber-700'}>
-                          {row.progress.toFixed(1)}%
-                        </span>
-                        <span className="text-slate-500">{row.performed}/{row.target} lượt</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className={`h-full rounded-full ${row.progress >= 100 ? 'bg-emerald-500' : row.progress >= 50 ? 'bg-sky-500' : 'bg-amber-400'}`}
-                          style={{ width: `${row.progress}%` }}
-                        />
-                      </div>
-                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="mx-auto w-28">
@@ -1220,7 +1257,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${reviewProgress}%` }} />
                       </div>
                       <div className="mt-1 text-center text-[9px] font-semibold text-slate-400">
-                        <span className="text-emerald-600">Đạt {approved}</span> · <span className="text-rose-600">Không đạt {rejected}</span>
+                        <span className="text-emerald-600">Đã duyệt {approved}</span> · <span className="text-rose-600">Lỗi AI {rejected}</span>
                       </div>
                     </div>
                   </td>
@@ -1231,7 +1268,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                       className="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-[11px] font-bold text-sky-700 transition hover:bg-sky-100"
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      Xem
+                      Xem ({row.images.length})
                     </button>
                   </td>
                 </tr>
@@ -1239,6 +1276,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
             })}
           </tbody>
           </table>
+          )}
         </div>
         </>
       )}
@@ -1260,11 +1298,14 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                     {selectedRow.coSo}
                   </h4>
                   <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-700">
-                    {dateDisplay}
+                    {activeDateDisplay}
+                  </span>
+                  <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700">
+                    Chỉ lọc ảnh điểm &lt; 80đ
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {selectedRow.images.length} ảnh · đạt {selectedCounts.approved} · không đạt {selectedCounts.rejected} · chờ {selectedCounts.pending}
+                  {selectedRow.images.length} ảnh điểm thấp (&lt; 80đ) · đã duyệt {selectedCounts.approved} · lỗi AI {selectedCounts.rejected} · chờ {selectedCounts.pending}
                 </p>
               </div>
               <button
@@ -1316,7 +1357,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                       ['all', 'Tất cả', selectedRow.images.length],
                       ['pending', 'Chưa đánh giá', selectedCounts.pending],
                       ['approved', 'Đã duyệt', selectedCounts.approved],
-                      ['rejected', 'Không đạt', selectedCounts.rejected],
+                      ['rejected', 'Lỗi AI', selectedCounts.rejected],
                     ] as Array<[ImageFilter, string, number]>).map(([value, label, count]) => (
                       <button
                         key={value}
@@ -1410,6 +1451,9 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                           <span className="absolute bottom-2 left-2 rounded-md bg-slate-900/75 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
                             Ảnh {index + 1}
                           </span>
+                          <span className="absolute bottom-2 right-2 rounded-md bg-rose-600/95 px-2 py-1 text-[10px] font-extrabold text-white shadow-xs backdrop-blur-sm">
+                            {Math.round(getScore100(report) * 10) / 10}/100đ
+                          </span>
                         </a>
 
                         <div className="space-y-2 p-3">
@@ -1420,34 +1464,41 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                                 <User className="h-3 w-3 shrink-0 text-slate-400" />
                                 {report.nguoiKiemTra || 'Chưa ghi người báo cáo'}
                               </p>
-                              <p className="mt-0.5 text-[10px] text-slate-400">{report.gio || '—'} · {report.trangThai || 'Chưa đánh giá'}</p>
+                              <p className="mt-0.5 text-[10px] font-semibold text-rose-700">
+                                {report.gio || '—'} · Điểm: {Math.round(getScore100(report) * 10) / 10}đ ({report.trangThai || 'Không đạt'})
+                              </p>
+                              {report.chiTiet && (
+                                <p className="mt-0.5 line-clamp-2 text-[10px] text-slate-500" title={report.chiTiet}>
+                                  {report.chiTiet}
+                                </p>
+                              )}
                             </div>
 
                             <div className="flex shrink-0 items-start gap-2">
                               <label className="flex cursor-pointer flex-col items-center gap-1">
                                 <input
                                   type="checkbox"
-                                  checked={approved}
-                                  onChange={() => setImageReviewStatus(report, 'approved')}
+                                  checked={rejected}
+                                  onChange={() => setImageReviewStatus(report, 'rejected')}
                                   disabled={savingReviewId === reviewId || isLoadingReviews}
-                                  aria-label={`Đánh dấu đạt ảnh ${index + 1} của ${selectedRow.coSo}`}
-                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-emerald-600 disabled:cursor-wait disabled:opacity-50"
+                                  aria-label={`Đánh dấu lỗi AI ảnh ${index + 1} của ${selectedRow.coSo}`}
+                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-rose-600 disabled:cursor-wait disabled:opacity-50"
                                 />
-                                <span className={`text-[10px] font-black ${approved ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                  Đã duyệt
+                                <span className={`text-[10px] font-black ${rejected ? 'text-rose-700' : 'text-slate-400'}`}>
+                                  Lỗi AI
                                 </span>
                               </label>
                               <label className="flex cursor-pointer flex-col items-center gap-1">
                                 <input
                                   type="checkbox"
-                                  checked={rejected}
-                                  onChange={() => setImageReviewStatus(report, 'rejected')}
+                                  checked={approved}
+                                  onChange={() => setImageReviewStatus(report, 'approved')}
                                   disabled={savingReviewId === reviewId || isLoadingReviews}
-                                  aria-label={`Đánh dấu không đạt ảnh ${index + 1} của ${selectedRow.coSo}`}
-                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-rose-600 disabled:cursor-wait disabled:opacity-50"
+                                  aria-label={`Đánh dấu đã duyệt ảnh ${index + 1} của ${selectedRow.coSo}`}
+                                  className="h-7 w-7 cursor-pointer rounded border-slate-300 accent-emerald-600 disabled:cursor-wait disabled:opacity-50"
                                 />
-                                <span className={`text-[10px] font-black ${rejected ? 'text-rose-700' : 'text-slate-400'}`}>
-                                  Không đạt
+                                <span className={`text-[10px] font-black ${approved ? 'text-emerald-700' : 'text-slate-400'}`}>
+                                  Đã duyệt
                                 </span>
                               </label>
                             </div>
@@ -1460,7 +1511,7 @@ export const YesterdayHygieneReview: React.FC<YesterdayHygieneReviewProps> = ({
                                 : 'border-rose-200 bg-rose-50 text-rose-700'
                             }`}>
                               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                              {approved ? 'Đã duyệt' : 'Không đạt'} · {review.nguoiKiemDuyet} · {formatReviewedTime(review.thoiGianKiemDuyet)}
+                              {approved ? 'Đã duyệt' : 'Lỗi AI'} · {review.nguoiKiemDuyet} · {formatReviewedTime(review.thoiGianKiemDuyet)}
                             </div>
                           )}
                         </div>
