@@ -97,9 +97,174 @@ function imageReviewFromRow(row: string[], rowIndex: number) {
 
 const IMAGE_REVIEW_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
 
+
+function weeklyScriptUrl(candidate: unknown): string {
+  const value = typeof candidate === 'string' && candidate.trim()
+    ? candidate.trim() : IMAGE_REVIEW_SCRIPT_URL;
+  const parsed = new URL(value);
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'script.google.com' ||
+      !/^\/macros\/s\/[\w-]+\/exec$/.test(parsed.pathname) || parsed.search || parsed.hash) {
+    throw new Error('Đường dẫn Google Apps Script không hợp lệ.');
+  }
+  return value;
+}
+
+async function weeklyScriptPost(scriptUrl: string, payload: unknown, timeout = 20_000): Promise<any> {
+  const response = await fetch(scriptUrl, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload), signal: AbortSignal.timeout(timeout),
+  });
+  const result: any = await response.json().catch(() => null);
+  if (!response.ok || !result) throw new Error('Google Apps Script không phản hồi hợp lệ.');
+  return result;
+}
+
+async function weeklyScriptReady(scriptUrl: string): Promise<boolean> {
+  const result = await weeklyScriptPost(scriptUrl, { action: 'weekly_ping' }, 12_000);
+  return result.weeklySupported === true && Number(result.schemaVersion || 0) >= 8;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+
+    // Weekly report writes go through the same versioned Apps Script used by the Express backend.
+    if (url.pathname === '/api/weekly-warning-config' && request.method === 'GET') {
+      return weeklyJson({ success: true, config: {
+        spreadsheetId: WEEKLY_SHEET_ID,
+        spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/' + WEEKLY_SHEET_ID + '/edit',
+        spreadsheetTitle: 'THEO DÕI XỬ LÝ CẢNH BÁO VỆ SINH',
+        appsScriptUrl: '', teamLeadersByFacility: {}, weekSyncHistory: {},
+      } });
+    }
+
+    if (url.pathname === '/api/weekly-warning-sheet/script-status' && request.method === 'GET') {
+      try {
+        const supported = await weeklyScriptReady(IMAGE_REVIEW_SCRIPT_URL);
+        return weeklyJson({ success: true, weeklySupported: supported });
+      } catch (error) {
+        return weeklyJson({ success: false,
+          error: error instanceof Error ? error.message : 'Không thể kiểm tra Apps Script.' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/weekly-warning-sheet/sync' && request.method === 'POST') {
+      try {
+        const body: any = await request.json();
+        const spreadsheetId = /^[a-zA-Z0-9_-]{10,120}$/.test(body?.spreadsheetId || '')
+          ? body.spreadsheetId : WEEKLY_SHEET_ID;
+        const week = body?.selectedWeek;
+        const sourceRows: any[] = body?.sourceRows;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(week?.startIso || '') ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(week?.endIso || '') ||
+            week.startIso > week.endIso ||
+            !Array.isArray(sourceRows) || sourceRows.length > 100 ||
+            sourceRows.some(row => !row || typeof row.recordCode !== 'string')) {
+          return weeklyJson({ success: false, message: 'Dữ liệu báo cáo tuần không hợp lệ.' }, 400);
+        }
+        const scriptUrl = weeklyScriptUrl(body?.scriptUrl);
+        if (!(await weeklyScriptReady(scriptUrl))) {
+          return weeklyJson({ success: false, needsScriptUpdate: true,
+            message: 'Apps Script của Google Sheet cần cập nhật lên phiên bản hỗ trợ báo cáo tuần (v8).' });
+        }
+        const weekCode = 'W_' + week.startIso + '_TO_' + week.endIso;
+        const weekPrefix = typeof body.weekPrefix === 'string' && body.weekPrefix.trim()
+          ? body.weekPrefix.trim() : 'Tuần ' + week.weekNumber + '_' +
+            week.startIso.slice(5, 7) + '/' + week.startIso.slice(0, 4) + '_';
+        const mode = body.mode === 'update' ? 'update' : 'create';
+        const response = await weeklyScriptPost(scriptUrl, {
+          action: 'sync_weekly_warning_report', spreadsheetId,
+          targetSheetName: 'Trưởng nhóm xử lý', sheetTitle: 'Trưởng nhóm xử lý',
+          weekCode, weekPrefix, startIso: week.startIso, endIso: week.endIso,
+          mode, sourceRows,
+        }, 30_000);
+        if (response.weeklySupported !== true || Number(response.schemaVersion || 0) < 8) {
+          return weeklyJson({ success: false, needsScriptUpdate: true,
+            message: 'Apps Script trên Google Sheet cần cập nhật phiên bản v8.' });
+        }
+        if (response.alreadyExists) {
+          return weeklyJson({ success: false, alreadyExists: true,
+            sheetId: Number(response.sheetId || 0), sheetTitle: response.sheetTitle || 'Trưởng nhóm xử lý',
+            existingRowCount: Number(response.existingRowCount || 0),
+            message: response.message || 'Tuần này đã tồn tại trong Google Sheet.' });
+        }
+        if (!response.success) {
+          return weeklyJson({ success: false, message: response.error || response.message || 'Không thể ghi báo cáo tuần.' }, 502);
+        }
+        const tabs = await readWeeklyTabs(spreadsheetId);
+        const tab = tabs.find(item => item.name.trim().toLowerCase() === 'trưởng nhóm xử lý');
+        if (!tab || String(response.sheetId) !== tab.gid) {
+          throw new Error('Không thể xác minh tab báo cáo tuần sau khi ghi.');
+        }
+        const rows = await readWeeklyRows(spreadsheetId, tab.gid);
+        const range = weekDate(week.startIso) + ' - ' + weekDate(week.endIso);
+        const month = week.startIso.slice(5, 7) + '/' + week.startIso.slice(0, 4);
+        const verified = rows.slice(rows[0]?.[0] === 'Mã hồ sơ' ? 1 : 0).filter(row => {
+          const code = String(row[0] || '').trim();
+          return Boolean(code) && (code.startsWith(weekCode + '__') ||
+            code.startsWith(weekPrefix) ||
+            (normalizeWeekRange(String(row[1] || '')) === range &&
+              String(row[2] || '').trim() === month));
+        });
+        const codes = new Set(verified.map(row => String(row[0] || '').trim()));
+        if (sourceRows.some(row => !codes.has(row.recordCode.trim()))) {
+          throw new Error('Đã gửi báo cáo nhưng chưa đọc lại đủ hồ sơ trong Sheet; vui lòng kiểm tra Sheet trước khi thử lại.');
+        }
+        const spreadsheetUrl = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/edit';
+        return weeklyJson({ success: true, mode, spreadsheetId, spreadsheetUrl,
+          tabUrl: spreadsheetUrl + '#gid=' + tab.gid, sheetId: Number(tab.gid),
+          sheetTitle: tab.name, weekCode, syncedAt: response.syncedAt || '',
+          updatedCount: Number(response.updatedCount || 0),
+          addedCount: Number(response.addedCount || 0),
+          resolvedCount: Number(response.resolvedCount || 0),
+          totalRowsVerified: verified.length,
+          message: response.message || 'Đã đồng bộ báo cáo tuần vào Google Sheet.' });
+      } catch (error) {
+        return weeklyJson({ success: false, message:
+          error instanceof Error ? error.message : 'Không thể đồng bộ báo cáo tuần.' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/weekly-warning-sheet/update-row' && request.method === 'POST') {
+      try {
+        const body: any = await request.json();
+        const spreadsheetId = /^[a-zA-Z0-9_-]{10,120}$/.test(body?.spreadsheetId || '')
+          ? body.spreadsheetId : WEEKLY_SHEET_ID;
+        const recordCode = String(body?.recordCode || '').trim();
+        const patch = body?.patch;
+        if (!recordCode || recordCode.length > 240 || !patch ||
+            typeof patch !== 'object' || Array.isArray(patch) ||
+            Object.keys(patch).some(key => !['teamLeader', 'handled', 'handlingMethod',
+              'notes', 'qlclConfirmed'].includes(key))) {
+          return weeklyJson({ success: false, message: 'Dữ liệu cập nhật hồ sơ không hợp lệ.' }, 400);
+        }
+        const scriptUrl = weeklyScriptUrl(body?.scriptUrl);
+        if (!(await weeklyScriptReady(scriptUrl))) {
+          return weeklyJson({ success: false, needsScriptUpdate: true,
+            message: 'Apps Script của Google Sheet cần cập nhật phiên bản v8.' });
+        }
+        const response = await weeklyScriptPost(scriptUrl, {
+          action: 'update_weekly_warning_record', spreadsheetId, recordCode,
+          sheetTitle: String(body.sheetTitle || 'Trưởng nhóm xử lý').trim(),
+          weekCode: String(body.weekCode || '').trim(), patch,
+          actor: String(body.actor || 'Trưởng nhóm / QLCL').trim().slice(0, 120),
+        });
+        if (response.weeklySupported !== true || Number(response.schemaVersion || 0) < 8) {
+          return weeklyJson({ success: false, needsScriptUpdate: true,
+            message: 'Apps Script trên Google Sheet cần cập nhật phiên bản v8.' });
+        }
+        if (!response.success || !Array.isArray(response.rowValues)) {
+          return weeklyJson({ success: false,
+            message: response.error || 'Không thể lưu thay đổi lên Google Sheet.' }, 502);
+        }
+        return weeklyJson({ success: true, rowNumber: Number(response.rowNumber || 0),
+          rowValues: response.rowValues, status: response.status });
+      } catch (error) {
+        return weeklyJson({ success: false, message:
+          error instanceof Error ? error.message : 'Không thể cập nhật hồ sơ.' }, 502);
+      }
+    }
 
     // Phần 3 reads every weekly tab from the public spreadsheet without a browser OAuth token.
     if (url.pathname === '/api/weekly-warning-sheet/records') {
