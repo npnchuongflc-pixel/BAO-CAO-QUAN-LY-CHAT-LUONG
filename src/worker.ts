@@ -162,8 +162,11 @@ export default {
 
     if (url.pathname === '/api/warning-reminders-data' && request.method === 'GET') {
       try {
+        const tab = (await readWeeklyTabs(WEEKLY_SHEET_ID))
+          .find(item => item.name.trim().toLowerCase() === 'nhắc nhở');
+        if (!tab) throw new Error('Không tìm thấy tab nhắc nhở.');
         const rows = await fetch(
-          `https://docs.google.com/spreadsheets/d/${WEEKLY_SHEET_ID}/export?format=csv&gid=1091093608`,
+          `https://docs.google.com/spreadsheets/d/${WEEKLY_SHEET_ID}/export?format=csv&gid=${tab.gid}`,
           { signal: AbortSignal.timeout(15_000) },
         );
         if (!rows.ok) throw new Error(`Google Sheet trả về HTTP ${rows.status}`);
