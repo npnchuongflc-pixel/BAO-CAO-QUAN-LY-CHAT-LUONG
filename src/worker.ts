@@ -1,4 +1,6 @@
 import Papa from 'papaparse';
+import { normalizeDateToIso } from './utils/dateUtils';
+import { normalizeFacilityName } from './utils/facilityUtils';
 
 export interface Env {
   ASSETS: {
@@ -60,6 +62,40 @@ function normalizeWeekRange(value: string): string {
   return value.replace(/\s*\(Tuần\s*\d+\)\s*/i, '')
     .replace(/[–—]/g, '-').replace(/\s*-\s*/g, ' - ').trim();
 }
+
+
+function imageReviewId(date: string, facility: string, area: string, imageUrl: string): string {
+  const identity = [date, normalizeFacilityName(facility), area, imageUrl].join('|');
+  let hash = 2166136261;
+  for (let i = 0; i < identity.length; i++) {
+    hash ^= identity.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `image-${(hash >>> 0).toString(36)}`;
+}
+
+function imageReviewFromRow(row: string[], rowIndex: number) {
+  const date = normalizeDateToIso(String(row[0] || ''));
+  const facility = String(row[3] || '').trim();
+  const area = String(row[4] || '').trim();
+  const imageUrl = String(row[10] || '').trim();
+  const approvedBy = String(row[11] || '').trim();
+  const rejectedBy = String(row[12] || '').trim();
+  if (!date || !facility || !imageUrl || (!approvedBy && !rejectedBy)) return null;
+  const reviewStatus = rejectedBy ? 'rejected' : 'approved';
+  const note = rejectedBy || approvedBy;
+  return {
+    id: imageReviewId(date, facility, area, imageUrl), reportId: '',
+    rowIndex, ngay: date, gio: String(row[1] || ''),
+    coSo: facility, khuVuc: area, linkAnh: imageUrl,
+    nguoiBaoCao: String(row[2] || ''), reviewed: reviewStatus === 'approved',
+    reviewStatus, trangThaiKiemDuyet: reviewStatus === 'approved' ? 'Đã duyệt' : 'Không đạt',
+    nguoiKiemDuyet: note.replace(/\s*\([^)]*\)\s*$/, '').trim(),
+    thoiGianKiemDuyet: String(row[13] || ''), syncedToSheet: true,
+  };
+}
+
+const IMAGE_REVIEW_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM1RqSb0F1rZnMetAXarUlaW2J0SmZQQyfkkU-Puk6sz8vhYaIuYY1TfDAtheG1LFI/exec';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -140,6 +176,89 @@ export default {
           tabUrl: `${spreadsheetUrl}#gid=${tab.gid}` } });
       } catch (error) {
         return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Không thể kiểm tra hồ sơ tuần.' }, 502);
+      }
+    }
+
+
+    // Read the shared image review ledger from the tab used by Google AI Studio.
+    if (url.pathname === '/api/image-reviews' && request.method === 'GET') {
+      const date = url.searchParams.get('date') || '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return weeklyJson({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
+      }
+      try {
+        const rows = await readWeeklyRows(WEEKLY_SHEET_ID, '0');
+        if (rows[0]?.[0]?.trim() !== 'Ngày' || rows[0]?.[10]?.trim() !== 'Link ảnh') {
+          throw new Error('Cấu trúc tab Kiểm duyệt vệ sinh đã thay đổi.');
+        }
+        const records = rows.slice(1).flatMap((row, i) => {
+          if (normalizeDateToIso(String(row[0] || '')) !== date) return [];
+          const record = imageReviewFromRow(row, i + 2);
+          return record ? [record] : [];
+        });
+        records.sort((a, b) => a.coSo.localeCompare(b.coSo, 'vi'));
+        return weeklyJson({ success: true, date, records, count: records.length });
+      } catch (error) {
+        return weeklyJson({ success: false,
+          error: error instanceof Error ? error.message : 'Không thể đọc dữ liệu kiểm duyệt ảnh.' }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/image-reviews' && request.method === 'POST') {
+      try {
+        const body: any = await request.json();
+        const input = body?.action === 'batch_upsert' ? body.records : [body?.record];
+        if (!['batch_upsert', 'upsert'].includes(body?.action) || !Array.isArray(input) || input.length > 500) {
+          return weeklyJson({ success: false, error: 'Thao tác không hợp lệ.' }, 400);
+        }
+        const now = new Date().toISOString();
+        const records = input.map((item: any) => {
+          const date = String(item?.ngay || '');
+          const imageUrl = String(item?.linkAnh || '');
+          const facility = String(item?.coSo || '').trim();
+          const reviewer = String(item?.nguoiKiemDuyet || '').trim();
+          const status = String(item?.reviewStatus || (item?.reviewed ? 'approved' : 'pending'));
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !facility ||
+              !imageUrl.startsWith('https://') || !['approved', 'rejected', 'pending'].includes(status) ||
+              (status !== 'pending' && !reviewer)) {
+            throw new Error('Dữ liệu kiểm duyệt ảnh không hợp lệ.');
+          }
+          const reviewTime = item?.thoiGianKiemDuyet || now;
+          const parsedTime = new Date(reviewTime);
+          const timeText = Number.isNaN(parsedTime.getTime()) ? '' :
+            parsedTime.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+          const label = reviewer ? `${reviewer} (${timeText})` : '';
+          return {
+            ...item, id: item?.id || imageReviewId(date, facility, String(item?.khuVuc || ''), imageUrl),
+            ngay: date, coSo: facility, linkAnh: imageUrl, reviewStatus: status,
+            reviewed: status === 'approved',
+            trangThaiKiemDuyet: status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Không đạt' : 'Chưa duyệt',
+            nguoiKiemDuyet: reviewer, thoiGianKiemDuyet: reviewTime, updatedAt: now,
+            syncedToSheet: true, daDuyet: status === 'approved' ? label : '',
+            khongDat: status === 'rejected' ? label : '',
+          };
+        });
+        const updates = records.map((record: any) => ({
+          linkAnh: record.linkAnh, ngay: record.ngay, gio: record.gio || '',
+          coSo: record.coSo, khuVuc: record.khuVuc || '',
+          daDuyet: record.daDuyet, khongDat: record.khongDat,
+          reviewStatus: record.reviewStatus, reviewer: record.nguoiKiemDuyet,
+        }));
+        const upstream = await fetch(IMAGE_REVIEW_SCRIPT_URL, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'batch_update_image_reviews', updates }),
+          signal: AbortSignal.timeout(20_000),
+        });
+        const result: any = await upstream.json().catch(() => null);
+        if (!upstream.ok || !(result?.success || result?.status === 'ok')) {
+          throw new Error(result?.error || `Google Sheet API HTTP ${upstream.status}`);
+        }
+        const saved = records.map(({ daDuyet, khongDat, ...record }: any) => record);
+        return weeklyJson(body.action === 'upsert'
+          ? { success: true, record: saved[0] } : { success: true, records: saved });
+      } catch (error) {
+        return weeklyJson({ success: false,
+          error: error instanceof Error ? error.message : 'Không thể ghi kiểm duyệt ảnh.' }, 502);
       }
     }
 
