@@ -1,3 +1,5 @@
+import Papa from 'papaparse';
+
 export interface Env {
   ASSETS: {
     fetch: (request: Request) => Promise<Response>;
@@ -6,10 +8,89 @@ export interface Env {
 
 const FACILITY_SHEET_ID = '1LbB-hXbLQ1DdghvM4xw-nyqBfPj-lZpHSeuEhjQ5xEY';
 const FEEDBACK_SHEET_ID = '1If65m8-kv10fLlu9DSgvDJCJEpPBdGrieZ7tJ9aXgmo';
+const WEEKLY_SHEET_ID = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
+
+async function readWeeklyTabs(spreadsheetId: string): Promise<Array<{ name: string; gid: string }>> {
+  const response = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) throw new Error(`Không thể đọc danh sách tab (HTTP ${response.status}).`);
+  const html = await response.text();
+  if (html.includes('accounts.google.com') && !html.includes('items.push')) {
+    throw new Error('Google Sheet chưa cho phép xem qua đường dẫn.');
+  }
+  const tabs: Array<{ name: string; gid: string }> = [];
+  const regex = /items\.push\(\{name:\s*"([^"]+)"[^}]*gid:\s*"(\d+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(html)) !== null) {
+    let name = match[1];
+    try { name = JSON.parse(`"${match[1]}"`); } catch { /* Use the original name. */ }
+    tabs.push({ name: name.trim(), gid: match[2] });
+  }
+  if (!tabs.length) throw new Error('Không tìm thấy tab nào có thể đọc trong Google Sheet.');
+  return tabs;
+}
+
+async function readWeeklyRows(spreadsheetId: string, gid: string): Promise<string[][]> {
+  const response = await fetch(
+    `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${gid}`,
+    { signal: AbortSignal.timeout(15_000) },
+  );
+  if (!response.ok) throw new Error(`Không thể đọc tab ${gid} (HTTP ${response.status}).`);
+  const csv = await response.text();
+  if (csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+    throw new Error(`Tab ${gid} không trả về dữ liệu CSV.`);
+  }
+  return Papa.parse<string[]>(csv, { skipEmptyLines: false }).data;
+}
+
+function weeklyJson(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+    // Phần 3 reads every weekly tab from the public spreadsheet without a browser OAuth token.
+    if (url.pathname === '/api/weekly-warning-sheet/records') {
+      const suppliedId = url.searchParams.get('spreadsheetId')?.trim();
+      const spreadsheetId = suppliedId && /^[a-zA-Z0-9_-]{10,120}$/.test(suppliedId)
+        ? suppliedId : WEEKLY_SHEET_ID;
+      const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+      try {
+        const tabs = await readWeeklyTabs(spreadsheetId);
+        const ignored = new Set(['kiểm duyệt vệ sinh', 'nhắc nhở', 'tổng hợp hồ sơ', 'sheet1']);
+        const candidates = tabs.filter(tab => !ignored.has(tab.name.toLowerCase()));
+        const results = await Promise.all(candidates.map(async tab => {
+          try { return { tab, rows: await readWeeklyRows(spreadsheetId, tab.gid) }; }
+          catch { return { tab, rows: [] as string[][] }; }
+        }));
+        const rawRecords: Array<{
+          row: string[]; rowNumber: number; spreadsheetId: string; sheetId: number; sheetTitle: string;
+        }> = [];
+        for (const { tab, rows } of results) {
+          const header = String(rows[0]?.[0] || '').trim();
+          const legacy = /^Tuần\s*\d+_|^W_\d{4}-/.test(header);
+          if (header !== 'Mã hồ sơ' && !legacy) continue;
+          for (let i = header === 'Mã hồ sơ' ? 1 : 0; i < rows.length; i++) {
+            const row = rows[i];
+            const facility = String(row?.[5] || row?.[4] || row?.[2] || '').trim();
+            if (String(row?.[0] || '').trim() && facility) {
+              rawRecords.push({ row, rowNumber: i + 1, spreadsheetId,
+                sheetId: Number(tab.gid), sheetTitle: tab.name });
+            }
+          }
+        }
+        return weeklyJson({ success: true, spreadsheetFound: true,
+          spreadsheetId, spreadsheetUrl, rawRecords });
+      } catch (error) {
+        return weeklyJson({ success: false, error: error instanceof Error ? error.message : 'Không thể đọc dữ liệu tuần.' }, 502);
+      }
+    }
 
     // API Health Check
     if (url.pathname === '/api/health') {
