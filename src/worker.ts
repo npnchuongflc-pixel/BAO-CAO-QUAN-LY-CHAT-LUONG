@@ -384,10 +384,30 @@ export default {
     }
 
 
+    // Part 1 consumes the full review ledger CSV through this same-origin endpoint.
+    if (url.pathname === '/api/hygiene-review-sheet-data' && request.method === 'GET') {
+      try {
+        const upstream = await fetch(
+          `https://docs.google.com/spreadsheets/d/${WEEKLY_SHEET_ID}/export?format=csv&gid=0`,
+          { signal: AbortSignal.timeout(15_000) },
+        );
+        if (!upstream.ok) throw new Error(`Google Sheet trả về HTTP ${upstream.status}`);
+        const csv = await upstream.text();
+        if (!csv || csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+          throw new Error('Không thể đọc tab Kiểm duyệt vệ sinh.');
+        }
+        return weeklyJson({ success: true, data: { csv }, cached: false });
+      } catch (error) {
+        return weeklyJson({ success: false,
+          error: error instanceof Error ? error.message : 'Không thể đọc kiểm duyệt vệ sinh.' }, 502);
+      }
+    }
+
     // Read the shared image review ledger from the tab used by Google AI Studio.
     if (url.pathname === '/api/image-reviews' && request.method === 'GET') {
       const date = url.searchParams.get('date') || '';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const returnAll = url.searchParams.get('all') === '1' || !date || date === 'all';
+      if (!returnAll && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return weeklyJson({ success: false, error: 'Ngày tra cứu không hợp lệ.' }, 400);
       }
       try {
@@ -396,12 +416,12 @@ export default {
           throw new Error('Cấu trúc tab Kiểm duyệt vệ sinh đã thay đổi.');
         }
         const records = rows.slice(1).flatMap((row, i) => {
-          if (normalizeDateToIso(String(row[0] || '')) !== date) return [];
+          if (!returnAll && normalizeDateToIso(String(row[0] || '')) !== date) return [];
           const record = imageReviewFromRow(row, i + 2);
           return record ? [record] : [];
         });
-        records.sort((a, b) => a.coSo.localeCompare(b.coSo, 'vi'));
-        return weeklyJson({ success: true, date, records, count: records.length });
+        records.sort((a, b) => b.ngay.localeCompare(a.ngay) || a.coSo.localeCompare(b.coSo, 'vi'));
+        return weeklyJson({ success: true, date: returnAll ? 'all' : date, records, count: records.length });
       } catch (error) {
         return weeklyJson({ success: false,
           error: error instanceof Error ? error.message : 'Không thể đọc dữ liệu kiểm duyệt ảnh.' }, 502);
