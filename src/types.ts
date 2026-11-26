@@ -91,6 +91,156 @@ export interface PeriodReportData {
 }
 
 // -------------------------------------------------------------
+// ZALO OA PHẦN 1 – CHỈ SỐ TỔNG QUAN TYPES
+// -------------------------------------------------------------
+
+export type Part1Granularity = 'day' | 'week' | 'month';
+
+export type Part1KpiId =
+  | 'rate'
+  | 'replySplit'
+  | 'avg'
+  | 'attention';
+
+export type ImprovementCategoryKey =
+  | 'teacher_pedagogy'
+  | 'learning_progress'
+  | 'curriculum'
+  | 'customer_care'
+  | 'class_operations'
+  | 'facilities'
+  | 'other';
+
+export interface BatchEfficiencyPoint {
+  key: string;
+  label: string;
+  fullLabel: string;
+  sentCount: number;
+  cohortReplyCount: number;
+  cohortReplyWithinWaitCount: number;
+  maturedSentCount: number;
+  pendingSentCount: number;
+  isPendingWait: boolean;
+  responseRate: number | null; // 0..1 based on unified wait window
+  rawCohortRate: number | null;
+}
+
+export interface MonthlyQualityPoint {
+  monthKey: string;
+  label: string;
+  total: number;
+  satisfiedCount: number; // 4-5★
+  attentionCount: number; // 3★
+  dissatisfiedCount: number; // 1-2★
+  satisfiedPct: number; // 0..100
+  attentionPct: number; // 0..100
+  dissatisfiedPct: number; // 0..100
+  isSelectedPeriod: boolean;
+}
+
+export interface CategorizedCommentRecord {
+  item: SheetRowItem;
+  categories: ImprovementCategoryKey[];
+}
+
+export interface ParetoIssueItem {
+  key: ImprovementCategoryKey;
+  label: string;
+  shortLabel: string;
+  description: string;
+  color: string;
+  count: number;
+  pctOfComments: number; // % trên tổng số nhận xét góp ý (không tính trùng phản hồi)
+  pctOfMentions: number; // % trên tổng lượt gắn nhóm
+  cumulativePct: number; // 0..100 đường Pareto
+  comments: CategorizedCommentRecord[];
+}
+
+export interface Part1Metrics {
+  start: Date;
+  end: Date;
+  prevStart: Date;
+  prevEnd: Date;
+  waitWindowDays: number;
+  kpiTargetRate: number;
+  hasAnyScopeData: boolean;
+  sentItems: SheetRowItem[];
+  maturedSentItems: SheetRowItem[];
+  pendingSentItems: SheetRowItem[];
+  maturedCohortRepliesWithinWait: SheetRowItem[];
+  replyItems: SheetRowItem[];
+  satisfiedItems: SheetRowItem[]; // 4-5★
+  attentionItems: SheetRowItem[]; // 1-3★
+  ratingTiers: Array<{
+    stars: 5 | 4 | 3 | 2 | 1;
+    count: number;
+    pct: number;
+    color: string;
+    items: SheetRowItem[];
+  }>;
+  surveyTypeBreakdown: {
+    sentMidTerm: number;
+    sentFinalTerm: number;
+    replyMidTerm: number;
+    replyFinalTerm: number;
+    sentMidTermPrev: number;
+    sentFinalTermPrev: number;
+    replyMidTermPrev: number;
+    replyFinalTermPrev: number;
+  };
+  kpis: {
+    sentCount: number | null;
+    sentPrevCount: number | null;
+    sentDeltaPct: number | null;
+
+    replyCount: number | null;
+    replyPrevCount: number | null;
+    replyDeltaPct: number | null;
+    replyWithCommentCount: number;
+
+    cohortRate: number | null; // 0..1
+    cohortPrevRate: number | null;
+    cohortRateDeltaPts: number | null; // percentage points (-100..+100)
+    cohortRateIsProvisional: boolean;
+
+    overallReplyRate: number | null; // replyCount / sentCount
+    overallPrevReplyRate: number | null;
+    overallReplyRateDeltaPts: number | null;
+    monthlyAvgReplyRate: number | null; // trung bình tỷ lệ phản hồi theo tháng trên scopedRows
+    monthlyAvgMonthsCount: number;
+
+    avgRating: number | null;
+    avgPrevRating: number | null;
+    avgDeltaPts: number | null;
+
+    satisfactionCount: number | null;
+    satisfactionRate: number | null; // 0..1
+    satisfactionPrevRate: number | null;
+    satisfactionDeltaPts: number | null; // percentage points
+
+    attentionCount: number | null;
+    attentionRate: number | null; // 0..1
+    attentionPrevRate: number | null;
+    attentionDeltaPts: number | null; // percentage points
+  };
+  efficiencySeries: {
+    day: BatchEfficiencyPoint[];
+    week: BatchEfficiencyPoint[];
+    month: BatchEfficiencyPoint[];
+  };
+  monthlyQualityTrend: MonthlyQualityPoint[];
+  paretoIssues: ParetoIssueItem[];
+  uniqueFeedbackAnalyzedCount: number;
+  totalIssueMentions: number;
+}
+
+export type Part1DrilldownState =
+  | { kind: 'kpi'; kpiId: Part1KpiId }
+  | { kind: 'star'; stars: 5 | 4 | 3 | 2 | 1 }
+  | { kind: 'issue'; categoryKey: ImprovementCategoryKey }
+  | null;
+
+// -------------------------------------------------------------
 // TEACHING QUALITY MONITORING TYPES (Google Sheet gid=282336280)
 // -------------------------------------------------------------
 

@@ -431,21 +431,55 @@ interface ImageReviewRecord {
 }
 
 const imageReviewStore = new Map<string, ImageReviewRecord>();
+let cachedHygieneReviewSheetCsv = '';
+let lastHygieneReviewSheetCacheTime = 0;
 
 app.get('/api/image-reviews', (req, res) => {
-  const date = String(req.query.date || '');
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  const date = String(req.query.date || '').trim();
+  const returnAll = req.query.all === '1' || !date || date === 'all';
+  if (!returnAll && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ success: false, error: 'Ngày tra cứu không hợp lệ.' });
   }
   const prefix = `reviews/${date}/`;
   const records: ImageReviewRecord[] = [];
   for (const [key, val] of imageReviewStore.entries()) {
-    if (key.startsWith(prefix)) {
+    if (returnAll || key.startsWith(prefix)) {
       records.push(val);
     }
   }
-  records.sort((a, b) => String(a.coSo).localeCompare(String(b.coSo), 'vi'));
-  res.json({ success: true, date, records, count: records.length });
+  records.sort((a, b) => String(b.ngay || '').localeCompare(String(a.ngay || '')) || String(a.coSo).localeCompare(String(b.coSo), 'vi'));
+  res.json({ success: true, date: returnAll ? 'all' : date, records, count: records.length });
+});
+
+app.get('/api/hygiene-review-sheet-data', async (req, res) => {
+  try {
+    const force = req.query.force === 'true';
+    const now = Date.now();
+    if (!force && cachedHygieneReviewSheetCsv && (now - lastHygieneReviewSheetCacheTime < 30_000)) {
+      return res.json({ success: true, data: { csv: cachedHygieneReviewSheetCsv }, cached: true });
+    }
+
+    const sheetId = '1003lfdUh6S_Tkg5H4qChw7KrziAon1uvgkoFMj9FK0E';
+    const targetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+    const response = await fetch(targetUrl, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) {
+      throw new Error(`Google Sheets CSV responded with HTTP ${response.status}`);
+    }
+
+    const csv = await response.text();
+    if (!csv || csv.includes('<!DOCTYPE html>') || csv.includes('accounts.google.com')) {
+      throw new Error('Google Sheets CSV không khả dụng hoặc cần quyền truy cập');
+    }
+
+    cachedHygieneReviewSheetCsv = csv;
+    lastHygieneReviewSheetCacheTime = now;
+    res.json({ success: true, data: { csv }, cached: false });
+  } catch (err: any) {
+    if (cachedHygieneReviewSheetCsv) {
+      return res.json({ success: true, data: { csv: cachedHygieneReviewSheetCsv }, cached: true, warning: 'Stale cache' });
+    }
+    res.status(500).json({ success: false, error: err.message || 'Không thể tải dữ liệu kiểm duyệt ảnh từ Google Sheet' });
+  }
 });
 
 // Automated Daily Sync Engine & Store
@@ -532,6 +566,7 @@ app.post('/api/image-reviews', async (req, res) => {
         }
       }
 
+      lastHygieneReviewSheetCacheTime = 0;
       return res.json({ success: true, records: savedList, warning: syncWarning || undefined });
     }
 
@@ -623,6 +658,7 @@ app.post('/api/image-reviews', async (req, res) => {
     }
 
     imageReviewStore.set(`reviews/${date}/${encodeURIComponent(id)}`, savedRecord);
+    lastHygieneReviewSheetCacheTime = 0;
     res.json({ success: true, record: savedRecord, warning: syncWarning || undefined });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'Lỗi máy chủ' });

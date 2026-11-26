@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { SheetRowItem, FilterState, PeriodReportData, FacilityMetrics } from './types';
+import { SheetRowItem, FilterState, PeriodReportData, FacilityMetrics, Part1DrilldownState } from './types';
 import {
   fetchGoogleSheetData,
   formatDateInput,
@@ -11,10 +11,12 @@ import {
   formatDate,
   MIN_RANK_REPLIES
 } from './services/sheetService';
+import { computePart1Metrics } from './services/zaloPart1Service';
 import { FilterPanel } from './components/FilterPanel';
 import { SourceProof } from './components/SourceProof';
 import { KpiGrid } from './components/KpiGrid';
 import { DashboardGrid } from './components/DashboardGrid';
+import { Part1DrilldownModal } from './components/Part1DrilldownModal';
 import { FacilityTable } from './components/FacilityTable';
 import { LowStarFacilitiesReport } from './components/LowStarFacilitiesReport';
 import { CommentSentimentPieReport } from './components/CommentSentimentPieReport';
@@ -53,6 +55,7 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
     };
   });
   const [sortField, setSortField] = useState<string>('performance');
+  const [part1Drilldown, setPart1Drilldown] = useState<Part1DrilldownState>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -492,6 +495,23 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
     };
   }, [data, filters, sortField]);
 
+  // Phần 1 – Chỉ số tổng quan & 4 biểu đồ phân tích
+  const part1Metrics = useMemo(() => {
+    if (!filters.start || !filters.end) return null;
+
+    const startDate = new Date(`${filters.start}T00:00:00`);
+    const endDate = new Date(`${filters.end}T23:59:59`);
+
+    const scopedRows = data.filter(
+      (e) =>
+        (filters.facility === 'Tất cả' || e.facility === filters.facility) &&
+        (filters.subject === 'Tất cả' || e.subject === filters.subject) &&
+        (filters.course === 'Tất cả' || e.course === filters.course)
+    );
+
+    return computePart1Metrics(scopedRows, startDate, endDate);
+  }, [data, filters]);
+
   // CSV Export Handler
   const handleExportCsv = useCallback(() => {
     if (!reportData) return;
@@ -558,21 +578,33 @@ export default function SurveyReport({ refreshKey, onSyncStatus }: SurveyReportP
               )}
 
               {loading && data.length === 0 ? (
-                <section className="loading-grid">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} />
+                <section className="mx-[var(--page-gutter)] mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-[178px] rounded-xl border border-[#DCE6ED] bg-white animate-pulse"
+                    />
                   ))}
                 </section>
               ) : (
-                reportData && (
+                reportData &&
+                part1Metrics && (
                   <>
-                    <KpiGrid data={reportData} />
+                    <KpiGrid
+                      metrics={part1Metrics}
+                      onSelectKpi={(kpiId) => setPart1Drilldown({ kind: 'kpi', kpiId })}
+                    />
                     <DashboardGrid
-                      dayPoints={reportData.dayPoints}
-                      ratingCounts={reportData.ratingCounts}
-                      facilities={reportData.facilities}
-                      months={reportData.months}
-                      totalReplies={reportData.replies.length}
+                      metrics={part1Metrics}
+                      onSelectStar={(stars) => setPart1Drilldown({ kind: 'star', stars })}
+                      onSelectIssue={(categoryKey) =>
+                        setPart1Drilldown({ kind: 'issue', categoryKey })
+                      }
+                    />
+                    <Part1DrilldownModal
+                      drilldown={part1Drilldown}
+                      metrics={part1Metrics}
+                      onClose={() => setPart1Drilldown(null)}
                     />
                     <CommentSentimentPieReport
                       replies={reportData.replies}

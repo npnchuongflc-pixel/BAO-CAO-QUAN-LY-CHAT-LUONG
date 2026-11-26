@@ -1,571 +1,830 @@
-import React, { useState } from 'react';
-import { DayPoint, FacilityMetrics, MonthPoint } from '../types';
-import { formatNumber, formatPercent } from '../services/sheetService';
-import { COLORS } from './KpiGrid';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  LabelList,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts';
+import {
+  ImprovementCategoryKey,
+  Part1Granularity,
+  Part1Metrics
+} from '../types';
+import { BRAND_COLORS } from '../services/zaloPart1Service';
+import { formatNumber } from '../services/sheetService';
+import { ChevronRight } from 'lucide-react';
 
-function buildSmoothPath(points: [number, number][]): string {
-  if (!points.length) return '';
-  if (points.length === 1) return `M ${points[0][0]} ${points[0][1]}`;
-  return points.slice(1).reduce((acc, [nx, ny], idx) => {
-    const [px, py] = points[idx];
-    const mx = (px + nx) / 2;
-    return `${acc} C ${mx} ${py}, ${mx} ${ny}, ${nx} ${ny}`;
-  }, `M ${points[0][0]} ${points[0][1]}`);
+interface DashboardGridProps {
+  metrics: Part1Metrics;
+  onSelectStar: (stars: 5 | 4 | 3 | 2 | 1) => void;
+  onSelectIssue: (categoryKey: ImprovementCategoryKey) => void;
 }
 
-function calculateNiceMax(val: number): number {
-  if (!Number.isFinite(val) || val <= 0) return 10;
-  const power = 10 ** Math.floor(Math.log10(val));
-  const fraction = val / power;
-  let niceFraction: number;
-  if (fraction <= 1) niceFraction = 1;
-  else if (fraction <= 1.25) niceFraction = 1.25;
-  else if (fraction <= 1.5) niceFraction = 1.5;
-  else if (fraction <= 2) niceFraction = 2;
-  else if (fraction <= 2.5) niceFraction = 2.5;
-  else if (fraction <= 3) niceFraction = 3;
-  else if (fraction <= 4) niceFraction = 4;
-  else if (fraction <= 5) niceFraction = 5;
-  else if (fraction <= 6) niceFraction = 6;
-  else if (fraction <= 8) niceFraction = 8;
-  else niceFraction = 10;
-  return niceFraction * power;
-}
-
-const EmptyState: React.FC<{ text: string }> = ({ text }) => (
-  <div className="empty-state">
-    <span>{text}</span>
+const EmptyChartState: React.FC<{ text?: string }> = ({
+  text = 'Chưa có dữ liệu'
+}) => (
+  <div className="h-[280px] rounded-xl border border-dashed border-[#DCE6ED] bg-[#F8FBFD] flex items-center justify-center text-sm font-semibold text-[#647D90]">
+    {text}
   </div>
 );
 
-// Panel 1: Day Line & Bar Chart
-export const DayTimelineChart: React.FC<{ points: DayPoint[] }> = ({ points }) => {
-  const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
+export const DashboardGrid: React.FC<DashboardGridProps> = ({
+  metrics,
+  onSelectStar,
+  onSelectIssue
+}) => {
+  const [granularity, setGranularity] = useState<Part1Granularity>('day');
 
-  if (!points.length) return <EmptyState text="Chưa có dữ liệu theo ngày." />;
+  // Dữ liệu Biểu đồ 1 theo ngày / tuần / tháng
+  const efficiencyChartData = useMemo(() => {
+    const raw = metrics.efficiencySeries[granularity] ?? [];
+    return raw.map((p) => ({
+      ...p,
+      ratePct: p.responseRate != null ? Math.round(p.responseRate * 1000) / 10 : null
+    }));
+  }, [metrics.efficiencySeries, granularity]);
 
-  const maxReplyVal = Math.max(0, ...points.map((p) => p.replies));
-  const maxSentVal = Math.max(0, ...points.map((p) => p.sent));
-  const maxSentScale = calculateNiceMax(Math.max(1, maxSentVal));
-  const maxReplyScale = calculateNiceMax(Math.max(1, maxReplyVal));
-  const plotLeft = 58;
-  const plotRight = 598;
-  const plotWidth = plotRight - plotLeft;
-  const plotTop = 40;
-  const plotBottom = 258;
-  const plotHeight = plotBottom - plotTop;
-  const getX = (idx: number) =>
-    plotLeft + (points.length === 1 ? plotWidth / 2 : (idx * plotWidth) / (points.length - 1));
-  const getYSent = (val: number) => plotBottom - (val / maxSentScale) * plotHeight;
-  const getYReply = (val: number) => plotBottom - (val / maxReplyScale) * plotHeight;
-  const barWidth = Math.max(5, Math.min(18, 470 / (points.length * 1.9)));
+  const hasPendingInChart1 = useMemo(
+    () => efficiencyChartData.some((d) => d.isPendingWait),
+    [efficiencyChartData]
+  );
 
-  const replyPoints: [number, number][] = points.map((p, i) => [getX(i), getYReply(p.replies)]);
-  const smoothPath = buildSmoothPath(replyPoints);
-  const labelStep = Math.max(1, Math.ceil(points.length / 8));
-  const maxReplyIdx = points.findIndex((p) => p.replies === maxReplyVal && p.replies > 0);
+  const maxRateAxis = useMemo(() => {
+    const maxObserved = Math.max(25, ...efficiencyChartData.map((d) => d.ratePct ?? 0));
+    return Math.ceil(Math.max(40, maxObserved + 5) / 10) * 10;
+  }, [efficiencyChartData]);
+
+  // Dữ liệu Biểu đồ 2: 5 sao -> 1 sao
+  const totalRatings = metrics.replyItems.length;
+  const maxTierCount = Math.max(1, ...metrics.ratingTiers.map((t) => t.count));
+
+  const satisfiedSumPct = useMemo(() => {
+    if (!totalRatings) return null;
+    const count = metrics.satisfiedItems.length;
+    return (count / totalRatings) * 100;
+  }, [metrics.satisfiedItems.length, totalRatings]);
+
+  const neutralSumPct = useMemo(() => {
+    if (!totalRatings) return null;
+    const count = metrics.ratingTiers.find((t) => t.stars === 3)?.count ?? 0;
+    return (count / totalRatings) * 100;
+  }, [metrics.ratingTiers, totalRatings]);
+
+  const dissatisfiedSumPct = useMemo(() => {
+    if (!totalRatings) return null;
+    const c1 = metrics.ratingTiers.find((t) => t.stars === 1)?.count ?? 0;
+    const c2 = metrics.ratingTiers.find((t) => t.stars === 2)?.count ?? 0;
+    return ((c1 + c2) / totalRatings) * 100;
+  }, [metrics.ratingTiers, totalRatings]);
+
+  // Dữ liệu Biểu đồ 3: 100% stacked theo tháng
+  const qualityTrendData = metrics.monthlyQualityTrend;
+
+  // Dữ liệu Biểu đồ 4: Pareto 7 nhóm vấn đề
+  const paretoData = useMemo(
+    () =>
+      metrics.paretoIssues.map((p) => ({
+        ...p,
+        pctRounded: Math.round(p.pctOfComments * 10) / 10,
+        cumRounded: Math.round(p.cumulativePct * 10) / 10
+      })),
+    [metrics.paretoIssues]
+  );
 
   return (
-    <div
-      className="chart-wrap combo-day-chart"
-      role="img"
-      aria-label="Biểu đồ combo: cột lượt gửi theo trục trái và đường phản hồi theo trục phải"
+    <section
+      className="mx-[var(--page-gutter)] mb-6"
+      aria-label="Phân tích trực quan Phần 1"
     >
-      <svg
-        viewBox="0 0 660 304"
-        className="line-chart"
-        onMouseLeave={() => setHoveredIdx(null)}
-      >
-        <defs>
-          <linearGradient id="sentBarGradient" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor={COLORS.sky} stopOpacity="0.96" />
-            <stop offset="100%" stopColor={COLORS.blue} stopOpacity="0.78" />
-          </linearGradient>
-        </defs>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* ============================================================
+            BIỂU ĐỒ 1. HIỆU QUẢ THU THẬP PHẢN HỒI
+            ============================================================ */}
+        <article className="bg-white border border-[#DCE6ED] rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3.5 border-b border-[#EDF2F7]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#1B5EA6] block">
+                  BIỂU ĐỒ 1 · CÙNG LÔ KHẢO SÁT
+                </span>
+                <h3 className="text-lg font-extrabold text-[#1A3A5C] tracking-tight mt-0.5">
+                  Hiệu quả thu thập phản hồi
+                </h3>
+                <p className="text-xs text-[#526B82] mt-0.5">
+                  Lượt gửi &amp; phản hồi cùng lô (cửa sổ chờ {metrics.waitWindowDays} ngày) đối chiếu KPI 25%
+                </p>
+              </div>
 
-        <text x={plotLeft} y={18} className="combo-axis-title combo-axis-title-left">
-          LƯỢT GỬI
-        </text>
-        <text x={plotRight} y={18} textAnchor="end" className="combo-axis-title combo-axis-title-right">
-          PHẢN HỒI
-        </text>
-
-        {[0, 0.25, 0.5, 0.75, 1].map((step) => {
-          const yPos = plotBottom - plotHeight * step;
-          return (
-            <g key={`combo-grid-${step}`}>
-              <line x1={plotLeft} x2={plotRight} y1={yPos} y2={yPos} className="grid-line" />
-              <text x={46} y={yPos + 4} textAnchor="end" className="axis-text combo-axis-left-value">
-                {formatNumber(Math.round(maxSentScale * step))}
-              </text>
-              <text x={610} y={yPos + 4} textAnchor="start" className="axis-text combo-axis-right-value">
-                {formatNumber(Math.round(maxReplyScale * step))}
-              </text>
-            </g>
-          );
-        })}
-
-        <line x1={plotLeft} x2={plotLeft} y1={plotTop} y2={plotBottom} className="combo-axis combo-axis-left" />
-        <line x1={plotRight} x2={plotRight} y1={plotTop} y2={plotBottom} className="combo-axis combo-axis-right" />
-        <line x1={plotLeft} x2={plotRight} y1={plotBottom} y2={plotBottom} className="combo-axis combo-axis-bottom" />
-
-        {points.map((p, i) => {
-          const xPos = getX(i) - barWidth / 2;
-          const yPos = getYSent(p.sent);
-          const barHeight = plotBottom - yPos;
-          const isHovered = hoveredIdx === i;
-
-          return (
-            <rect
-              key={`sent-${p.key}`}
-              x={xPos}
-              y={yPos}
-              width={barWidth}
-              height={barHeight}
-              rx={2.5}
-              fill="url(#sentBarGradient)"
-              opacity={isHovered ? 1 : 0.82}
-              onMouseEnter={() => setHoveredIdx(i)}
-              style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
-            >
-              <title>{`${p.label}: ${formatNumber(p.sent)} lượt gửi · ${formatNumber(p.replies)} phản hồi`}</title>
-            </rect>
-          );
-        })}
-
-        <path
-          d={smoothPath}
-          fill="none"
-          stroke={COLORS.coral}
-          strokeWidth="3.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {points.map((p, i) => {
-          const xPos = getX(i);
-          const yPos = getYReply(p.replies);
-          const showXAxisLabel = i % labelStep === 0 || i === points.length - 1;
-          const isMax = i === maxReplyIdx;
-          const isHovered = hoveredIdx === i;
-
-          return (
-            <g key={`reply-${p.key}`}>
-              <circle
-                cx={xPos}
-                cy={yPos}
-                r={isMax ? 6 : isHovered ? 6.5 : 4.5}
-                fill={isMax ? COLORS.coral : '#fff'}
-                stroke={COLORS.coral}
-                strokeWidth={isMax ? 2 : 2.5}
-                onMouseEnter={() => setHoveredIdx(i)}
-                style={{ cursor: 'pointer' }}
-              >
-                <title>{`${p.label}: ${formatNumber(p.replies)} phản hồi; ${formatNumber(p.sent)} lượt gửi`}</title>
-              </circle>
-
-              {isMax && (
-                <g>
-                  <rect
-                    x={xPos - 32}
-                    y={Math.max(plotTop + 3, yPos - 27)}
-                    width={64}
-                    height={20}
-                    rx={10}
-                    fill={COLORS.coral}
-                  />
-                  <text
-                    x={xPos}
-                    y={Math.max(plotTop + 17, yPos - 13)}
-                    textAnchor="middle"
-                    fill="#ffffff"
-                    fontSize="11"
-                    fontWeight="800"
-                  >
-                    {`Max: ${p.replies}`}
-                  </text>
-                </g>
-              )}
-
-              {isHovered && !isMax && (
-                <g>
-                  <rect
-                    x={xPos - 24}
-                    y={Math.max(plotTop + 3, yPos - 24)}
-                    width={48}
-                    height={18}
-                    rx={6}
-                    fill="#1a3a5c"
-                  />
-                  <text
-                    x={xPos}
-                    y={Math.max(plotTop + 16, yPos - 11)}
-                    textAnchor="middle"
-                    fill="#ffffff"
-                    fontSize="10"
-                    fontWeight="700"
-                  >
-                    {p.replies}
-                  </text>
-                </g>
-              )}
-
-              {showXAxisLabel && (
-                <text x={xPos} y={284} textAnchor="middle" className="axis-text day-axis-label">
-                  {p.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
-
-// Panel 2: Rating Distribution
-export const RatingDistribution: React.FC<{ counts: number[] }> = ({ counts }) => {
-  const total = counts.reduce((sum, c) => sum + c, 0);
-  const maxCount = Math.max(1, ...counts);
-  const colors = [COLORS.green, COLORS.sky, COLORS.yellow, COLORS.coral, COLORS.coral];
-
-  return (
-    <div className="rating-bars">
-      {[5, 4, 3, 2, 1].map((stars, idx) => {
-        const count = counts[stars - 1] || 0;
-        const color = colors[idx];
-        const widthPercent = total ? (count / maxCount) * 100 : 0;
-
-        return (
-          <div className="rating-row" key={stars}>
-            <div className="rating-name">
-              {stars} <span>★</span>
-            </div>
-            <div className="rating-track">
               <div
-                style={{
-                  width: `${widthPercent}%`,
-                  background: color
-                }}
-              />
+                className="inline-flex items-center rounded-lg border border-[#DCE6ED] bg-[#F4F8FB] p-0.5 shrink-0 self-start"
+                role="tablist"
+                aria-label="Chế độ xem thời gian"
+              >
+                {(
+                  [
+                    { id: 'day', label: 'Ngày' },
+                    { id: 'week', label: 'Tuần' },
+                    { id: 'month', label: 'Tháng' }
+                  ] as const
+                ).map((tab) => {
+                  const active = granularity === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setGranularity(tab.id)}
+                      className={`px-3 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[#1B5EA6] text-white'
+                          : 'text-[#526B82] hover:text-[#1A3A5C]'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <strong>{formatNumber(count)}</strong>
-            <small>{formatPercent(total ? count / total : null, 0)}</small>
+
+            {/* Legend */}
+            <div className="mt-3 mb-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-semibold text-[#334E68]">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs inline-block bg-[#1B5EA6]" />
+                Lượt gửi
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs inline-block bg-[#3EA8E0]" />
+                Phản hồi cùng lô
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-4 h-0.5 inline-block bg-[#4CAF8A]" />
+                Tỷ lệ phản hồi (%)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-4 border-t-2 border-dashed border-[#F2775A] inline-block" />
+                KPI 25%
+              </span>
+              {hasPendingInChart1 && (
+                <span className="inline-flex items-center gap-1.5 text-[#9A7208]">
+                  <span
+                    className="w-3 h-3 rounded-xs inline-block border border-dashed border-[#1B5EA6]"
+                    style={{
+                      backgroundImage:
+                        'repeating-linear-gradient(45deg, #F9C84666, #F9C84666 3px, #ffffff 3px, #ffffff 6px)'
+                    }}
+                  />
+                  Chưa đủ {metrics.waitWindowDays} ngày chờ
+                </span>
+              )}
+            </div>
           </div>
-        );
-      })}
-    </div>
-  );
-};
 
-// Panel 3: Top 10 Facilities
-export const TopFacilitiesList: React.FC<{ rows: FacilityMetrics[] }> = ({ rows }) => {
-  const sorted = [...rows].sort((a, b) => b.replies - a.replies).slice(0, 10);
-  const maxReplies = Math.max(1, ...sorted.map((f) => f.replies));
+          {efficiencyChartData.length === 0 ? (
+            <EmptyChartState text="Chưa có dữ liệu gửi khảo sát trong khoảng thời gian đã chọn" />
+          ) : (
+            <div className="h-[290px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={efficiencyChartData}
+                  margin={{ top: 14, right: 10, left: -12, bottom: 4 }}
+                >
+                  <defs>
+                    <pattern
+                      id="pendingSentHatch"
+                      width="6"
+                      height="6"
+                      patternUnits="userSpaceOnUse"
+                      patternTransform="rotate(45)"
+                    >
+                      <rect width="6" height="6" fill="#1B5EA6" fillOpacity="0.18" />
+                      <line x1="0" y1="0" x2="0" y2="6" stroke="#1B5EA6" strokeWidth="2" />
+                    </pattern>
+                    <pattern
+                      id="pendingReplyHatch"
+                      width="6"
+                      height="6"
+                      patternUnits="userSpaceOnUse"
+                      patternTransform="rotate(45)"
+                    >
+                      <rect width="6" height="6" fill="#3EA8E0" fillOpacity="0.22" />
+                      <line x1="0" y1="0" x2="0" y2="6" stroke="#3EA8E0" strokeWidth="2" />
+                    </pattern>
+                  </defs>
 
-  if (!sorted.length) {
-    return <EmptyState text="Không có dữ liệu cơ sở." />;
-  }
+                  <CartesianGrid stroke="#EDF2F7" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#526B82', fontSize: 11, fontWeight: 600 }}
+                    axisLine={{ stroke: '#DCE6ED' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="count"
+                    tick={{ fill: '#1A3A5C', fontSize: 11, fontWeight: 600 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="rate"
+                    orientation="right"
+                    domain={[0, maxRateAxis]}
+                    tickFormatter={(v) => `${v}%`}
+                    tick={{ fill: '#2A7E60', fontSize: 11, fontWeight: 600 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
 
-  return (
-    <div className="facility-bars">
-      {sorted.map((item, idx) => {
-        const trackPercent = (item.replies / maxReplies) * 100;
-        return (
-          <div className="facility-bar" key={item.facility}>
-            <div className="facility-rank">{idx + 1}</div>
-            <div className="facility-bar-main">
-              <div className="facility-bar-label">
-                <span>{item.facility}</span>
-                <span>
-                  {item.replies} phản hồi · {formatPercent(item.rate, 0)}
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const pt = payload[0]?.payload as (typeof efficiencyChartData)[number];
+                      return (
+                        <div className="rounded-xl border border-[#1A3A5C] bg-white px-3.5 py-2.5 text-xs shadow-lg tabular-nums">
+                          <div className="font-extrabold text-[#1A3A5C] mb-1">
+                            {pt.fullLabel}
+                          </div>
+                          <div className="space-y-0.5 text-[#334E68]">
+                            <div>
+                              Lượt gửi:{' '}
+                              <strong className="text-[#1B5EA6]">
+                                {formatNumber(pt.sentCount)}
+                              </strong>
+                            </div>
+                            <div>
+                              Phản hồi cùng lô (≤{metrics.waitWindowDays} ngày):{' '}
+                              <strong className="text-[#3EA8E0]">
+                                {formatNumber(pt.cohortReplyWithinWaitCount)}
+                              </strong>
+                            </div>
+                            <div>
+                              Tỷ lệ phản hồi:{' '}
+                              <strong
+                                style={{
+                                  color:
+                                    (pt.ratePct ?? 0) >= 25
+                                      ? BRAND_COLORS.green
+                                      : BRAND_COLORS.coral
+                                }}
+                              >
+                                {pt.ratePct == null
+                                  ? 'Chưa có dữ liệu'
+                                  : `${pt.ratePct.toFixed(1).replace('.', ',')}%`}
+                              </strong>
+                            </div>
+                            <div
+                              className="pt-1 mt-1 border-t border-[#EDF2F7] font-bold"
+                              style={{
+                                color: pt.isPendingWait ? '#9A7208' : BRAND_COLORS.green
+                              }}
+                            >
+                              {pt.isPendingWait
+                                ? `Chưa đủ ${metrics.waitWindowDays} ngày chờ (${formatNumber(pt.pendingSentCount)}/${formatNumber(pt.sentCount)} lượt)`
+                                : `Đã đủ ${metrics.waitWindowDays} ngày chờ`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+
+                  <ReferenceLine
+                    yAxisId="rate"
+                    y={25}
+                    stroke={BRAND_COLORS.coral}
+                    strokeDasharray="5 4"
+                    strokeWidth={1.75}
+                    label={{
+                      value: 'KPI 25%',
+                      position: 'insideTopRight',
+                      fill: BRAND_COLORS.coral,
+                      fontSize: 11,
+                      fontWeight: 800
+                    }}
+                  />
+
+                  <Bar
+                    yAxisId="count"
+                    dataKey="sentCount"
+                    name="Lượt gửi"
+                    barSize={18}
+                    radius={[4, 4, 0, 0]}
+                  >
+                    {efficiencyChartData.map((entry) => (
+                      <Cell
+                        key={`sent-${entry.key}`}
+                        fill={
+                          entry.isPendingWait
+                            ? 'url(#pendingSentHatch)'
+                            : BRAND_COLORS.blue
+                        }
+                        stroke={entry.isPendingWait ? BRAND_COLORS.blue : undefined}
+                        strokeDasharray={entry.isPendingWait ? '3 2' : undefined}
+                      />
+                    ))}
+                  </Bar>
+
+                  <Bar
+                    yAxisId="count"
+                    dataKey="cohortReplyWithinWaitCount"
+                    name="Phản hồi cùng lô"
+                    barSize={18}
+                    radius={[4, 4, 0, 0]}
+                  >
+                    {efficiencyChartData.map((entry) => (
+                      <Cell
+                        key={`reply-${entry.key}`}
+                        fill={
+                          entry.isPendingWait
+                            ? 'url(#pendingReplyHatch)'
+                            : BRAND_COLORS.sky
+                        }
+                        stroke={entry.isPendingWait ? BRAND_COLORS.sky : undefined}
+                        strokeDasharray={entry.isPendingWait ? '3 2' : undefined}
+                      />
+                    ))}
+                  </Bar>
+
+                  <Line
+                    yAxisId="rate"
+                    type="monotone"
+                    dataKey="ratePct"
+                    name="Tỷ lệ phản hồi (%)"
+                    stroke={BRAND_COLORS.green}
+                    strokeWidth={2.5}
+                    dot={(props: any) => {
+                      const { cx, cy, payload, index } = props;
+                      if (cx == null || cy == null) return <g key={`empty-${index}`} />;
+                      const pending = Boolean(payload?.isPendingWait);
+                      return (
+                        <circle
+                          key={`dot-${payload?.key}`}
+                          cx={cx}
+                          cy={cy}
+                          r={pending ? 5 : 4}
+                          fill={pending ? '#FFFFFF' : BRAND_COLORS.green}
+                          stroke={pending ? BRAND_COLORS.yellow : '#FFFFFF'}
+                          strokeWidth={pending ? 2.5 : 1.5}
+                        />
+                      );
+                    }}
+                    activeDot={{ r: 6, fill: BRAND_COLORS.green, stroke: '#FFFFFF', strokeWidth: 2 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </article>
+
+        {/* ============================================================
+            BIỂU ĐỒ 2. PHÂN BỐ ĐÁNH GIÁ SAO (5 SAO ĐẾN 1 SAO)
+            ============================================================ */}
+        <article className="bg-white border border-[#DCE6ED] rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 pb-3.5 border-b border-[#EDF2F7]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#1B5EA6] block">
+                  BIỂU ĐỒ 2 · MỨC ĐỘ HÀI LÒNG
+                </span>
+                <h3 className="text-lg font-extrabold text-[#1A3A5C] tracking-tight mt-0.5">
+                  Phân bố đánh giá sao
+                </h3>
+                <p className="text-xs text-[#526B82] mt-0.5">
+                  Nhấn vào từng mức sao (5★ → 1★) để xem danh sách phản hồi tương ứng
+                </p>
+              </div>
+              <span className="text-xs font-extrabold text-[#1A3A5C] bg-[#F4F8FB] border border-[#DCE6ED] rounded-lg px-2.5 py-1.5 tabular-nums self-start">
+                {totalRatings === 0
+                  ? 'Chưa có dữ liệu'
+                  : `${formatNumber(totalRatings)} đánh giá`}
+              </span>
+            </div>
+          </div>
+
+          {totalRatings === 0 ? (
+            <EmptyChartState text="Chưa có dữ liệu đánh giá sao trong kỳ đã chọn" />
+          ) : (
+            <div className="my-3 space-y-2.5 flex-1 flex flex-col justify-center">
+              {metrics.ratingTiers.map((tier) => {
+                const barWidthPct = Math.max(
+                  tier.count > 0 ? 4 : 0,
+                  (tier.count / maxTierCount) * 100
+                );
+                const levelText =
+                  tier.stars === 5
+                    ? 'Rất hài lòng'
+                    : tier.stars === 4
+                    ? 'Hài lòng'
+                    : tier.stars === 3
+                    ? 'Cần quan tâm'
+                    : 'Không hài lòng';
+
+                return (
+                  <button
+                    key={tier.stars}
+                    type="button"
+                    onClick={() => onSelectStar(tier.stars)}
+                    className="group w-full text-left rounded-xl border border-transparent hover:border-[#DCE6ED] hover:bg-[#F8FBFD] px-2.5 py-2 transition-colors cursor-pointer"
+                    title={`Nhấn để xem ${formatNumber(tier.count)} phản hồi ${tier.stars} sao`}
+                  >
+                    <div className="grid grid-cols-[64px_92px_1fr_54px_56px_18px] sm:grid-cols-[68px_108px_1fr_60px_62px_18px] items-center gap-2.5">
+                      <span className="text-sm font-extrabold text-[#1A3A5C] tabular-nums flex items-center gap-1">
+                        <span>{tier.stars} sao</span>
+                        <span style={{ color: BRAND_COLORS.yellow }}>★</span>
+                      </span>
+
+                      <span className="text-[11px] font-semibold text-[#526B82] truncate">
+                        {levelText}
+                      </span>
+
+                      <div className="h-3.5 rounded-full bg-[#EDF2F7] overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${barWidthPct}%`,
+                            backgroundColor: tier.color
+                          }}
+                        />
+                      </div>
+
+                      <span className="text-right text-sm font-extrabold text-[#1A3A5C] tabular-nums">
+                        {formatNumber(tier.count)}
+                      </span>
+
+                      <span className="text-right text-xs font-bold text-[#526B82] tabular-nums">
+                        {tier.pct.toFixed(1).replace('.', ',')}%
+                      </span>
+
+                      <ChevronRight className="w-4 h-4 text-[#94A8B8] group-hover:text-[#1B5EA6] transition-colors" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Summary band matching satisfaction colors */}
+          <div className="pt-3 border-t border-[#EDF2F7] grid grid-cols-3 gap-2 text-center text-xs tabular-nums">
+            <div className="rounded-lg bg-[#F8FBFD] border border-[#DCE6ED] py-2 px-2">
+              <div className="font-bold text-[#526B82] text-[11px]">4–5★ Hài lòng</div>
+              <div className="font-extrabold mt-0.5" style={{ color: BRAND_COLORS.green }}>
+                {satisfiedSumPct == null
+                  ? 'Chưa có dữ liệu'
+                  : `${satisfiedSumPct.toFixed(1).replace('.', ',')}%`}
+              </div>
+            </div>
+            <div className="rounded-lg bg-[#F8FBFD] border border-[#DCE6ED] py-2 px-2">
+              <div className="font-bold text-[#526B82] text-[11px]">3★ Cần quan tâm</div>
+              <div className="font-extrabold mt-0.5 text-[#9A7208]">
+                {neutralSumPct == null
+                  ? 'Chưa có dữ liệu'
+                  : `${neutralSumPct.toFixed(1).replace('.', ',')}%`}
+              </div>
+            </div>
+            <div className="rounded-lg bg-[#F8FBFD] border border-[#DCE6ED] py-2 px-2">
+              <div className="font-bold text-[#526B82] text-[11px]">1–2★ Không hài lòng</div>
+              <div className="font-extrabold mt-0.5" style={{ color: BRAND_COLORS.coral }}>
+                {dissatisfiedSumPct == null
+                  ? 'Chưa có dữ liệu'
+                  : `${dissatisfiedSumPct.toFixed(1).replace('.', ',')}%`}
+              </div>
+            </div>
+          </div>
+        </article>
+
+        {/* ============================================================
+            BIỂU ĐỒ 3. XU HƯỚNG CHẤT LƯỢNG DỊCH VỤ (CỘT CHỒNG 100%)
+            ============================================================ */}
+        <article className="bg-white border border-[#DCE6ED] rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 pb-3.5 border-b border-[#EDF2F7]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#1B5EA6] block">
+                  BIỂU ĐỒ 3 · CỘT CHỒNG 100% THEO THÁNG
+                </span>
+                <h3 className="text-lg font-extrabold text-[#1A3A5C] tracking-tight mt-0.5">
+                  Xu hướng chất lượng dịch vụ
+                </h3>
+                <p className="text-xs text-[#526B82] mt-0.5">
+                  Cơ cấu % theo 3 nhóm mức độ hài lòng và tổng số phản hồi từng tháng
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-[#334E68] pt-1">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-xs inline-block bg-[#4CAF8A]" />
+                  4–5★ Hài lòng
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-xs inline-block bg-[#F9C846]" />
+                  3★ Cần quan tâm
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-xs inline-block bg-[#F2775A]" />
+                  1–2★ Không hài lòng
                 </span>
               </div>
-              <div className="facility-track">
-                <div style={{ width: `${trackPercent}%` }} />
-              </div>
             </div>
           </div>
-        );
-      })}
-    </div>
-  );
-};
 
-// Panel 4: 12 Month Trend Dual-Axis Chart
-export const MonthlyTrendChart: React.FC<{ points: MonthPoint[] }> = ({ points }) => {
-  if (!points.length) {
-    return <EmptyState text="Chưa có dữ liệu theo tháng." />;
-  }
+          {qualityTrendData.length === 0 ? (
+            <EmptyChartState text="Chưa có dữ liệu xu hướng theo tháng" />
+          ) : (
+            <div className="h-[310px] w-full mt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={qualityTrendData}
+                  margin={{ top: 26, right: 12, left: -14, bottom: 4 }}
+                >
+                  <CartesianGrid stroke="#EDF2F7" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#1A3A5C', fontSize: 11, fontWeight: 700 }}
+                    axisLine={{ stroke: '#DCE6ED' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    ticks={[0, 25, 50, 75, 100]}
+                    tickFormatter={(v) => `${v}%`}
+                    tick={{ fill: '#526B82', fontSize: 11, fontWeight: 600 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
 
-  const maxReplies = calculateNiceMax(Math.max(1, ...points.map((p) => p.replies)));
-  const maxRatePct = calculateNiceMax(Math.max(5, ...points.map((p) => (p.rate ?? 0) * 100)));
-  const maxRate = maxRatePct / 100;
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const m = payload[0]?.payload as (typeof qualityTrendData)[number];
+                      return (
+                        <div className="rounded-xl border border-[#1A3A5C] bg-white px-3.5 py-2.5 text-xs shadow-lg tabular-nums">
+                          <div className="font-extrabold text-[#1A3A5C] mb-1">
+                            {m.label} · Tổng {formatNumber(m.total)} phản hồi
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between gap-4">
+                              <span style={{ color: BRAND_COLORS.green }} className="font-bold">
+                                4–5 sao (Hài lòng):
+                              </span>
+                              <span className="font-extrabold text-[#1A3A5C]">
+                                {formatNumber(m.satisfiedCount)} ({m.satisfiedPct.toFixed(1).replace('.', ',')}%)
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="font-bold text-[#9A7208]">
+                                3 sao (Cần quan tâm):
+                              </span>
+                              <span className="font-extrabold text-[#1A3A5C]">
+                                {formatNumber(m.attentionCount)} ({m.attentionPct.toFixed(1).replace('.', ',')}%)
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <span style={{ color: BRAND_COLORS.coral }} className="font-bold">
+                                1–2 sao (Không hài lòng):
+                              </span>
+                              <span className="font-extrabold text-[#1A3A5C]">
+                                {formatNumber(m.dissatisfiedCount)} ({m.dissatisfiedPct.toFixed(1).replace('.', ',')}%)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
 
-  const plotLeft = 58;
-  const plotRight = 598;
-  const plotWidth = plotRight - plotLeft;
-  const getX = (idx: number) =>
-    plotLeft + (points.length === 1 ? plotWidth / 2 : (idx * plotWidth) / (points.length - 1));
-  const getYReplies = (val: number) => 254 - (val / maxReplies) * 212;
-  const getYRate = (val: number | null) => 254 - ((val ?? 0) / maxRate) * 212;
-
-  const replyPoints: [number, number][] = points.map((p, i) => [getX(i), getYReplies(p.replies)]);
-  const smoothRepliesPath = buildSmoothPath(replyPoints);
-
-  const ratePoints: [number, number][] = points.flatMap((p, i) =>
-    p.rate == null ? [] : [[getX(i), getYRate(p.rate)]]
-  );
-  const smoothRatePath = buildSmoothPath(ratePoints);
-
-  return (
-    <div
-      className="chart-wrap monthly-chart-wrap"
-      role="img"
-      aria-label="Biểu đồ hai trục: lượt phản hồi ở trục trái và tỷ lệ phản hồi ở trục phải"
-    >
-      <svg viewBox="0 0 660 310" className="line-chart monthly-chart">
-        <text x={plotLeft} y="15" textAnchor="start" className="axis-title axis-title-left">
-          LƯỢT PHẢN HỒI
-        </text>
-        <text x={plotRight} y="15" textAnchor="end" className="axis-title axis-title-right">
-          TỶ LỆ PHẢN HỒI (%)
-        </text>
-
-        {[0, 0.2, 0.4, 0.6, 0.8, 1].map((step) => {
-          const yPos = 42 + 212 * (1 - step);
-          return (
-            <g key={step}>
-              <line x1={plotLeft} x2={plotRight} y1={yPos} y2={yPos} className="grid-line" />
-              <text x={46} y={yPos + 4} textAnchor="end" className="axis-text axis-left-value">
-                {formatNumber(Math.round(maxReplies * step))}
-              </text>
-              <text x={610} y={yPos + 4} textAnchor="start" className="axis-text axis-right-value">
-                {`${Math.round(maxRatePct * step)}%`}
-              </text>
-            </g>
-          );
-        })}
-
-        <line x1={plotLeft} x2={plotLeft} y1={42} y2={254} className="chart-axis chart-axis-left" />
-        <line x1={plotRight} x2={plotRight} y1={42} y2={254} className="chart-axis chart-axis-right" />
-        <line x1={plotLeft} x2={plotRight} y1={254} y2={254} className="chart-axis chart-axis-bottom" />
-
-        {/* Reply Count Smooth Line */}
-        <path
-          d={smoothRepliesPath}
-          fill="none"
-          stroke={COLORS.blue}
-          strokeWidth="4"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Reply Rate Dashed Line */}
-        <path
-          d={smoothRatePath}
-          fill="none"
-          stroke={COLORS.green}
-          strokeWidth="3.5"
-          strokeDasharray="9 7"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Markers and Value Labels */}
-        {points.map((p, i) => {
-          const xPos = getX(i);
-          const yRep = getYReplies(p.replies);
-          const yRt = getYRate(p.rate);
-          const rateTextY = yRt > 234 ? yRt - 11 : yRt + 18;
-
-          return (
-            <g key={p.label}>
-              <circle
-                cx={xPos}
-                cy={yRep}
-                r="5"
-                fill="#fff"
-                stroke={COLORS.blue}
-                strokeWidth="3"
-              >
-                <title>{`${p.label}: ${formatNumber(p.replies)} lượt phản hồi`}</title>
-              </circle>
-
-              <text
-                x={xPos}
-                y={Math.max(yRep - 11, 34)}
-                textAnchor="middle"
-                className="chart-value-label reply-value-label"
-              >
-                {formatNumber(p.replies)}
-              </text>
-
-              {p.rate != null && (
-                <>
-                  <circle
-                    cx={xPos}
-                    cy={yRt}
-                    r="4"
-                    fill="#fff"
-                    stroke={COLORS.green}
-                    strokeWidth="2.5"
+                  <Bar
+                    dataKey="satisfiedPct"
+                    stackId="quality"
+                    fill={BRAND_COLORS.green}
+                    barSize={38}
                   >
-                    <title>{`${p.label}: ${formatPercent(p.rate)}`}</title>
-                  </circle>
-                  <text
-                    x={xPos}
-                    y={rateTextY}
-                    textAnchor="middle"
-                    className="chart-value-label rate-value-label"
+                    <LabelList
+                      dataKey="satisfiedPct"
+                      position="center"
+                      formatter={(val: unknown) => {
+                        const n = Number(val);
+                        return n >= 12 ? `${n.toFixed(0)}%` : '';
+                      }}
+                      fill="#FFFFFF"
+                      fontSize={11}
+                      fontWeight={800}
+                    />
+                  </Bar>
+
+                  <Bar
+                    dataKey="attentionPct"
+                    stackId="quality"
+                    fill={BRAND_COLORS.yellow}
+                    barSize={38}
                   >
-                    {formatPercent(p.rate, 0)}
-                  </text>
-                </>
-              )}
+                    <LabelList
+                      dataKey="attentionPct"
+                      position="center"
+                      formatter={(val: unknown) => {
+                        const n = Number(val);
+                        return n >= 10 ? `${n.toFixed(0)}%` : '';
+                      }}
+                      fill="#1A3A5C"
+                      fontSize={10}
+                      fontWeight={800}
+                    />
+                  </Bar>
 
-              <text x={xPos} y={290} textAnchor="middle" className="axis-text month-label">
-                {p.label}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
+                  <Bar
+                    dataKey="dissatisfiedPct"
+                    stackId="quality"
+                    fill={BRAND_COLORS.coral}
+                    barSize={38}
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey="total"
+                      position="top"
+                      formatter={(val: unknown) => `${formatNumber(Number(val))} ph`}
+                      fill="#1A3A5C"
+                      fontSize={11}
+                      fontWeight={800}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </article>
 
-interface DashboardGridProps {
-  dayPoints: DayPoint[];
-  ratingCounts: number[];
-  facilities: FacilityMetrics[];
-  months: MonthPoint[];
-  totalReplies: number;
-}
+        {/* ============================================================
+            BIỂU ĐỒ 4. THỐNG KÊ CÁC NHÓM VẤN ĐỀ CẦN CẢI THIỆN (PARETO)
+            ============================================================ */}
+        <article className="bg-white border border-[#DCE6ED] rounded-2xl p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 pb-3.5 border-b border-[#EDF2F7]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#1B5EA6] block">
+                  BIỂU ĐỒ 4 · PHÂN TÍCH PARETO (7 NHÓM VẤN ĐỀ)
+                </span>
+                <h3 className="text-lg font-extrabold text-[#1A3A5C] tracking-tight mt-0.5">
+                  Thống kê các nhóm vấn đề cần cải thiện
+                </h3>
+                <p className="text-xs text-[#526B82] mt-0.5">
+                  Phân tích mọi nhận xét có góp ý (kể cả 4–5★) · Đa nhãn, không tính trùng phản hồi gốc
+                </p>
+              </div>
+              <span className="text-xs font-extrabold text-[#1A3A5C] bg-[#F4F8FB] border border-[#DCE6ED] rounded-lg px-2.5 py-1.5 tabular-nums self-start whitespace-nowrap">
+                {metrics.uniqueFeedbackAnalyzedCount === 0
+                  ? 'Chưa có góp ý'
+                  : `${formatNumber(metrics.uniqueFeedbackAnalyzedCount)} góp ý · ${formatNumber(metrics.totalIssueMentions)} lượt gắn nhóm`}
+              </span>
+            </div>
+          </div>
 
-export const DashboardGrid: React.FC<DashboardGridProps> = ({
-  dayPoints,
-  ratingCounts,
-  facilities,
-  months,
-  totalReplies
-}) => {
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(true);
+          {metrics.uniqueFeedbackAnalyzedCount === 0 ? (
+            <EmptyChartState text="Chưa có nhận xét góp ý chi tiết trong kỳ đã chọn" />
+          ) : (
+            <div className="mt-2 flex-1 flex flex-col justify-between gap-3">
+              {/* Pareto Chart */}
+              <div className="h-[195px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={paretoData}
+                    margin={{ top: 14, right: 6, left: -18, bottom: 2 }}
+                  >
+                    <CartesianGrid stroke="#EDF2F7" vertical={false} />
+                    <XAxis
+                      dataKey="shortLabel"
+                      tick={{ fill: '#334E68', fontSize: 10, fontWeight: 700 }}
+                      axisLine={{ stroke: '#DCE6ED' }}
+                      tickLine={false}
+                      interval={0}
+                    />
+                    <YAxis
+                      yAxisId="count"
+                      allowDecimals={false}
+                      tick={{ fill: '#1A3A5C', fontSize: 10, fontWeight: 600 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      yAxisId="pct"
+                      orientation="right"
+                      domain={[0, 100]}
+                      tickFormatter={(v) => `${v}%`}
+                      tick={{ fill: BRAND_COLORS.purple, fontSize: 10, fontWeight: 600 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const item = payload[0]?.payload as (typeof paretoData)[number];
+                        return (
+                          <div className="rounded-xl border border-[#1A3A5C] bg-white px-3.5 py-2.5 text-xs shadow-lg max-w-xs tabular-nums">
+                            <div className="font-extrabold text-[#1A3A5C] mb-1">
+                              {item.label}
+                            </div>
+                            <div className="text-[#334E68]">
+                              Số lượt phản ánh:{' '}
+                              <strong style={{ color: item.color }}>
+                                {formatNumber(item.count)}
+                              </strong>{' '}
+                              ({item.pctRounded.toFixed(1).replace('.', ',')}% số góp ý)
+                            </div>
+                            <div className="text-[#334E68]">
+                              Tỷ lệ tích lũy Pareto:{' '}
+                              <strong style={{ color: BRAND_COLORS.purple }}>
+                                {item.cumRounded.toFixed(1).replace('.', ',')}%
+                              </strong>
+                            </div>
+                            <div className="text-[11px] text-[#1B5EA6] font-bold mt-1">
+                              Nhấn để xem nhận xét gốc &amp; cơ sở →
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
 
-  return (
-    <section className="panel table-panel dashboard-grid-panel bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
-      {/* Header bar */}
-      <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100">
-        <div className="min-w-0">
-          <span className="text-xs font-bold text-sky-700 uppercase tracking-wider block">
-            XU HƯỚNG &amp; PHÂN BỐ ĐÁNH GIÁ
-          </span>
-          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
-            Biểu đồ diễn biến theo ngày, xu hướng 12 tháng &amp; cơ cấu rating
-          </h2>
-        </div>
+                    <Bar
+                      yAxisId="count"
+                      dataKey="count"
+                      barSize={26}
+                      radius={[4, 4, 0, 0]}
+                      className="cursor-pointer"
+                      onClick={(barData: any) => {
+                        const key = barData?.key ?? barData?.payload?.key;
+                        if (key) onSelectIssue(key);
+                      }}
+                    >
+                      {paretoData.map((entry) => (
+                        <Cell key={entry.key} fill={entry.color} />
+                      ))}
+                      <LabelList
+                        dataKey="count"
+                        position="top"
+                        fill="#1A3A5C"
+                        fontSize={10}
+                        fontWeight={800}
+                      />
+                    </Bar>
 
-        <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
-          <button
-            type="button"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="inline-flex items-center justify-center gap-1.5 w-[118px] h-9 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-colors cursor-pointer shrink-0"
-            title={isCollapsed ? 'Mở rộng biểu đồ xu hướng' : 'Thu gọn biểu đồ xu hướng'}
-          >
-            {isCollapsed ? (
-              <>
-                <ChevronDown className="w-4 h-4 text-sky-600 shrink-0" />
-                <span>Mở rộng</span>
-              </>
-            ) : (
-              <>
-                <ChevronUp className="w-4 h-4 text-slate-600 shrink-0" />
-                <span>Thu gọn lại</span>
-              </>
-            )}
-          </button>
-        </div>
+                    <Line
+                      yAxisId="pct"
+                      type="monotone"
+                      dataKey="cumRounded"
+                      stroke={BRAND_COLORS.purple}
+                      strokeWidth={2.25}
+                      dot={{ r: 3.5, fill: BRAND_COLORS.purple, stroke: '#FFFFFF', strokeWidth: 1.5 }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 7-Category Interactive List (full labels + count + % + click drilldown) */}
+              <div className="divide-y divide-[#EDF2F7] border border-[#DCE6ED] rounded-xl overflow-hidden">
+                {paretoData.map((issue, idx) => (
+                  <button
+                    key={issue.key}
+                    type="button"
+                    onClick={() => onSelectIssue(issue.key)}
+                    className="w-full px-3 py-1.5 bg-white hover:bg-[#F4F8FB] flex items-center justify-between gap-2 text-left transition-colors cursor-pointer"
+                    title={`Nhấn để xem nhận xét gốc nhóm: ${issue.label}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[11px] font-bold text-[#647D90] w-4 tabular-nums shrink-0">
+                        {idx + 1}.
+                      </span>
+                      <span
+                        className="w-2.5 h-2.5 rounded-xs shrink-0"
+                        style={{ backgroundColor: issue.color }}
+                      />
+                      <span className="text-xs font-bold text-[#1A3A5C] truncate">
+                        {issue.label}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 shrink-0 tabular-nums">
+                      <span className="text-xs font-extrabold text-[#1A3A5C]">
+                        {formatNumber(issue.count)}
+                      </span>
+                      <span className="text-[11px] font-semibold text-[#526B82] w-12 text-right">
+                        {issue.pctRounded.toFixed(1).replace('.', ',')}%
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-[#94A8B8]" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </article>
       </div>
-
-      {/* Dạng thu gọn (Mini Banner) */}
-      {isCollapsed && (
-        <div
-          onClick={() => setIsCollapsed(false)}
-          className="p-4 bg-slate-50/80 flex items-center justify-between gap-3 text-xs text-slate-700 cursor-pointer hover:bg-slate-100/80 transition-colors"
-          title="Bấm để mở rộng xem biểu đồ"
-        >
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="font-bold text-slate-900 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
-              📈 {dayPoints.length} ngày theo dõi
-            </span>
-            <span className="font-bold text-blue-900 bg-blue-100/80 px-2.5 py-1 rounded-md border border-blue-200">
-              ⭐ {formatNumber(totalReplies)} lượt phản hồi đã ghi nhận
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Dạng mở rộng: 4 khối biểu đồ */}
-      {!isCollapsed && (
-        <div className="p-4 sm:p-5 bg-slate-50/40">
-          <div className="dashboard-grid">
-            {/* Comparison row: daily and 12-month trends */}
-            <article className="panel comparison-chart-panel">
-              <div className="panel-head">
-                <div>
-                  <span>DIỄN BIẾN THEO NGÀY</span>
-                  <h2>Lượt gửi và phản hồi</h2>
-                  <p className="chart-method-note">Combo chart · Cột: lượt gửi · Đường: phản hồi · Hai trục số lượng độc lập</p>
-                </div>
-                <div className="legend">
-                  <span className="sent">Lượt gửi</span>
-                  <span className="reply">Phản hồi</span>
-                </div>
-              </div>
-              <DayTimelineChart points={dayPoints} />
-            </article>
-
-            <article className="panel comparison-chart-panel">
-              <div className="panel-head">
-                <div>
-                  <span>XU HƯỚNG 12 THÁNG</span>
-                  <h2>Lượt phản hồi và tỷ lệ phản hồi</h2>
-                </div>
-                <div className="legend">
-                  <span className="month-reply">Lượt phản hồi</span>
-                  <span className="month-rate">Tỷ lệ phản hồi</span>
-                </div>
-              </div>
-              <MonthlyTrendChart points={months} />
-            </article>
-
-            {/* Supporting analysis row */}
-            <article className="panel">
-              <div className="panel-head">
-                <div>
-                  <span>CHẤT LƯỢNG PHẢN HỒI</span>
-                  <h2>Phân bố rating</h2>
-                </div>
-                <b>{formatNumber(totalReplies)} lượt</b>
-              </div>
-              <RatingDistribution counts={ratingCounts} />
-            </article>
-
-            {/* Panel 3: Facility comparison */}
-            <article className="panel">
-              <div className="panel-head">
-                <div>
-                  <span>SO SÁNH CƠ SỞ</span>
-                  <h2>Cơ sở có nhiều phản hồi</h2>
-                </div>
-                <b>Top 10</b>
-              </div>
-              <TopFacilitiesList rows={facilities} />
-            </article>
-          </div>
-        </div>
-      )}
     </section>
   );
 };

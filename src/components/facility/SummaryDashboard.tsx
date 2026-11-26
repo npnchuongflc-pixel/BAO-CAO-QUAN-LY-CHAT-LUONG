@@ -53,7 +53,14 @@ import {
   DayComplianceStatus,
 } from './FacilityDayInspectionModal';
 import { FacilityMonthlyLineChart } from './FacilityMonthlyLineChart';
-import { getImageReviewId, getLocalImageReviews } from '../../services/imageReviewService';
+import {
+  EMPTY_SYNCED_REVIEW_LOOKUP,
+  fetchAllSyncedImageReviews,
+  getImageReviewId,
+  getLocalImageReviews,
+  resolveSyncedImageReview,
+  SyncedImageReviewLookup,
+} from '../../services/imageReviewService';
 import { normalizeDateToIso } from '../../utils/dateUtils';
 import { exportPart2ElementToPdf } from '../../utils/part2PdfExport';
 import { PrintReportFooter } from '../PrintReportFooter';
@@ -116,6 +123,32 @@ interface ProblemFacilitySummary {
   problemCount: number;
   byDate: { shortDate: string; isoDate: string; areas: { khuVuc: string; reasonTag: string }[] }[];
   dailyAreas: { khuVuc: string; reasonTag: string }[];
+}
+
+interface LowScoreReviewDaySummary {
+  isoDate: string;
+  shortDate: string;
+  total: number;
+  reviewed: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+}
+
+interface LowScoreReviewerSummary {
+  reviewer: string;
+  totalReviewed: number;
+  approved: number;
+  rejected: number;
+}
+
+interface LowScoreReviewFacilitySummary {
+  coSo: string;
+  total: number;
+  reviewed: number;
+  approved: number;
+  rejected: number;
+  pending: number;
 }
 
 const parseGlobalMonthFilter = (thang?: string) => {
@@ -188,7 +221,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   const [hoveredKpi2Row, setHoveredKpi2Row] = useState<'daily' | 'week' | 'period' | null>(null);
   const [hoveredKpi4Row, setHoveredKpi4Row] = useState<'daily' | 'week' | 'period' | null>(null);
   const [hoveredKpi5Row, setHoveredKpi5Row] = useState<'daily' | 'week' | 'period' | null>(null);
+  const [hoveredKpi6Row, setHoveredKpi6Row] = useState<'daily' | 'week' | 'period' | null>(null);
   const [localImageReviews, setLocalImageReviews] = useState(() => getLocalImageReviews());
+  const [syncedImageReviews, setSyncedImageReviews] = useState<SyncedImageReviewLookup>(EMPTY_SYNCED_REVIEW_LOOKUP);
   const [showRankingRules, setShowRankingRules] = useState(false);
   const [isRankingTableCollapsed, setIsRankingTableCollapsed] = useState(true);
   const [rowLimit, setRowLimit] = useState<'all' | number>('all');
@@ -210,10 +245,22 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
   }, []);
 
   useEffect(() => {
-    const syncLocalReviews = () => setLocalImageReviews(getLocalImageReviews());
+    let active = true;
+    const loadSyncedReviews = (force = false) => {
+      void fetchAllSyncedImageReviews(force).then(lookup => {
+        if (active) setSyncedImageReviews(lookup);
+      });
+    };
+    loadSyncedReviews(false);
+
+    const syncLocalReviews = () => {
+      setLocalImageReviews(getLocalImageReviews());
+      loadSyncedReviews(true);
+    };
     window.addEventListener('facility-image-reviews-updated', syncLocalReviews);
     window.addEventListener('storage', syncLocalReviews);
     return () => {
+      active = false;
       window.removeEventListener('facility-image-reviews-updated', syncLocalReviews);
       window.removeEventListener('storage', syncLocalReviews);
     };
@@ -604,7 +651,13 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           problemFacilities: [] as ProblemFacilitySummary[],
           submittedImagesTotal: 0,
           reviewedImagesTotal: 0,
+          approvedImagesTotal: 0,
+          rejectedImagesTotal: 0,
           pendingImagesTotal: 0,
+          imageReviewRatePct: 0,
+          imageReviewByDate: [] as LowScoreReviewDaySummary[],
+          imageReviewByReviewer: [] as LowScoreReviewerSummary[],
+          imageReviewByFacility: [] as LowScoreReviewFacilitySummary[],
         };
       }
 
@@ -656,6 +709,9 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         let submittedImagesTotal = 0;
         let approvedImagesTotal = 0;
         let rejectedImagesTotal = 0;
+        const reviewDayMap = new Map<string, LowScoreReviewDaySummary>();
+        const reviewFacilityMap = new Map<string, LowScoreReviewFacilitySummary>();
+        const reviewerMap = new Map<string, LowScoreReviewerSummary>();
 
         rawHygieneReports.forEach(r => {
           const fac = normalizeFacilityName(r.coSo);
@@ -728,10 +784,74 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           }
 
           const hasPhoto = Boolean(r.linkAnh?.trim() && !r.linkAnh.includes(HYGIENE_PLACEHOLDER));
-          if (hasPhoto) {
+          let reviewScore100 = Number(r.diemSo ?? 0);
+          if (Number.isNaN(reviewScore100)) reviewScore100 = 0;
+          if (
+            (r.diemSoMax && r.diemSoMax <= 10 && reviewScore100 <= 10) ||
+            (!r.diemSoMax && reviewScore100 > 0 && reviewScore100 <= 10)
+          ) {
+            reviewScore100 *= 10;
+          }
+          if (hasPhoto && reviewScore100 < 80) {
+            const resolved = resolveSyncedImageReview(r, localImageReviews, syncedImageReviews);
             submittedImagesTotal += 1;
-            if (revStatus === 'approved') approvedImagesTotal += 1;
-            else if (revStatus === 'rejected') rejectedImagesTotal += 1;
+            if (resolved.status === 'approved') approvedImagesTotal += 1;
+            else if (resolved.status === 'rejected') rejectedImagesTotal += 1;
+
+            const dayEntry = reviewDayMap.get(iso) || {
+              isoDate: iso,
+              shortDate: formatIsoToDateStr(iso).slice(0, 5),
+              total: 0,
+              reviewed: 0,
+              approved: 0,
+              rejected: 0,
+              pending: 0,
+            };
+            dayEntry.total += 1;
+            if (resolved.status === 'approved') {
+              dayEntry.approved += 1;
+              dayEntry.reviewed += 1;
+            } else if (resolved.status === 'rejected') {
+              dayEntry.rejected += 1;
+              dayEntry.reviewed += 1;
+            } else {
+              dayEntry.pending += 1;
+            }
+            reviewDayMap.set(iso, dayEntry);
+
+            const facEntry = reviewFacilityMap.get(fac) || {
+              coSo: fac,
+              total: 0,
+              reviewed: 0,
+              approved: 0,
+              rejected: 0,
+              pending: 0,
+            };
+            facEntry.total += 1;
+            if (resolved.status === 'approved') {
+              facEntry.approved += 1;
+              facEntry.reviewed += 1;
+            } else if (resolved.status === 'rejected') {
+              facEntry.rejected += 1;
+              facEntry.reviewed += 1;
+            } else {
+              facEntry.pending += 1;
+            }
+            reviewFacilityMap.set(fac, facEntry);
+
+            if (resolved.status === 'approved' || resolved.status === 'rejected') {
+              const reviewerName = resolved.reviewer || 'Nhân viên';
+              const revEntry = reviewerMap.get(reviewerName) || {
+                reviewer: reviewerName,
+                totalReviewed: 0,
+                approved: 0,
+                rejected: 0,
+              };
+              revEntry.totalReviewed += 1;
+              if (resolved.status === 'approved') revEntry.approved += 1;
+              else revEntry.rejected += 1;
+              reviewerMap.set(reviewerName, revEntry);
+            }
           }
 
           const key = `${fac}|${iso}`;
@@ -851,6 +971,17 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           evaluatedItemsTotal > 0 ? (problemTotal / evaluatedItemsTotal) * 100 : 0;
         const reviewedImagesTotal = approvedImagesTotal + rejectedImagesTotal;
         const pendingImagesTotal = Math.max(0, submittedImagesTotal - reviewedImagesTotal);
+        const imageReviewRatePct =
+          submittedImagesTotal > 0 ? (reviewedImagesTotal / submittedImagesTotal) * 100 : 0;
+        const imageReviewByDate = Array.from(reviewDayMap.values()).sort((a, b) =>
+          b.isoDate.localeCompare(a.isoDate),
+        );
+        const imageReviewByReviewer = Array.from(reviewerMap.values()).sort(
+          (a, b) => b.totalReviewed - a.totalReviewed || a.reviewer.localeCompare(b.reviewer, 'vi'),
+        );
+        const imageReviewByFacility = Array.from(reviewFacilityMap.values()).sort(
+          (a, b) => b.pending - a.pending || b.total - a.total || a.coSo.localeCompare(b.coSo, 'vi'),
+        );
 
         return {
           daysCount: datesToCheck.length,
@@ -880,7 +1011,13 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
           problemFacilities: buildProblemFacilitySummaries(problemMap),
           submittedImagesTotal,
           reviewedImagesTotal,
+          approvedImagesTotal,
+          rejectedImagesTotal,
           pendingImagesTotal,
+          imageReviewRatePct,
+          imageReviewByDate,
+          imageReviewByReviewer,
+          imageReviewByFacility,
         };
       }
 
@@ -958,7 +1095,13 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
         problemFacilities: buildProblemFacilitySummaries(qualityProblemMap),
         submittedImagesTotal,
         reviewedImagesTotal: resolvedTotal,
+        approvedImagesTotal: resolvedTotal,
+        rejectedImagesTotal: 0,
         pendingImagesTotal: Math.max(0, submittedImagesTotal - resolvedTotal),
+        imageReviewRatePct: submittedImagesTotal > 0 ? (resolvedTotal / submittedImagesTotal) * 100 : 0,
+        imageReviewByDate: [] as LowScoreReviewDaySummary[],
+        imageReviewByReviewer: [] as LowScoreReviewerSummary[],
+        imageReviewByFacility: [] as LowScoreReviewFacilitySummary[],
       };
     };
 
@@ -985,6 +1128,7 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
     rawHygieneReports,
     rawQualityReports,
     localImageReviews,
+    syncedImageReviews,
   ]);
 
   // Phần 2 (Hygiene): Bảng cảnh báo cơ sở theo ngày gần nhất đã kết thúc, tuần hiện tại & tháng hiện tại
@@ -2893,36 +3037,202 @@ export const SummaryDashboard: React.FC<SummaryDashboardProps> = ({
             </div>
           </div>
 
-          {/* KPI 6: Kiểm duyệt ảnh */}
-          <div className="bg-slate-50/70 rounded-xl p-4 border border-slate-200/80 flex flex-col justify-between gap-2.5 shadow-2xs">
+          {/* KPI 6: Kiểm duyệt ảnh điểm thấp (<80đ) */}
+          <div className={`relative bg-slate-50/70 rounded-xl p-4 border border-slate-200/80 flex flex-col justify-between gap-2.5 shadow-2xs ${hoveredKpi6Row ? 'z-30' : ''}`}>
             <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
               <p className="text-xs font-bold text-slate-700 uppercase tracking-wider truncate">
-                6. Kiểm duyệt ảnh
+                6. Kiểm duyệt ảnh (&lt;80đ)
               </p>
               <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/80 flex items-center justify-center text-amber-600 shrink-0">
                 <Camera className="w-4 h-4" />
               </div>
             </div>
 
-            <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-600 font-medium">Ngày {centerKpiMetrics.yesterdayShort}:</span>
-                <span className="font-bold text-[#1A3A5C] font-mono">
-                  {centerKpiMetrics.daily.reviewedImagesTotal.toLocaleString('vi-VN')}/{centerKpiMetrics.daily.submittedImagesTotal.toLocaleString('vi-VN')} (chờ {centerKpiMetrics.daily.pendingImagesTotal.toLocaleString('vi-VN')})
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-600 font-medium">{centerKpiMetrics.weekRowLabel} ({centerKpiMetrics.weekRangeShort}):</span>
-                <span className="font-bold text-slate-800 font-mono">
-                  {centerKpiMetrics.week.reviewedImagesTotal.toLocaleString('vi-VN')}/{centerKpiMetrics.week.submittedImagesTotal.toLocaleString('vi-VN')} (chờ {centerKpiMetrics.week.pendingImagesTotal.toLocaleString('vi-VN')})
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-slate-600 font-medium">{centerKpiMetrics.periodShortTitle}:</span>
-                <span className="font-bold text-slate-800 font-mono">
-                  {centerKpiMetrics.period.reviewedImagesTotal.toLocaleString('vi-VN')}/{centerKpiMetrics.period.submittedImagesTotal.toLocaleString('vi-VN')} (chờ {centerKpiMetrics.period.pendingImagesTotal.toLocaleString('vi-VN')})
-                </span>
-              </div>
+            <div className="space-y-1 text-xs">
+              {(
+                [
+                  {
+                    scope: 'daily' as const,
+                    label: `Ngày ${centerKpiMetrics.yesterdayShort}:`,
+                    title: `Kiểm duyệt ảnh (<80đ) • Ngày ${centerKpiMetrics.yesterdayDisplay}`,
+                    stats: centerKpiMetrics.daily,
+                    showFacilityList: true,
+                  },
+                  {
+                    scope: 'week' as const,
+                    label: `${centerKpiMetrics.weekRowLabel} (${centerKpiMetrics.weekRangeShort}):`,
+                    title: `Kiểm duyệt ảnh (<80đ) • ${centerKpiMetrics.weekRowLabel} (${centerKpiMetrics.weekRangeShort})`,
+                    stats: centerKpiMetrics.week,
+                    showFacilityList: false,
+                  },
+                  {
+                    scope: 'period' as const,
+                    label: `${centerKpiMetrics.periodShortTitle}:`,
+                    title: `Kiểm duyệt ảnh (<80đ) • ${centerKpiMetrics.periodShortTitle}`,
+                    stats: centerKpiMetrics.period,
+                    showFacilityList: false,
+                  },
+                ]
+              ).map(({ scope, label, title, stats, showFacilityList }) => (
+                <div
+                  key={scope}
+                  className="relative"
+                  onMouseEnter={() => setHoveredKpi6Row(scope)}
+                  onMouseLeave={() => setHoveredKpi6Row(prev => (prev === scope ? null : prev))}
+                >
+                  <div
+                    onClick={() => setHoveredKpi6Row(prev => (prev === scope ? null : scope))}
+                    className="flex items-center justify-between gap-2 rounded-md px-1.5 -mx-1.5 py-0.5 hover:bg-amber-50/70 transition-colors cursor-pointer"
+                  >
+                    <span className="text-slate-600 font-medium flex items-center gap-1 shrink-0">
+                      <span>{label}</span>
+                      <Info className="w-3 h-3 text-slate-400 print:hidden" />
+                    </span>
+                    <span className="font-bold font-mono tabular-nums text-right">
+                      {stats.submittedImagesTotal === 0 ? (
+                        <span className="text-emerald-700">
+                          0/0 <span className="text-[11px] font-medium text-slate-500">(không có &lt;80đ)</span>
+                        </span>
+                      ) : (
+                        <>
+                          <span
+                            className={`underline decoration-dotted ${
+                              stats.pendingImagesTotal === 0
+                                ? 'text-emerald-700 decoration-emerald-400'
+                                : 'text-[#1A3A5C] decoration-slate-400'
+                            }`}
+                          >
+                            {stats.reviewedImagesTotal.toLocaleString('vi-VN')}/{stats.submittedImagesTotal.toLocaleString('vi-VN')}
+                          </span>
+                          <span className="ml-1 text-[11px] font-medium text-slate-500">
+                            ({stats.approvedImagesTotal} duyệt · {stats.rejectedImagesTotal} lỗi AI
+                            {stats.pendingImagesTotal > 0 ? ` · chờ ${stats.pendingImagesTotal.toLocaleString('vi-VN')}` : ''})
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  {hoveredKpi6Row === scope && (
+                    <div className="print:hidden absolute left-0 sm:left-auto sm:right-0 top-full pt-1.5 w-[320px] sm:w-[390px] z-50">
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-xl p-3 text-xs text-slate-700">
+                        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                          <p className="font-bold text-slate-900">{title}</p>
+                          <span className="font-bold font-mono text-[#1B5EA6] text-[11px] shrink-0">
+                            {stats.reviewedImagesTotal.toLocaleString('vi-VN')}/{stats.submittedImagesTotal.toLocaleString('vi-VN')} ({stats.imageReviewRatePct.toFixed(0)}%)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-1.5 my-2">
+                          <div className="bg-slate-50 border border-slate-200/80 rounded-lg px-2 py-1.5 text-center">
+                            <span className="block text-[10px] text-slate-500 font-medium">Ảnh &lt;80đ</span>
+                            <span className="font-bold font-mono text-[#1A3A5C]">
+                              {stats.submittedImagesTotal.toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                          <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-lg px-2 py-1.5 text-center">
+                            <span className="block text-[10px] text-emerald-700 font-medium">Đã duyệt</span>
+                            <span className="font-bold font-mono text-emerald-800">
+                              {stats.approvedImagesTotal.toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                          <div className="bg-rose-50/80 border border-rose-200/80 rounded-lg px-2 py-1.5 text-center">
+                            <span className="block text-[10px] text-rose-700 font-medium">Lỗi AI</span>
+                            <span className="font-bold font-mono text-rose-800">
+                              {stats.rejectedImagesTotal.toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                          <div className="bg-amber-50/80 border border-amber-200/80 rounded-lg px-2 py-1.5 text-center">
+                            <span className="block text-[10px] text-amber-800 font-medium">Chờ duyệt</span>
+                            <span className="font-bold font-mono text-amber-900">
+                              {stats.pendingImagesTotal.toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {stats.imageReviewByReviewer.length > 0 && (
+                          <div className="mb-2 pb-2 border-b border-slate-100">
+                            <p className="text-[11px] font-semibold text-slate-600 mb-1">
+                              Nhân viên kiểm duyệt:
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {stats.imageReviewByReviewer.map(rev => (
+                                <span
+                                  key={rev.reviewer}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200/80 text-[11px] text-slate-800"
+                                >
+                                  <span className="font-semibold">{rev.reviewer}:</span>
+                                  <span className="font-mono font-bold text-[#1B5EA6]">{rev.totalReviewed}</span>
+                                  <span className="text-slate-500 font-mono">
+                                    ({rev.approved}Đ/{rev.rejected}L)
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {stats.submittedImagesTotal === 0 ? (
+                          <div className="py-2 text-center text-emerald-700 font-semibold">
+                            Không có ảnh điểm thấp (&lt;80đ) trong kỳ
+                          </div>
+                        ) : showFacilityList ? (
+                          <div className="max-h-52 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                            <p className="text-[11px] font-semibold text-slate-600 mb-1">
+                              Chi tiết theo cơ sở:
+                            </p>
+                            {stats.imageReviewByFacility.map(facItem => (
+                              <button
+                                key={facItem.coSo}
+                                type="button"
+                                onClick={() => {
+                                  onSelectFacility(facItem.coSo);
+                                  setHoveredKpi6Row(null);
+                                }}
+                                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-slate-50 hover:bg-amber-50/70 border border-slate-200/70 text-left transition-colors cursor-pointer"
+                              >
+                                <span className="font-semibold text-slate-800 truncate">{facItem.coSo}</span>
+                                <span className="font-mono text-[11px] shrink-0">
+                                  <strong className={facItem.pending === 0 ? 'text-emerald-700' : 'text-[#1A3A5C]'}>
+                                    {facItem.reviewed}/{facItem.total}
+                                  </strong>{' '}
+                                  <span className="text-slate-500">
+                                    ({facItem.approved}Đ · {facItem.rejected}L{facItem.pending > 0 ? ` · chờ ${facItem.pending}` : ''})
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="max-h-52 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                            <p className="text-[11px] font-semibold text-slate-600 mb-1">
+                              Tổng hợp theo ngày:
+                            </p>
+                            {stats.imageReviewByDate.map(dayItem => (
+                              <div
+                                key={dayItem.isoDate}
+                                className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200/70"
+                              >
+                                <span className="font-mono font-semibold text-slate-800">
+                                  Ngày {dayItem.shortDate}
+                                </span>
+                                <span className="font-mono text-[11px] shrink-0">
+                                  <strong className={dayItem.pending === 0 ? 'text-emerald-700' : 'text-[#1A3A5C]'}>
+                                    {dayItem.reviewed}/{dayItem.total}
+                                  </strong>{' '}
+                                  <span className="text-slate-500">
+                                    ({dayItem.approved} duyệt · {dayItem.rejected} lỗi AI{dayItem.pending > 0 ? ` · chờ ${dayItem.pending}` : ''})
+                                  </span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         </div>
